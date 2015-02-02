@@ -1,0 +1,8 @@
+.sass-cache
+node_modules
+/env
+bower_components
+nec/settings/whoosh_index
+dontruninproduction
+/run
+.DS_Store

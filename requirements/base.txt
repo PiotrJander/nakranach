@@ -1,0 +1,15 @@
+Django
+MySQL-python
+Pillow
+Unidecode
+django-appconf
+django-braces
+django-classy-tags
+django-extensions
+django-model-utils
+django-sekizai
+logutils
+six
+djangorestframework
+django-custom-user
+django-crispy-forms

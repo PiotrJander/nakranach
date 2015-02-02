@@ -1,0 +1,6 @@
+{
+  "name": "nakranach",
+  "dependencies": {
+    "bootstrap": "~3.3.2"
+  }
+}

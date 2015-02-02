@@ -1,0 +1,4 @@
+-r base.txt
+django-debug-toolbar
+django-debug-toolbar-template-timings
+django-dynamic-fixture

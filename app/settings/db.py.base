@@ -1,0 +1,18 @@
+
+# IMPORTANT NOTICE!
+# Make sure to create the database at this point!
+#
+# It needs to be in UTF-8.
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'nakranach',
+        'USER': 'root',
+        'PASSWORD': '',
+        'HOST': '',
+        'PORT': '',
+        'TEST_CHARSET': 'UTF8',
+    }
+}
+
