@@ -33,6 +33,8 @@ STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 )
 
+TEST_RUNNER = 'django.test.runner.DiscoverRunner'
+
 # Make this unique, and don't share it with anybody.
 SECRET_KEY = '50qwz*@_w**hcydw&o&tlbw%041gs_ftw!qo%dog%)_0py#w9&'
 
@@ -49,7 +51,6 @@ MIDDLEWARE_CLASSES = (
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.locale.LocaleMiddleware',
-    'django.middleware.doc.XViewMiddleware',
 )
 
 AUTHENTICATION_BACKENDS = (
