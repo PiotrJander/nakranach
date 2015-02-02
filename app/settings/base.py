@@ -74,6 +74,8 @@ INSTALLED_APPS = (
     'django.contrib.admin',
     'custom_user',
     'crispy_forms',
+	'app.pubs',
+	'app.beers'
 )
 
 TEMPLATE_CONTEXT_PROCESSORS = (    
