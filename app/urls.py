@@ -10,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 admin.autodiscover()
 
 urlpatterns = patterns('',
+	(r'^admin/', include(admin.site.urls)),
 )
 
 if settings.DEBUG:
