@@ -13,3 +13,6 @@ six
 djangorestframework
 django-custom-user
 django-crispy-forms
+django-orderable
+geopy
+django-uuslug
