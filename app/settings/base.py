@@ -75,7 +75,8 @@ INSTALLED_APPS = (
     'custom_user',
     'crispy_forms',
 	'app.pubs',
-	'app.beers'
+	'app.beers',
+    'app.taps',
 )
 
 TEMPLATE_CONTEXT_PROCESSORS = (    
