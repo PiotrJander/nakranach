@@ -12,6 +12,7 @@ from app import api
 admin.autodiscover()
 
 urlpatterns = patterns('',
+    (r'^oauth2/', include('oauth2_provider.urls', namespace='oauth2_provider')),
     (r'^api/', include('app.api.urls')),
 	(r'^admin/', include(admin.site.urls)),
 )

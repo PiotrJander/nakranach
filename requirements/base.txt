@@ -16,3 +16,4 @@ django-crispy-forms
 django-orderable
 geopy
 django-uuslug
+django-oauth-toolkit

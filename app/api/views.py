@@ -3,13 +3,19 @@ from django.http import Http404
 from rest_framework import mixins, generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from oauth2_provider.ext.rest_framework import OAuth2Authentication
+from rest_framework.permissions import IsAuthenticated
 
 from app.pubs import models as pubs_models
 from app.taps import models as taps_models
 
 from .serializers import PubSerializer, TapSerializer, TapChangeSerializer
 
-class PubList(mixins.ListModelMixin,
+class AuthMixin(object):
+    authentication_classes = (OAuth2Authentication, )
+    permission_classes = (IsAuthenticated,)
+
+class PubList(AuthMixin, mixins.ListModelMixin,
                 generics.GenericAPIView):
     queryset = pubs_models.Pub.objects.all()
     serializer_class = PubSerializer
@@ -17,7 +23,7 @@ class PubList(mixins.ListModelMixin,
     def get(self, request, *args, **kwargs):
         return self.list(request, *args, **kwargs)
 
-class PubDetailView(APIView):
+class PubDetailView(AuthMixin, APIView):
     # http://www.django-rest-framework.org/api-guide/permissions/#djangomodelpermissions
     queryset = pubs_models.Pub.objects.all()
 
