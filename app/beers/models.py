@@ -19,6 +19,9 @@ class Style(models.Model):
 
     name = models.CharField(verbose_name=_('nazwa'), max_length=255)
 
+    def __unicode__(self):
+        return self.name
+
 class Beer(models.Model):
     class Meta:
         verbose_name = _('piwo')

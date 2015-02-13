@@ -75,8 +75,8 @@ INSTALLED_APPS = (
     'rest_framework',
     'custom_user',
     'crispy_forms',
+    'app.beers',
 	'app.pubs',
-	'app.beers',
     'app.taps',
     'app.api',
 )
