@@ -47,3 +47,6 @@ class Tap(Orderable):
 
     type = models.CharField(u'Rodzaj kranu', max_length=32, choices=TAP_TYPES, default='tap')
 
+class WaitingBeer(models.Model):
+    pub = models.ForeignKey('Pub', blank=False, null=False)
+    beer = models.ForeignKey(Beer, blank=False, null=False)
