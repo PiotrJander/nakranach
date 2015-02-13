@@ -42,11 +42,11 @@ class Tap(Orderable):
         ('tap', 'Kran'),
     )
 
-    pub = models.ForeignKey('Pub', related_name='taps', blank=False, null=False)
+    pub = models.ForeignKey(Pub, related_name='taps', blank=False, null=False)
     beer = models.ForeignKey(Beer, related_name='taps', blank=True, null=True)
 
     type = models.CharField(u'Rodzaj kranu', max_length=32, choices=TAP_TYPES, default='tap')
 
 class WaitingBeer(models.Model):
-    pub = models.ForeignKey('Pub', blank=False, null=False)
+    pub = models.ForeignKey(Pub, blank=False, null=False)
     beer = models.ForeignKey(Beer, blank=False, null=False)
