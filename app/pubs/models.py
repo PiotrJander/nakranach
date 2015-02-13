@@ -6,6 +6,8 @@ from orderable.models import Orderable
 
 from geopy.geocoders import Nominatim
 
+from app.beers.models import Beer
+
 from uuslug import uuslug
 
 class Pub(models.Model):
@@ -44,3 +46,6 @@ class Tap(Orderable):
 
     type = models.CharField(u'Rodzaj kranu', max_length=32, choices=TAP_TYPES, default='tap')
 
+class WaitingBeer(models.Model):
+    pub = models.ForeignKey('Pub', blank=False, null=False)
+    beer = models.ForeignKey(Beer, blank=False, null=False)
