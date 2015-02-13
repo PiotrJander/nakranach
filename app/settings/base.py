@@ -72,11 +72,13 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.admin',
+    'rest_framework',
     'custom_user',
     'crispy_forms',
+    'app.beers',
 	'app.pubs',
-	'app.beers',
     'app.taps',
+    'app.api',
 )
 
 TEMPLATE_CONTEXT_PROCESSORS = (    
@@ -101,3 +103,5 @@ CRISPY_TEMPLATE_PACK = 'bootstrap3'
 FIXTURE_DIRS = [
     os.path.join(PROJECT_PATH, 'fixtures')
 ]
+
+from .api import *
