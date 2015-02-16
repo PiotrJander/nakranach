@@ -54,7 +54,6 @@ MIDDLEWARE_CLASSES = (
 )
 
 AUTHENTICATION_BACKENDS = (
-    'oauth2_provider.ext.rest_framework.OAuth2Authentication',
     'django.contrib.auth.backends.ModelBackend',
 )
 
@@ -92,6 +91,8 @@ TEMPLATE_CONTEXT_PROCESSORS = (
     'django.core.context_processors.static',
 )
 
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
+
 AUTH_USER_MODEL = 'custom_user.EmailUser'
 
 LANGUAGES = [
@@ -99,6 +100,8 @@ LANGUAGES = [
 ]
 
 SITE_ID = 1
+
+SESSION_SAVE_EVERY_REQUEST = True
 
 CRISPY_TEMPLATE_PACK = 'bootstrap3'
 

@@ -4,8 +4,10 @@ from rest_framework import mixins, generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from oauth2_provider.ext.rest_framework import OAuth2Authentication
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 
+from app.api.permissions import IsAuthenticatedOrAnonymous
 from app.pubs import models as pubs_models
 from app.taps import models as taps_models
 
@@ -15,8 +17,8 @@ from .helpers import tap_changes_response
 
 # view classes
 class AuthMixin(object):
-    authentication_classes = (OAuth2Authentication, )
-    permission_classes = (IsAuthenticated,)
+    authentication_classes = (OAuth2Authentication, SessionAuthentication)
+    permission_classes = (IsAuthenticatedOrAnonymous,)
 
 class PubList(AuthMixin, mixins.ListModelMixin,
                 generics.GenericAPIView):
