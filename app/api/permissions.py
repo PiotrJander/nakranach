@@ -10,6 +10,8 @@ SESSION_KEY = 'sessionid'
 class IsAuthenticatedOrAnonymous(IsAuthenticated):
     def has_permission(self, request, view):
         result = super(IsAuthenticatedOrAnonymous, self).has_permission(request, view)
+
+        request.is_api_call = True
         if not result:
             try:
                 session_key = request.COOKIES[SESSION_KEY]
@@ -18,6 +20,8 @@ class IsAuthenticatedOrAnonymous(IsAuthenticated):
                 now = timezone.now()
 
                 result = now < session.expire_date
+
+                request.is_api_call = False
             except:
                 pass
 

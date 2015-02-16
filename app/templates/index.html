@@ -19,14 +19,20 @@
 
 <script type="text/javascript">
     var URLs = {
-        tap_changes: '{% url 'tap-changes' %}',
+        tap_changes: '{% url 'api-tap-changes' %}',
     };
 </script>
 
 <script id="tap-change-template" type="x-tmpl-mustache">
-<div class="tap-change">
+<div>
     <div>
         <strong>[[ timestamp ]]</strong>
+    </div>
+    <div>
+    <a href="[[ tap.pub ]]">[[ tap.pub_name ]]</a>
+    </div>
+    <div>
+        Kran [[ tap.sort_order ]]
     </div>
     <div>
         [[ #previous_beer ]][[ name ]][[ /previous_beer ]] -> [[ #new_beer ]][[ name ]][[ /new_beer ]]

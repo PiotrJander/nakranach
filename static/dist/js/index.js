@@ -1,12 +1,20 @@
 (function() {
-  var $container, show_changes;
+  var $container, refresh_changes, template;
 
   $container = $('#tap-changes');
 
-  show_changes = function(data) {
-    return console.log(data);
+  template = Helpers.template('tap-change');
+
+  refresh_changes = function() {
+    return $.get(URLs.tap_changes, function(data) {
+      return Helpers.show_data(data, $container, template, function(data) {
+        return data.timestamp = moment(data.timestamp).calendar();
+      });
+    });
   };
 
-  $.get(URLs.tap_changes, show_changes);
+  setInterval(refresh_changes, 60000);
+
+  refresh_changes();
 
 }).call(this);

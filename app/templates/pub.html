@@ -1,0 +1,50 @@
+{% extends 'base_site.html' %}
+{% load staticfiles %}
+
+{% block content %}
+<a href="{% url 'index' %}">Strona główna</a>
+
+<h1>{{ pub }}</h1>
+
+<div id="taps"></div>
+<div id="changes"></div>
+{% endblock %}
+
+{% block js %}
+{{ block.super }}
+
+<script type="text/javascript">
+    var URLs = {
+        taps: '{% url 'api-pub-taps' pub.slug %}',
+        changes: '{% url 'api-pub-tap-changes' pub.slug %}'
+    };
+</script>
+
+<script id="tap-template" type="x-tmpl-mustache">
+<div>
+    <div>
+        <strong>Kran [[ sort_order ]]</strong>
+    </div>
+    <div>
+        <strong>[[ beer.name ]]</strong> [[ #beer ]] [[ brewery.name ]] ([[ brewery.country]]) [[ /beer ]]<br>
+        <i>[[ beer.style ]]</i>
+    </div>
+</div>
+</script>
+
+<script id="change-template" type="x-tmpl-mustache">
+<div>
+    <div>
+        <strong>[[ timestamp ]]</strong>
+    </div>
+    <div>
+        Kran [[ tap.sort_order ]]
+    </div>
+    <div>
+        [[ #previous_beer ]][[ name ]][[ /previous_beer ]] -> [[ #new_beer ]][[ name ]][[ /new_beer ]]
+    </div>
+</div>
+</script>
+
+<script src="{% static 'js/pub.js' %}"></script>
+{% endblock %}

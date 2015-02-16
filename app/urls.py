@@ -4,19 +4,22 @@ from django.conf.urls import patterns, include, url
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
-from django.views.generic import TemplateView
+from django.views.generic import TemplateView, DetailView
 
 from django.views.decorators.csrf import csrf_exempt
+
+from app.pubs.models import Pub
 
 from app import api
 
 admin.autodiscover()
 
 urlpatterns = patterns('',
-    url(r'^$', TemplateView.as_view(template_name='index.html'), name='index'),
     (r'^oauth2/', include('oauth2_provider.urls', namespace='oauth2_provider')),
     (r'^api/', include('app.api.urls')),
 	(r'^admin/', include(admin.site.urls)),
+    url(r'^$', TemplateView.as_view(template_name='index.html'), name='index'),
+    url(r'^(?P<slug>[a-z0-9-]+)/$', DetailView.as_view(template_name='pub.html', model=Pub), name='pub-view'),
 )
 
 if settings.DEBUG:
