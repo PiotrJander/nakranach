@@ -1,6 +1,7 @@
 {
   "name": "nakranach",
   "dependencies": {
-    "bootstrap": "~3.3.2"
+    "bootstrap": "~3.3.2",
+    "jquery": "~2.1.3"
   }
 }
