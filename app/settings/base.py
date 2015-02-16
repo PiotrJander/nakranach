@@ -54,6 +54,7 @@ MIDDLEWARE_CLASSES = (
 )
 
 AUTHENTICATION_BACKENDS = (
+    'oauth2_provider.ext.rest_framework.OAuth2Authentication',
     'django.contrib.auth.backends.ModelBackend',
 )
 
@@ -72,6 +73,7 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.admin',
+    'oauth2_provider',
     'rest_framework',
     'custom_user',
     'crispy_forms',

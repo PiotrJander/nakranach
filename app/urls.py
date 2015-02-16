@@ -14,6 +14,7 @@ admin.autodiscover()
 
 urlpatterns = patterns('',
     url(r'^$', TemplateView.as_view(template_name='index.html'), name='index'),
+    (r'^oauth2/', include('oauth2_provider.urls', namespace='oauth2_provider')),
     (r'^api/', include('app.api.urls')),
 	(r'^admin/', include(admin.site.urls)),
 )
