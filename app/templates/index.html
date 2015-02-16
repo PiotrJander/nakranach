@@ -9,13 +9,30 @@
 <input type="submit" value="Szukaj">
 </form>
 
-<div id="last-changes">
+<div id="tap-changes">
 
 </div>
 {% endblock %}
 
 {% block js %}
 {{ block.super }}
+
+<script type="text/javascript">
+    var URLs = {
+        tap_changes: '{% url 'tap-changes' %}',
+    };
+</script>
+
+<script id="tap-change-template" type="x-tmpl-mustache">
+<div class="tap-change">
+    <div>
+        <strong>[[ timestamp ]]</strong>
+    </div>
+    <div>
+        [[ #previous_beer ]][[ name ]][[ /previous_beer ]] -> [[ #new_beer ]][[ name ]][[ /new_beer ]]
+    </div>
+</div>
+</script>
 
 <script src="{% static 'js/index.js' %}"></script>
 {% endblock %}
