@@ -4,8 +4,9 @@
 {% block content %}
 
 {# TODO: integrate haystack #}
-<form>
-<input type="text">
+
+<form method="get" action="{% url 'pubs-search' %}">
+{{ form.as_p }}
 <input type="submit" value="Szukaj">
 </form>
 

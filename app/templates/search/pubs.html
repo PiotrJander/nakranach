@@ -1,0 +1,20 @@
+{% extends 'base_site.html' %}
+
+{% block content %}
+<a href="{% url 'index' %}">Strona główna</a>
+
+<form method="get">
+{{ form.as_p }}
+
+<input type="submit" value="Szukaj">
+
+</form>
+
+<ul>
+{% for result in page.object_list %}
+    <li><a href="{{ result.object.get_absolute_url }}">{{ result.object }}</a></li>
+{% empty %}
+    <li>Brak wyników</li>
+{% endfor %}
+</ul>
+{% endblock %}

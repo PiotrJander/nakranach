@@ -35,6 +35,9 @@ class Pub(models.Model):
             self.longitude = location.longitude
         
         super(Pub, self).save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        return '/%s' % self.slug
     
 class Tap(Orderable):
     TAP_TYPES = (
