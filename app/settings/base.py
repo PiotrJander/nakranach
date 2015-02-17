@@ -72,6 +72,7 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.admin',
+    'haystack',
     'oauth2_provider',
     'rest_framework',
     'custom_user',
@@ -108,5 +109,12 @@ CRISPY_TEMPLATE_PACK = 'bootstrap3'
 FIXTURE_DIRS = [
     os.path.join(PROJECT_PATH, 'fixtures')
 ]
+
+HAYSTACK_CONNECTIONS = {
+    'default': {
+        'ENGINE': 'haystack.backends.whoosh_backend.WhooshEngine',
+        'PATH': os.path.join(os.path.dirname(__file__), 'indexes', 'whoosh_index')
+    }
+}
 
 from .api import *

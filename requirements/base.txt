@@ -17,3 +17,4 @@ django-orderable
 geopy
 django-uuslug
 django-oauth-toolkit
+django-haystack
