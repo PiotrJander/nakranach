@@ -18,6 +18,7 @@ urlpatterns = patterns('',
     (r'^oauth2/', include('oauth2_provider.urls', namespace='oauth2_provider')),
     (r'^api/', include('app.api.urls')),
 	(r'^admin/', include(admin.site.urls)),
+    (r'^search/', include('haystack.urls')),
     url(r'^$', TemplateView.as_view(template_name='index.html'), name='index'),
     url(r'^(?P<slug>[a-z0-9-]+)/$', DetailView.as_view(template_name='pub.html', model=Pub), name='pub-view'),
 )

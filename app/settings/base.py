@@ -113,8 +113,8 @@ FIXTURE_DIRS = [
 HAYSTACK_CONNECTIONS = {
     'default': {
         'ENGINE': 'haystack.backends.whoosh_backend.WhooshEngine',
-        'PATH': os.path.join(os.path.dirname(__file__), 'indexes', 'whoosh_index')
-    }
+        'PATH': os.path.join(PROJECT_PATH, '..', 'indexes', 'whoosh_index'),
+    },
 }
 
 from .api import *
