@@ -13,5 +13,6 @@ urlpatterns = patterns('',
         template='search/pubs.html',
         results_per_page=10
     ), name='pubs-search'),
+    url(r'pubs/search/autocomplete/$', AutocompleteView.as_view(), name='autocomplete'),
     url(r'^(?P<slug>[a-z0-9-]+)/$', PubView.as_view(), name='pub-view')
 )
