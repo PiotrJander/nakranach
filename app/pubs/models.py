@@ -58,6 +58,16 @@ class Tap(Orderable):
 
     type = models.CharField(_(u'Rodzaj kranu'), max_length=32, choices=TAP_TYPES, default='tap')
 
+class Price(models.Model):
+    tap = models.ForeignKey(Tap, related_name='prices')
+    volume = models.ForeignKey(Volume, related_name='prices')
+
+    # the max_digits value is set to cover border case
+    # when Papiernik orders a beer which is brewed by 
+    # 25 year old virgins in Tibetan Plateu from yak's
+    # milk which was fed only with lotus flowers
+    value = models.DecimalField(max_digits=10, decimal_places=2)
+
 class WaitingBeer(models.Model):
     pub = models.ForeignKey(Pub, blank=False, null=False)
     beer = models.ForeignKey(Beer, blank=False, null=False)
