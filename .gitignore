@@ -6,3 +6,4 @@ nec/settings/whoosh_index
 dontruninproduction
 /run
 .DS_Store
+/uploads
