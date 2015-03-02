@@ -19,7 +19,9 @@ class Pub(models.Model):
     address = models.CharField(max_length=250, blank=True)
     
     latitude = models.DecimalField(max_digits=6, decimal_places=3, editable=False, null=True, blank=True)
-    longitude = models.DecimalField(max_digits=6, decimal_places=3, editable=False, null=True, blank=True)    
+    longitude = models.DecimalField(max_digits=6, decimal_places=3, editable=False, null=True, blank=True)
+
+    avatar = models.ImageField(upload_to='pubs', blank=True, null=True)
     
     def __unicode__(self):
         return self.name

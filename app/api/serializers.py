@@ -34,7 +34,7 @@ class PubSerializer(serializers.HyperlinkedModelSerializer):
     
     class Meta:
         model = pubs_models.Pub
-        fields = ('name', 'slug', 'city', 'address', 'longitude', 'latitude', 'taps', 'tap_changes')
+        fields = ('name', 'slug', 'city', 'address', 'longitude', 'latitude', 'taps', 'tap_changes', 'avatar')
 
 class TapSerializer(serializers.HyperlinkedModelSerializer):
     pub = RequestAwareHyperlinkedRelatedField(view_name='pub-view', read_only=True, lookup_field='slug')
