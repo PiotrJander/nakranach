@@ -1,6 +1,6 @@
 from .pubs import PubList, PubView, TapList, TapChangeList
 from .changes import ChangesView
-from .auth import FacebookAuthenticate, Logout
+from .auth import FacebookAuthenticate, Logout, Login
 
 __all__ = [
     # pub views
@@ -10,5 +10,5 @@ __all__ = [
     'ChangesView',
 
     # auth views
-    'FacebookAuthenticate', 'Logout'
+    'Login', 'FacebookAuthenticate', 'Logout'
 ]

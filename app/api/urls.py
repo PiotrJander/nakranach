@@ -5,6 +5,7 @@ from rest_framework.urlpatterns import format_suffix_patterns
 from .views import *
 
 urlpatterns = format_suffix_patterns([
+    url(r'^auth/login/$', Login.as_view(), name='api-authenticate'),
     url(r'^auth/facebook/$', FacebookAuthenticate.as_view(), name='api-facebook-authenticate'),
     url(r'^auth/logout/$', Logout.as_view(), name='api-logout'),
 
