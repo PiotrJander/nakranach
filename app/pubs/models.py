@@ -55,7 +55,7 @@ class Tap(models.Model):
         ('tap', _(u'Kran')),
     )
 
-    order = models.PositiveIntegerField(default=0)
+    sort_order = models.PositiveIntegerField(default=0)
 
     pub = models.ForeignKey(Pub, related_name='taps', blank=False, null=False)
     beer = models.ForeignKey(Beer, related_name='taps', blank=True, null=True)
@@ -63,11 +63,11 @@ class Tap(models.Model):
     type = models.CharField(_(u'Rodzaj kranu'), max_length=32, choices=TAP_TYPES, default='tap')
 
     class Meta:
-        ordering = ('order',)
-        unique_together = ('pub', 'order')
+        ordering = ('sort_order',)
+        unique_together = ('pub', 'sort_order')
 
     def __unicode__(self):
-        return '%s tap #%s' % (self.pub, self.order)
+        return '%s tap #%s' % (self.pub, self.sort_order)
 
 
 class Price(models.Model):
