@@ -2,6 +2,7 @@
 
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
+from django.utils import timezone
 
 from orderable.models import Orderable
 
@@ -23,6 +24,9 @@ class Pub(models.Model):
     longitude = models.DecimalField(max_digits=6, decimal_places=3, editable=False, null=True, blank=True)
 
     avatar = models.ImageField(upload_to='pubs', blank=True, null=True)
+
+    opens = models.TimeField()
+    closes = models.TimeField()
     
     def __unicode__(self):
         return self.name
@@ -38,6 +42,15 @@ class Pub(models.Model):
             self.longitude = location.longitude
         
         super(Pub, self).save(*args, **kwargs)
+
+    @property
+    def is_open(self):
+        now = timezone.now()
+        now_time = now.time()
+
+        is_open = (now_time >= self.opens and now_time <= self.closes)
+
+        return is_open
 
     def get_absolute_url(self):
         return '/%s' % self.slug
