@@ -5,6 +5,7 @@ from rest_framework import serializers
 from app.pubs import models as pubs_models
 from app.taps import models as taps_models
 from app.beers import models as beer_models
+from app.users import models as user_models
 
 class RequestAwareHyperlinkedRelatedField(serializers.HyperlinkedRelatedField):
     def get_url(self, obj, view_name, request, format):
@@ -64,3 +65,10 @@ class TapChangeSerializer(serializers.ModelSerializer):
     class Meta:
         model = taps_models.TapChange
         fields = ('timestamp', 'pub', 'previous_beer', 'new_beer', 'tap')
+
+class ProfileSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(source='user.email')
+
+    class Meta:
+        model = user_models.Profile
+        fields = ('avatar_url', 'email', 'name', 'surname')

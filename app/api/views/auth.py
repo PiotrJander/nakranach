@@ -10,6 +10,8 @@ from oauth2_provider.ext.rest_framework import OAuth2Authentication
 from open_facebook import OpenFacebook
 
 from app.users.models import Profile
+from app.api.serializers import ProfileSerializer
+
 
 import md5
 
@@ -24,6 +26,10 @@ def get_gravatar_url(email):
     trimmed_email = email.strip().lower()
     hash = md5.new(trimmed_email).hexdigest()
     return 'http://www.gravatar.com/avatar/%s' % hash
+
+def profile_response(profile):
+    serializer = ProfileSerializer(profile, many=False)
+    return Response(serializer.data)
 
 class BaseAuthView(APIView):
     def __init__(self, *args, **kwargs):
@@ -47,7 +53,8 @@ class Login(BaseAuthView):
             user = self.user_class.objects.get(email=email)
             if user.password and user.check_password(password):
                 login_user(request, user)
-                return Response({'result': 'success'})
+                return profile_response(user.profile)
+
         except self.user_class.DoesNotExist:
             pass
 
@@ -61,6 +68,9 @@ class Register(BaseAuthView):
         try:
             email = request.data['email']
             password = request.data['password']
+
+            name = request.data.get('name', None)
+            surname = request.data.get('surname', None)
         except KeyError, e:
             return Response({'error': 'Field "%s" is required' % e.args[0]}, status=400)
 
@@ -74,11 +84,9 @@ class Register(BaseAuthView):
         user.set_password(password)
         user.save()
 
-        Profile.objects.create(avatar_url=get_gravatar_url(email), user=user)
-
+        profile = Profile.objects.create(avatar_url=get_gravatar_url(email), user=user, name=name, surname=surname)
         login_user(request, user)
-
-        return Response({'result': 'success'})
+        return profile_response(profile)
 
 class FacebookAuthenticate(BaseAuthView):
     authentication_classes = (OAuth2Authentication,)
@@ -94,29 +102,37 @@ class FacebookAuthenticate(BaseAuthView):
         graph = OpenFacebook(access_token)
         
         if graph.is_authenticated():
-            self._authenticate_user(request, email, graph)
-            return Response({'result': 'success'})
+            profile = self._authenticate_user(request, email, graph)
+            return profile_response(profile)
         else:
             return Response({'error': 'User is not authenticated on Facebook'}, status=401)
 
     @atomic
     def _authenticate_user(self, request, email, graph):
+        profile = None
+
         try:
             user = self.user_class.objects.get(email=email)
+            profile = user.profile
         except self.user_class.DoesNotExist:
             user = self.user_class.objects.create(email=email)
 
+            me = graph.me()
             picture = graph.get('me/picture', redirect=False)
             avatar_url = None
+
+            name = me.get('first_name', None)
+            surname = me.get('last_name', None)
 
             if picture['data']['is_silhouette']:
                 avatar_url = get_gravatar_url(email)
             else:
                 avatar_url = picture['data']['url']
 
-            profile = Profile.objects.create(avatar_url=avatar_url, user=user)
+            profile = Profile.objects.create(avatar_url=avatar_url, user=user, name=name, surname=surname)
 
         login_user(request, user)
+        return profile
 
 class Logout(BaseAuthView):
     authentication_classes = (OAuth2Authentication, SessionAuthentication,)
