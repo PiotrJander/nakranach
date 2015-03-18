@@ -8,6 +8,7 @@ urlpatterns = format_suffix_patterns([
     url(r'^auth/login/$', Login.as_view(), name='api-authenticate'),
     url(r'^auth/facebook/$', FacebookAuthenticate.as_view(), name='api-facebook-authenticate'),
     url(r'^auth/logout/$', Logout.as_view(), name='api-logout'),
+    url(r'^auth/register/$', Register.as_view(), name='api-register'),
 
     url(r'^changes/$', ChangesView.as_view(), name='api-tap-changes'),
     url(r'^pubs/$', PubList.as_view(), name='api-pub-list'),

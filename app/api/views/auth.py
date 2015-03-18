@@ -18,7 +18,14 @@ def login_user(request, user):
     user.backend = 'django.contrib.auth.backends.ModelBackend'
     login(request, user)
 
-class Login(APIView):
+class BaseAuthView(APIView):
+    def __init__(self, *args, **kwargs):
+        super(BaseAuthView, self).__init__(*args, **kwargs)
+
+        from django.contrib.auth import get_user_model
+        self.user_class = get_user_model()
+
+class Login(BaseAuthView):
     authentication_classes = (OAuth2Authentication,)
     model = Profile
 
@@ -30,16 +37,16 @@ class Login(APIView):
             return Response({'error': 'Field "%s" is required' % e.args[0]}, status=400)
 
         try:
-            user = User.objects.get(email=email)
+            user = self.user_class.objects.get(email=email)
             if user.password and user.check_password(password):
                 login_user(request, user)
                 return Response({'result': 'success'})
-        except User.DoesNotExist:
+        except self.user_class.DoesNotExist:
             pass
 
         return Response({'error': 'Invalid credentials'}, status=401)
 
-class Register(APIView):
+class Register(BaseAuthView):
     authentication_classes = (OAuth2Authentication,)
     model = Profile
 
@@ -51,12 +58,12 @@ class Register(APIView):
             return Response({'error': 'Field "%s" is required' % e.args[0]}, status=400)
 
         try:
-            user = User.objects.get(email=email)
+            user = self.user_class.objects.get(email=email)
             return Response({'error': 'User already exists'}, status=401)
-        except User.DoesNotExist:
+        except self.user_class.DoesNotExist:
             pass
 
-        user = User(email=email, is_superuser=False, is_active=True, is_staff=False)
+        user = self.user_class(email=email, is_superuser=False, is_active=True, is_staff=False)
         user.set_password(password)
         user.save()
 
@@ -64,7 +71,7 @@ class Register(APIView):
 
         return Response({'result': 'success'})
 
-class FacebookAuthenticate(APIView):
+class FacebookAuthenticate(BaseAuthView):
     authentication_classes = (OAuth2Authentication,)
     model = Profile
 
@@ -85,19 +92,15 @@ class FacebookAuthenticate(APIView):
 
     @atomic
     def _authenticate_user(self, request, email, graph):
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-
         try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            user = User.objects.create(email=email)
+            user = self.user_class.objects.get(email=email)
+        except self.user_class.DoesNotExist:
+            user = self.user_class.objects.create(email=email)
             profile = Profile.objects.create(avatar_url=graph.my_image_url(), user=user)
 
         login_user(request, user)
 
-class Logout(APIView):
+class Logout(BaseAuthView):
     authentication_classes = (OAuth2Authentication, SessionAuthentication,)
     permission_classes = (IsAuthenticated,)
 
