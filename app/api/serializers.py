@@ -32,10 +32,11 @@ class BeerSerializer(serializers.ModelSerializer):
 class PubSerializer(serializers.HyperlinkedModelSerializer):
     taps = serializers.HyperlinkedIdentityField(view_name='api-pub-taps', lookup_field='slug')
     tap_changes = serializers.HyperlinkedIdentityField(view_name='api-pub-tap-changes', lookup_field='slug')
+    is_open = serializers.BooleanField()
     
     class Meta:
         model = pubs_models.Pub
-        fields = ('name', 'slug', 'city', 'address', 'longitude', 'latitude', 'taps', 'tap_changes', 'avatar')
+        fields = ('name', 'slug', 'city', 'address', 'longitude', 'latitude', 'taps', 'tap_changes', 'avatar', 'is_open')
 
 class PriceSerializer(serializers.ModelSerializer):
     price = serializers.DecimalField(max_digits=10, decimal_places=2, source='value')
