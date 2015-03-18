@@ -81,6 +81,7 @@ INSTALLED_APPS = (
 	'app.pubs',
     'app.taps',
     'app.api',
+    'app.users'
 )
 
 TEMPLATE_CONTEXT_PROCESSORS = (    
