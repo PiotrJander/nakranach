@@ -11,12 +11,19 @@ from open_facebook import OpenFacebook
 
 from app.users.models import Profile
 
+import md5
+
 # TODO: add request checking
 
 def login_user(request, user):
     # http://stackoverflow.com/a/2787747/2021915
     user.backend = 'django.contrib.auth.backends.ModelBackend'
     login(request, user)
+
+def get_gravatar_url(email):
+    trimmed_email = email.strip().lower()
+    hash = md5.new(trimmed_email).hexdigest()
+    return 'http://www.gravatar.com/avatar/%s' % hash
 
 class BaseAuthView(APIView):
     def __init__(self, *args, **kwargs):
@@ -67,6 +74,8 @@ class Register(BaseAuthView):
         user.set_password(password)
         user.save()
 
+        Profile.objects.create(avatar_url=get_gravatar_url(email), user=user)
+
         login_user(request, user)
 
         return Response({'result': 'success'})
@@ -96,7 +105,16 @@ class FacebookAuthenticate(BaseAuthView):
             user = self.user_class.objects.get(email=email)
         except self.user_class.DoesNotExist:
             user = self.user_class.objects.create(email=email)
-            profile = Profile.objects.create(avatar_url=graph.my_image_url(), user=user)
+
+            picture = graph.get('me/picture', redirect=False)
+            avatar_url = None
+
+            if picture['data']['is_silhouette']:
+                avatar_url = get_gravatar_url(email)
+            else:
+                avatar_url = picture['data']['url']
+
+            profile = Profile.objects.create(avatar_url=avatar_url, user=user)
 
         login_user(request, user)
 
