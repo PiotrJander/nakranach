@@ -17,10 +17,13 @@ import md5
 
 # TODO: add request checking
 
+USER_KEY = 'user'
+
 def login_user(request, user):
-    # http://stackoverflow.com/a/2787747/2021915
-    user.backend = 'django.contrib.auth.backends.ModelBackend'
-    login(request, user)
+    request.session[USER_KEY] = user.email
+
+def logout_user(request):
+    request.session[USER_KEY] = None
 
 def get_gravatar_url(email):
     trimmed_email = email.strip().lower()
@@ -51,6 +54,7 @@ class Login(BaseAuthView):
 
         try:
             user = self.user_class.objects.get(email=email)
+            print 'logging ', user
             if user.password and user.check_password(password):
                 login_user(request, user)
                 return profile_response(user.profile)
@@ -141,5 +145,5 @@ class Logout(BaseAuthView):
     model = Profile
 
     def get(self, request, format=None):
-        logout(request)
+        logout_user(request)
         return Response({'result': 'success'})
