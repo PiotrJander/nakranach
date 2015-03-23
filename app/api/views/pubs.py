@@ -11,6 +11,7 @@ from app.api.serializers import PubSerializer, TapSerializer
 
 from .helpers import tap_changes_response
 from .mixins import AuthMixin
+from app.api.pagination import TapChangePagination, PubListPagination, TapListPagination
 
 # view classes
 class PubList(AuthMixin, mixins.ListModelMixin,
@@ -18,11 +19,12 @@ class PubList(AuthMixin, mixins.ListModelMixin,
     queryset = pubs_models.Pub.objects.all()
     serializer_class = PubSerializer
     lookup_field = 'slug'
+    pagination_class = PubListPagination
 
     def get(self, request, *args, **kwargs):
         return self.list(request, *args, **kwargs)
 
-class PubDetailView(AuthMixin, APIView):
+class PubDetailView(AuthMixin, generics.GenericAPIView):
     # http://www.django-rest-framework.org/api-guide/permissions/#djangomodelpermissions
     queryset = pubs_models.Pub.objects.all()
 
@@ -39,17 +41,32 @@ class PubView(PubDetailView):
         return Response(serializer.data)
 
 class TapList(PubDetailView):
+    pagination_class = TapListPagination
+
     def get(self, request, slug, format=None):
         pub = self.get_pub(slug)
+
+        qs = pub.taps
+        pagination_enabled = self.paginator is not None
+
+        if pagination_enabled:
+            qs = self.paginator.paginate_queryset(qs, request, view=self)
+
         serializer = TapSerializer(pub.taps, many=True, context={'request': request})
+
+        if pagination_enabled:
+            return self.paginator.get_paginated_response(serializer.data)
+
         return Response(serializer.data)
 
 class TapChangeList(PubDetailView):
+    pagination_class = TapChangePagination
+
     def get(self, request, slug, format=None):
         pub = self.get_pub(slug)
         tap_ids = [tap.pk for tap in pub.taps.all()]
         return tap_changes_response(
             taps_models.TapChange.objects.filter(tap_id__in=tap_ids),
             request,
-            5
+            self
         )
