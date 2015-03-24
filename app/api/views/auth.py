@@ -11,16 +11,11 @@ from open_facebook import OpenFacebook
 
 from app.users.models import Profile
 from app.api.serializers import ProfileSerializer
+from app.api.permissions import IsAPIUser
 
+from app.api.middleware import login_user, logout_user
 
 import md5
-
-# TODO: add request checking
-
-def login_user(request, user):
-    # http://stackoverflow.com/a/2787747/2021915
-    user.backend = 'django.contrib.auth.backends.ModelBackend'
-    login(request, user)
 
 def get_gravatar_url(email):
     trimmed_email = email.strip().lower()
@@ -51,6 +46,7 @@ class Login(BaseAuthView):
 
         try:
             user = self.user_class.objects.get(email=email)
+            print 'logging ', user
             if user.password and user.check_password(password):
                 login_user(request, user)
                 return profile_response(user.profile)
@@ -136,10 +132,10 @@ class FacebookAuthenticate(BaseAuthView):
 
 class Logout(BaseAuthView):
     authentication_classes = (OAuth2Authentication, SessionAuthentication,)
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (IsAPIUser,)
 
     model = Profile
 
     def get(self, request, format=None):
-        logout(request)
+        logout_user(request)
         return Response({'result': 'success'})

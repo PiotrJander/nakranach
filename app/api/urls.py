@@ -15,4 +15,8 @@ urlpatterns = format_suffix_patterns([
     url(r'^pubs/(?P<slug>[a-z0-9-]+)/$', PubView.as_view(), name='api-pub-view'),
     url(r'^pubs/(?P<slug>[a-z0-9-]+)/taps/$', TapList.as_view(), name='api-pub-taps'),
     url(r'^pubs/(?P<slug>[a-z0-9-]+)/changes/$', TapChangeList.as_view(), name='api-pub-tap-changes'),
+
+    url(r'^favorites/$', FavoritesListView.as_view(), name='api-favorite-list'),
+    url(r'^favorites/(?P<pk>\d+)/$', ToggleFavoriteView.as_view(), name='api-favorite-toggle'),
+    url(r'^favorites/changes/$', FavoriteTapChanges.as_view(), name='api-favorite-changes'),
 ])
