@@ -20,8 +20,8 @@ class Pub(models.Model):
     city = models.CharField(max_length=200)
     address = models.CharField(max_length=250, blank=True)
     
-    latitude = models.DecimalField(max_digits=6, decimal_places=3, editable=False, null=True, blank=True)
-    longitude = models.DecimalField(max_digits=6, decimal_places=3, editable=False, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
 
     avatar = models.ImageField(upload_to='pubs', blank=True, null=True)
 
@@ -34,12 +34,14 @@ class Pub(models.Model):
     def save(self, *args, **kwargs):
         self.slug = uuslug(self.name, instance=self)
         
-        geolocator = Nominatim()
-        location = geolocator.geocode("%s, %s" % (self.address, self.city))
-        
-        if location:
-            self.latitude = location.latitude
-            self.longitude = location.longitude
+        # this allows specification of raw coordinates in admin
+        if self.latitude is None or self.longitude is None:
+            geolocator = Nominatim()
+            location = geolocator.geocode("%s, %s" % (self.address, self.city))
+            
+            if location:
+                self.latitude = location.latitude
+                self.longitude = location.longitude
         
         super(Pub, self).save(*args, **kwargs)
 
