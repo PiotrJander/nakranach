@@ -12,9 +12,10 @@ from oauth2_provider.ext.rest_framework import OAuth2Authentication
 
 from app.pubs.models import Pub
 from app.users.models import Profile
+from app.taps.models import TapChange
 
-from app.api.serializers import PubSerializer
-from app.api.pagination import PubListPagination
+from app.api.serializers import PubSerializer, TapChangeSerializer
+from app.api.pagination import PubListPagination, TapChangePagination
 from app.api.permissions import IsAPIUser
 
 class FavoritesListView(ListAPIView):
@@ -52,3 +53,19 @@ class ToggleFavoriteView(GenericAPIView):
             return Response(serializer.data)
         except (Pub.DoesNotExist, ObjectDoesNotExist):
             raise Http404
+
+class FavoriteTapChanges(ListAPIView):
+    queryset = TapChange.objects.all()
+
+    serializer_class = TapChangeSerializer
+    authentication_classes = (OAuth2Authentication, SessionAuthentication)
+    permission_classes = (IsAPIUser,)
+
+    pagination_class = TapChangePagination
+
+    def get_queryset(self):
+        try:
+            pubs = self.request.api_user.profile.favorite_pubs.all()
+            return self.queryset.filter(tap__pub__in=pubs)
+        except ObjectDoesNotExist:
+            return self.queryset.none()

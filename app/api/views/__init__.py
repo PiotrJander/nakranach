@@ -1,7 +1,7 @@
 from .pubs import PubList, PubView, TapList, TapChangeList
 from .changes import ChangesView
 from .auth import FacebookAuthenticate, Logout, Login, Register
-from .favorites import FavoritesListView, ToggleFavoriteView
+from .favorites import FavoritesListView, ToggleFavoriteView, FavoriteTapChanges
 
 __all__ = [
     # pub views
@@ -14,5 +14,5 @@ __all__ = [
     'Login', 'FacebookAuthenticate', 'Logout', 'Register',
 
     # favorite views
-    'FavoritesListView', 'ToggleFavoriteView'
+    'FavoritesListView', 'ToggleFavoriteView', 'FavoriteTapChanges'
 ]

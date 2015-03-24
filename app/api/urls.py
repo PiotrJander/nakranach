@@ -18,4 +18,5 @@ urlpatterns = format_suffix_patterns([
 
     url(r'^favorites/$', FavoritesListView.as_view(), name='api-favorite-list'),
     url(r'^favorites/(?P<pk>\d+)/$', ToggleFavoriteView.as_view(), name='api-favorite-toggle'),
+    url(r'^favorites/changes/$', FavoriteTapChanges.as_view(), name='api-favorite-changes'),
 ])
