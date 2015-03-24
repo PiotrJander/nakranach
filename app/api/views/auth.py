@@ -11,19 +11,11 @@ from open_facebook import OpenFacebook
 
 from app.users.models import Profile
 from app.api.serializers import ProfileSerializer
+from app.api.permissions import IsAPIUser
 
+from app.api.middleware import login_user, logout_user
 
 import md5
-
-# TODO: add request checking
-
-USER_KEY = 'user'
-
-def login_user(request, user):
-    request.session[USER_KEY] = user.email
-
-def logout_user(request):
-    request.session[USER_KEY] = None
 
 def get_gravatar_url(email):
     trimmed_email = email.strip().lower()
@@ -140,7 +132,7 @@ class FacebookAuthenticate(BaseAuthView):
 
 class Logout(BaseAuthView):
     authentication_classes = (OAuth2Authentication, SessionAuthentication,)
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (IsAPIUser,)
 
     model = Profile
 

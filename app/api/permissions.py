@@ -26,3 +26,8 @@ class IsAuthenticatedOrAnonymous(IsAuthenticated):
                 pass
 
         return result
+
+class IsAPIUser(IsAuthenticated):
+    def has_permission(self, request, view):
+        api_user = getattr(request, 'api_user', None)
+        return api_user is not None and api_user.is_authenticated()
