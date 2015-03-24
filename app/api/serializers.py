@@ -38,6 +38,28 @@ class PubSerializer(serializers.HyperlinkedModelSerializer):
         model = pubs_models.Pub
         fields = ('name', 'slug', 'city', 'address', 'longitude', 'latitude', 'taps', 'tap_changes', 'avatar', 'is_open')
 
+    @property
+    def favorites(self):
+        if hasattr(self, '_favorites') and self._favorites is not None:
+            return self._favorites
+
+        if 'request' in self.context:
+            request = self.context['request']
+
+            if hasattr(request, 'api_user'):
+                user = request.api_user
+                self._favorites = [pub.pk for pub in user.profile.favorite_pubs.all()]
+                return self._favorites
+
+        return []
+
+    def to_representation(self, obj):
+        result = super(PubSerializer, self).to_representation(obj)
+
+        result['is_favorite'] = obj.pk in self.favorites
+
+        return result
+
 class PriceSerializer(serializers.ModelSerializer):
     price = serializers.DecimalField(max_digits=10, decimal_places=2, source='value')
     volume = serializers.IntegerField(source='volume.value')

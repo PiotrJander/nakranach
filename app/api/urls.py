@@ -18,4 +18,8 @@ urlpatterns = format_suffix_patterns([
 
     url(r'^nearest/pubs/$', NearestPubsView.as_view(), name='api-nearest-pubs'),
     url(r'^nearest/activities/$', NearestActivitiesView.as_view(), name='api-nearest-activities'),
+    
+    url(r'^favorites/$', FavoritesListView.as_view(), name='api-favorite-list'),
+    url(r'^favorites/(?P<pk>\d+)/$', ToggleFavoriteView.as_view(), name='api-favorite-toggle'),
+    url(r'^favorites/changes/$', FavoriteTapChanges.as_view(), name='api-favorite-changes'),
 ])

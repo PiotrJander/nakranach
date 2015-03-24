@@ -2,6 +2,7 @@ from .pubs import PubList, PubView, TapList, TapChangeList
 from .changes import ChangesView
 from .auth import FacebookAuthenticate, Logout, Login, Register
 from .location import NearestPubsView, NearestActivitiesView
+from .favorites import FavoritesListView, ToggleFavoriteView, FavoriteTapChanges
 
 __all__ = [
     # pub views
@@ -15,4 +16,7 @@ __all__ = [
 
     # location views
     'NearestPubsView', 'NearestActivitiesView'
+    
+    # favorite views
+    'FavoritesListView', 'ToggleFavoriteView', 'FavoriteTapChanges'
 ]
