@@ -13,6 +13,13 @@ MINIMAL_DISTANCE = 0.5
 MAXIMAL_DISTANCE = 10.0
 STEP = 0.5
 
+def create_response(results):
+    return Response({
+        'next': None,
+        'previous': None,
+        'results': results
+    })
+
 class PubLocationMixin(object):
     def get(self, request, *args, **kwargs):
         self._location = (float(request.GET.get('latitude', 0.0)), float(request.GET.get('longitude', 0.0)))
@@ -50,7 +57,7 @@ class NearestPubsView(PubLocationMixin, ListAPIView):
     def list(self, request, *args, **kwargs):
         nearest_pubs = self.get_nearest_pubs()
         serializer = self.serializer_class(nearest_pubs, many=True, context={'request': request})
-        return Response(serializer.data)
+        return create_response(serializer.data)
 
 class NearestActivitiesView(PubLocationMixin, ListAPIView):
     queryset = TapChange.objects.all()
@@ -61,4 +68,4 @@ class NearestActivitiesView(PubLocationMixin, ListAPIView):
 
         activities = self.queryset.filter(tap__pub__in=nearest_pubs).order_by('-timestamp')[:15]
         serializer = self.serializer_class(activities, many=True, context={'request': request})
-        return Response(serializer.data)
+        return create_response(serializer.data)
