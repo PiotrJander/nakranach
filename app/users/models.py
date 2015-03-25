@@ -17,6 +17,9 @@ class Profile(models.Model):
 
     pubs = models.ManyToManyField(Pub, through='ProfilePub', related_name='employees', through_fields=('profile', 'pub'))
 
+    def __unicode__(self):
+        return unicode(self.user)
+
 class ProfilePub(models.Model):
     PUB_EMPLOYEE = 'employee'
     PUB_STOREMAN = 'storeman'
@@ -28,10 +31,11 @@ class ProfilePub(models.Model):
         (PUB_ADMIN, _(u'Administrator'))
     )
 
-    profile = models.ForeignKey(Profile)
-    pub = models.ForeignKey(Pub)
+    profile = models.ForeignKey(Profile, verbose_name=_(u'Użytkownik'))
+    pub = models.ForeignKey(Pub, verbose_name=_(u'Pub'))
     role = models.CharField(max_length=20, verbose_name=_(u'Rola'), choices=ROLE_CHOICES)
 
     class Meta:
         verbose_name = _(u'profil-pub')
         verbose_name_plural = _(u'profile-puby')
+        unique_together = ('profile', 'pub')
