@@ -20,3 +20,4 @@ django-oauth-toolkit
 django-haystack
 whoosh
 django-facebook
+haversine

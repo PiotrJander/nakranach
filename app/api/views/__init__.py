@@ -15,7 +15,7 @@ __all__ = [
     'Login', 'FacebookAuthenticate', 'Logout', 'Register',
 
     # location views
-    'NearestPubsView', 'NearestActivitiesView'
+    'NearestPubsView', 'NearestActivitiesView',
     
     # favorite views
     'FavoritesListView', 'ToggleFavoriteView', 'FavoriteTapChanges'
