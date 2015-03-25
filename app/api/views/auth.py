@@ -20,7 +20,7 @@ import md5
 def get_gravatar_url(email):
     trimmed_email = email.strip().lower()
     hash = md5.new(trimmed_email).hexdigest()
-    return 'http://www.gravatar.com/avatar/%s' % hash
+    return 'http://www.gravatar.com/avatar/%s?s=256' % hash
 
 def profile_response(profile):
     serializer = ProfileSerializer(profile, many=False)
@@ -114,7 +114,7 @@ class FacebookAuthenticate(BaseAuthView):
             user = self.user_class.objects.create(email=email)
 
             me = graph.me()
-            picture = graph.get('me/picture', redirect=False)
+            picture = graph.get('me/picture', redirect=False, width=256, height=256)
             avatar_url = None
 
             name = me.get('first_name', None)
