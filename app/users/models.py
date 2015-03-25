@@ -17,6 +17,10 @@ class Profile(models.Model):
 
     pubs = models.ManyToManyField(Pub, through='ProfilePub', related_name='employees', through_fields=('profile', 'pub'))
 
+    @property
+    def can_manage_pubs(self):
+        return self.pubs.count() != 0
+
     def __unicode__(self):
         return unicode(self.user)
 

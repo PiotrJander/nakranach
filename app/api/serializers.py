@@ -91,7 +91,9 @@ class TapChangeSerializer(serializers.ModelSerializer):
 
 class ProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email')
+    can_manage_pubs = serializers.BooleanField()
+    managed_pubs = PubSerializer(read_only=True, many=True, source='pubs')
 
     class Meta:
         model = user_models.Profile
-        fields = ('avatar_url', 'email', 'name', 'surname')
+        fields = ('avatar_url', 'email', 'name', 'surname', 'can_manage_pubs', 'managed_pubs')
