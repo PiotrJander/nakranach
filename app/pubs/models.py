@@ -27,6 +27,8 @@ class Pub(models.Model):
 
     opens = models.TimeField()
     closes = models.TimeField()
+
+    waiting_beers = models.ManyToManyField(Beer, through='WaitingBeer', through_fields=('pub', 'beer'), related_name='waiting_in_pubs')
     
     def __unicode__(self):
         return self.name

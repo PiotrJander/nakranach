@@ -12,6 +12,9 @@ class Brewery(models.Model):
     name = models.CharField(verbose_name=_('nazwa'), max_length=255)
     country = models.CharField(verbose_name=_('kraj'), max_length=255)
 
+    def __unicode__(self):
+        return self.name
+
 class Style(models.Model):
     class Meta:
         verbose_name = _('styl')
@@ -32,5 +35,8 @@ class Beer(models.Model):
     name = models.CharField(verbose_name=_('nazwa'), max_length=255)
     ibu = models.IntegerField(verbose_name=_('IBU'), blank=True, null=True)
     abv = models.DecimalField(verbose_name=_('ABV'), blank=True, null=True, decimal_places=1, max_digits=3)
+
+    def __unicode__(self):
+        return self.name
 
 

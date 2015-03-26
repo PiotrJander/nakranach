@@ -5,3 +5,4 @@ from .models import ProfilePub
 
 class ProfilePubInline(admin.StackedInline):
     model = ProfilePub
+    extra = 0

@@ -60,6 +60,12 @@ class PubSerializer(serializers.HyperlinkedModelSerializer):
 
         return result
 
+class ManagedPubSerializer(PubSerializer):
+    waiting_beers = serializers.HyperlinkedIdentityField(view_name='api-pub-waiting-beers', lookup_field='slug')
+
+    class Meta(PubSerializer.Meta):
+        fields = ('name', 'slug', 'city', 'address', 'longitude', 'latitude', 'taps', 'tap_changes', 'avatar', 'is_open', 'waiting_beers')
+
 class PriceSerializer(serializers.ModelSerializer):
     price = serializers.DecimalField(max_digits=10, decimal_places=2, source='value')
     volume = serializers.IntegerField(source='volume.value')
@@ -92,7 +98,7 @@ class TapChangeSerializer(serializers.ModelSerializer):
 class ProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email')
     can_manage_pubs = serializers.BooleanField()
-    managed_pubs = PubSerializer(read_only=True, many=True, source='pubs')
+    managed_pubs = ManagedPubSerializer(read_only=True, many=True, source='pubs')
 
     class Meta:
         model = user_models.Profile

@@ -15,6 +15,7 @@ urlpatterns = format_suffix_patterns([
     url(r'^pubs/(?P<slug>[a-z0-9-]+)/$', PubView.as_view(), name='api-pub-view'),
     url(r'^pubs/(?P<slug>[a-z0-9-]+)/taps/$', TapList.as_view(), name='api-pub-taps'),
     url(r'^pubs/(?P<slug>[a-z0-9-]+)/changes/$', TapChangeList.as_view(), name='api-pub-tap-changes'),
+    url(r'^pubs/(?P<slug>[a-z0-9-]+)/beers/$', WaitingBeerList.as_view(), name='api-pub-waiting-beers'),
 
     url(r'^nearest/pubs/$', NearestPubsView.as_view(), name='api-nearest-pubs'),
     url(r'^nearest/activities/$', NearestActivitiesView.as_view(), name='api-nearest-activities'),
