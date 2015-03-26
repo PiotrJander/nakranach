@@ -22,8 +22,8 @@ def get_gravatar_url(email):
     hash = md5.new(trimmed_email).hexdigest()
     return 'http://www.gravatar.com/avatar/%s?s=256' % hash
 
-def profile_response(profile):
-    serializer = ProfileSerializer(profile, many=False)
+def profile_response(profile, request):
+    serializer = ProfileSerializer(profile, many=False, context={'request': request})
     return Response(serializer.data)
 
 class BaseAuthView(APIView):
@@ -46,10 +46,9 @@ class Login(BaseAuthView):
 
         try:
             user = self.user_class.objects.get(email=email)
-            print 'logging ', user
             if user.password and user.check_password(password):
                 login_user(request, user)
-                return profile_response(user.profile)
+                return profile_response(user.profile, request)
 
         except self.user_class.DoesNotExist:
             pass
@@ -82,7 +81,7 @@ class Register(BaseAuthView):
 
         profile = Profile.objects.create(avatar_url=get_gravatar_url(email), user=user, name=name, surname=surname)
         login_user(request, user)
-        return profile_response(profile)
+        return profile_response(profile, request)
 
 class FacebookAuthenticate(BaseAuthView):
     authentication_classes = (OAuth2Authentication,)
@@ -99,7 +98,7 @@ class FacebookAuthenticate(BaseAuthView):
         
         if graph.is_authenticated():
             profile = self._authenticate_user(request, email, graph)
-            return profile_response(profile)
+            return profile_response(profile, request)
         else:
             return Response({'error': 'User is not authenticated on Facebook'}, status=401)
 

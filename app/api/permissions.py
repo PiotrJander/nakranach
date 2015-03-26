@@ -31,3 +31,18 @@ class IsAPIUser(IsAuthenticated):
     def has_permission(self, request, view):
         api_user = getattr(request, 'api_user', None)
         return api_user is not None and api_user.is_authenticated()
+
+class IsPubManager(IsAPIUser):
+    def has_permission(self, request, view):
+        perm = super(IsPubManager, self).has_permission(request, view)
+
+        if perm:
+            perm = request.api_user.profile.can_manage_pubs
+
+        return perm
+
+    def has_object_permission(self, request, view, obj):
+        if not request.api_user.profile.can_manage_pubs:
+            return False
+
+        return request.api_user.profile.pubs.filter(pk=obj.pk).exists()

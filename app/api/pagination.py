@@ -11,3 +11,7 @@ class PubListPagination(CursorPagination):
 class TapListPagination(CursorPagination):
     page_size = 10
     ordering = 'sort_order'
+
+class BeerPagination(CursorPagination):
+    page_size = 10
+    ordering = 'name'
