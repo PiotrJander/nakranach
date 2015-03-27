@@ -38,9 +38,9 @@ class ToggleFavoriteView(GenericAPIView):
     authentication_classes = (OAuth2Authentication, SessionAuthentication)
     permission_classes = (IsAPIUser,)
 
-    def post(self, request, pk, format=None):
+    def post(self, request, slug, format=None):
         try:
-            pub =  self.queryset.get(pk=pk)
+            pub =  self.queryset.get(slug=slug)
             profile = request.api_user.profile
 
             if profile.favorite_pubs.filter(pk=pub.pk).exists():
