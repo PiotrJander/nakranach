@@ -2,12 +2,23 @@ from django.contrib import admin
 
 from .models import *
 
+from app.users.admin import ProfilePubInline
+
 class VolumeAdminInline(admin.StackedInline):
     model = Volume
+    extra = 0
+
+class WaitinBeerAdminInline(admin.StackedInline):
+    model = WaitingBeer
+    extra = 0
+
+class TapAdminInline(admin.StackedInline):
+    model = Tap
+    extra = 0
 
 @admin.register(Pub)
 class PubAdmin(admin.ModelAdmin):
-    inlines = (VolumeAdminInline,)
+    inlines = (VolumeAdminInline, TapAdminInline, WaitinBeerAdminInline, ProfilePubInline)
 
 class PriceAdminInline(admin.TabularInline):
     model = Price
