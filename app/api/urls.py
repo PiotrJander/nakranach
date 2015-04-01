@@ -22,6 +22,6 @@ urlpatterns = format_suffix_patterns([
     url(r'^nearest/activities/$', NearestActivitiesView.as_view(), name='api-nearest-activities'),
     
     url(r'^favorites/$', FavoritesListView.as_view(), name='api-favorite-list'),
-    url(r'^favorites/(?P<slug>[a-z0-9-]+)/$', ToggleFavoriteView.as_view(), name='api-favorite-toggle'),
     url(r'^favorites/changes/$', FavoriteTapChanges.as_view(), name='api-favorite-changes'),
+    url(r'^favorites/toggle/(?P<slug>[a-z0-9-]+)/$', ToggleFavoriteView.as_view(), name='api-favorite-toggle'),
 ])
