@@ -82,7 +82,8 @@ INSTALLED_APPS = (
 	'app.pubs',
     'app.taps',
     'app.api',
-    'app.users'
+    'app.users',
+    'app.fb',
 )
 
 TEMPLATE_CONTEXT_PROCESSORS = (    
