@@ -85,7 +85,7 @@ class Tap(models.Model):
         unique_together = ('pub', 'sort_order')
 
     def __unicode__(self):
-        return '%s tap #%s' % (self.pub, self.sort_order)
+        return u'%s tap #%s' % (self.pub, self.sort_order)
 
 
 class Price(models.Model):
