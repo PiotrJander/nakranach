@@ -36,7 +36,7 @@ class PubSerializer(serializers.HyperlinkedModelSerializer):
     
     class Meta:
         model = pubs_models.Pub
-        fields = ('name', 'slug', 'city', 'address', 'longitude', 'latitude', 'taps', 'tap_changes', 'avatar', 'is_open')
+        fields = ('name', 'slug', 'city', 'address', 'longitude', 'latitude', 'taps', 'tap_changes', 'avatar', 'avatar_timestamp', 'is_open')
 
     @property
     def favorites(self):

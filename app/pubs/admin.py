@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import *
 
 from app.users.admin import ProfilePubInline
+from django.utils import timezone
 
 class VolumeAdminInline(admin.StackedInline):
     model = Volume
@@ -19,6 +20,12 @@ class TapAdminInline(admin.StackedInline):
 @admin.register(Pub)
 class PubAdmin(admin.ModelAdmin):
     inlines = (VolumeAdminInline, TapAdminInline, WaitinBeerAdminInline, ProfilePubInline)
+
+    def save_model(self, request, obj, form, change):
+        if 'avatar' in form.changed_data:
+            obj.avatar_timestamp = timezone.now()
+
+        super(PubAdmin, self).save_model(request, obj, form, change)
 
 class PriceAdminInline(admin.TabularInline):
     model = Price

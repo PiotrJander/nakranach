@@ -24,6 +24,7 @@ class Pub(models.Model):
     longitude = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
 
     avatar = models.ImageField(upload_to='pubs', blank=True, null=True)
+    avatar_timestamp = models.DateTimeField(auto_now_add=True, editable=False)
 
     opens = models.TimeField()
     closes = models.TimeField()
