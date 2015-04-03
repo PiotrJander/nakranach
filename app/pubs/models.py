@@ -3,6 +3,7 @@
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
 from django.utils import timezone
+from django.core.files.uploadedfile import InMemoryUploadedFile
 
 from orderable.models import Orderable
 
@@ -10,7 +11,14 @@ from geopy.geocoders import Nominatim
 
 from app.beers.models import Beer
 
+from PIL import Image
+
+import StringIO
+import os
+
 from uuslug import uuslug
+
+AVATAR_SIZE = (256, 256)
 
 class Pub(models.Model):
     name = models.CharField(verbose_name=_(u'Nazwa'), max_length=200)
@@ -23,7 +31,7 @@ class Pub(models.Model):
     latitude = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
     longitude = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
 
-    avatar = models.ImageField(upload_to='pubs', blank=True, null=True)
+    avatar = models.ImageField(upload_to='pubs', blank=True, null=True, help_text=_(u'Preferred size is 256x256. If uploaded image has different size, it will be resized automatically'))
     avatar_timestamp = models.DateTimeField(auto_now_add=True, editable=False)
 
     opens = models.TimeField()
@@ -47,6 +55,26 @@ class Pub(models.Model):
                 self.longitude = location.longitude
         
         super(Pub, self).save(*args, **kwargs)
+
+        if self.avatar is not None:
+            avatar_image = Image.open(self.avatar)
+
+            current_size = avatar_image.size
+
+            filename, extension = os.path.splitext(os.path.basename(self.avatar.name))
+
+            if current_size[0] != AVATAR_SIZE[0] or current_size[1] != AVATAR_SIZE[1] or extension != '.png':
+                avatar_image = avatar_image.resize(AVATAR_SIZE, Image.ANTIALIAS)
+
+                output = StringIO.StringIO()
+
+                avatar_image.save(output, 'png')
+
+                filename = '%s.png' % filename
+                image_file = InMemoryUploadedFile(output, None, filename, 'image/png', output.len, None)
+                
+                self.avatar.save(filename, image_file)
+                output.close()
 
     @property
     def is_open(self):
