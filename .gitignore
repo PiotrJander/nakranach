@@ -7,3 +7,4 @@ dontruninproduction
 /run
 .DS_Store
 /uploads
+*.pyc
