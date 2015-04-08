@@ -41,16 +41,31 @@ class PriceAdminInline(admin.TabularInline):
 
         return field
 
-@admin.register(Tap)
-class TapAdmin(admin.ModelAdmin):
-    def add_view(self, *args, **kwargs):
-        self.inlines = ()
-        return super(TapAdmin, self).add_view(*args, **kwargs)
+class PriceAdminBeerInline(PriceAdminInline):
+    exclude = ['tap',]
 
-    def change_view(self, *args, **kwargs):
-        self.inlines = (PriceAdminInline,)
-        return super(TapAdmin, self).change_view(*args, **kwargs)
+class PriceAdminTapInline(PriceAdminInline):
+    exclude = ['beer',]
+
+class PriceOwnerAdmin(admin.ModelAdmin):
+    price_class = PriceAdminInline
 
     def get_form(self, request, obj=None, **kwargs):
         request._obj_ = obj
-        return super(TapAdmin, self).get_form(request, obj, **kwargs)
+        return super(PriceOwnerAdmin, self).get_form(request, obj, **kwargs)
+
+    def add_view(self, *args, **kwargs):
+        self.inlines = ()
+        return super(PriceOwnerAdmin, self).add_view(*args, **kwargs)
+
+    def change_view(self, *args, **kwargs):
+        self.inlines = (self.price_class,)
+        return super(PriceOwnerAdmin, self).change_view(*args, **kwargs)
+
+@admin.register(Tap)
+class TapAdmin(PriceOwnerAdmin):
+    price_class = PriceAdminTapInline
+
+@admin.register(WaitingBeer)
+class WaitingBeerAdmin(PriceOwnerAdmin):
+    price_class = PriceAdminBeerInline

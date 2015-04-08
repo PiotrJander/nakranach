@@ -108,6 +108,7 @@ class ChangeBeerView(PubDetailView):
 
         tap = None
         beer = None
+        waiting_beer = None
 
         try:
             tap_pk = request.data['tap']
@@ -118,21 +119,30 @@ class ChangeBeerView(PubDetailView):
 
         try:
             tap = pub.taps.get(pk=tap_pk)
-        except pub_models.Tap.DoesNotExist:
+        except pubs_models.Tap.DoesNotExist:
             return Response({'error': 'Tap is undefined'}, status=404)
 
         try:
             if beer_pk is not None:
                 beer = beer_models.Beer.objects.get(pk=beer_pk)
+                waiting_beer = pubs_models.WaitingBeer.objects.get(beer=beer, pub=tap.pub)
             else:
                 beer = None
         except beer_models.Beer.DoesNotExist:
             return Response({'error': 'Beer is undefined'}, status=404)
+        except pubs_models.WaitingBeer.DoesNotExist:
+            return Response({'error': 'Beer is not available in selected pub'}, status=404)
 
         previous_beer = tap.beer
 
         tap.beer = beer
         tap.save()
+
+        if beer is not None:
+            tap.prices.all().delete()
+
+            for price in waiting_beer.prices.all():
+                price.copy_to_tap(tap)
 
         tap_change = taps_models.TapChange.objects.create(tap=tap,
                                                     previous_beer=previous_beer,
