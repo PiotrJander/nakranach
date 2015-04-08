@@ -121,3 +121,4 @@ HAYSTACK_CONNECTIONS = {
 }
 
 from .api import *
+from .fb import *
