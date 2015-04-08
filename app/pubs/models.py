@@ -115,9 +115,17 @@ class Tap(models.Model):
     def __unicode__(self):
         return u'%s tap #%s' % (self.pub, self.sort_order)
 
+class WaitingBeer(models.Model):
+    pub = models.ForeignKey(Pub, blank=False, null=False)
+    beer = models.ForeignKey(Beer, blank=False, null=False)
+
+    def __unicode__(self):
+        return u'%s - %s' % (self.pub, self.beer)
 
 class Price(models.Model):
-    tap = models.ForeignKey(Tap, related_name='prices')
+    tap = models.ForeignKey(Tap, related_name='prices', null=True, blank=True)
+    beer = models.ForeignKey(WaitingBeer, related_name='prices', null=True, blank=True)
+    
     volume = models.ForeignKey(Volume, related_name='prices')
 
     # the max_digits value is set to cover border case
@@ -126,6 +134,11 @@ class Price(models.Model):
     # milk which was fed only with lotus flowers
     value = models.DecimalField(max_digits=10, decimal_places=2)
 
-class WaitingBeer(models.Model):
-    pub = models.ForeignKey(Pub, blank=False, null=False)
-    beer = models.ForeignKey(Beer, blank=False, null=False)
+    def copy_to_tap(self, tap):
+        if self.beer is None:
+            raise AttributeError(_(u'Beer is not set - cannot copy to tap'))
+
+        copy = Price(tap=tap, beer=None, volume=self.volume, value = self.value)
+        copy.save()
+
+        return copy
