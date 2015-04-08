@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import *
 
 from app.users.admin import ProfilePubInline
+from app.fb.utils import save_pub_in_session
 
 class VolumeAdminInline(admin.StackedInline):
     model = Volume
@@ -19,6 +20,10 @@ class TapAdminInline(admin.StackedInline):
 @admin.register(Pub)
 class PubAdmin(admin.ModelAdmin):
     inlines = (VolumeAdminInline, TapAdminInline, WaitinBeerAdminInline, ProfilePubInline)
+
+    def change_view(self, request, object_id, *args, **kwargs):
+        save_pub_in_session(request, object_id)
+        return super(PubAdmin, self).change_view(request, object_id, *args, **kwargs)
 
 class PriceAdminInline(admin.TabularInline):
     model = Price

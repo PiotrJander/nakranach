@@ -8,6 +8,9 @@ import hmac
 import hashlib
 
 from .exceptions import FacebookException
+from app.pubs.models import Pub
+
+PUB_SESSION_KEY = 'fb_pub'
 
 def parse_signed_request(signed_request):
     signature, payload = signed_request.split('.')
@@ -22,4 +25,25 @@ def parse_signed_request(signed_request):
         raise FacebookException(_(u'Signature does not match'))
 
     data = json.loads(base64.urlsafe_b64decode(str(payload)))
+
     return data
+
+def get_page_ids(request):
+    for key, value in request.GET.iteritems():
+            if key.startswith('tabs_added'):
+                page_id = key[11:][:-1]
+                yield page_id
+
+def save_pub_in_session(request, pub_pk):
+    request.session[PUB_SESSION_KEY] = pub_pk
+
+def restore_pub_from_session(request):
+    try:
+        pub_pk = request.session.get(PUB_SESSION_KEY, None)
+        if pub_pk is not None:
+            del request.session[PUB_SESSION_KEY]
+            pub = Pub.objects.get(pk=pub_pk)
+    except Pub.DoesNotExist:
+        pass
+
+    return None
