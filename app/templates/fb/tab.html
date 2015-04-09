@@ -1,0 +1,14 @@
+{% load i18n %}
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+</head>
+<body>
+<ul>
+    {% for tap in taps %}
+        <li>{% blocktrans with sort_order=tap.sort_order beer_name=tap.beer.name %}Kran {{ sort_order }}, piwo: {{ beer_name }}{% endblocktrans %}</li>
+    {% endfor %}
+</ul>
+</body>
+</html>

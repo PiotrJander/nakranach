@@ -7,7 +7,7 @@ DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 THUMBNAIL_DEBUG = True
 
-INSTALLED_APPS += ('debug_toolbar', 'template_timings_panel', )
+INSTALLED_APPS += ('debug_toolbar', 'template_timings_panel', 'sslserver', )
 
 DEBUG_TOOLBAR_PANELS = [
     'debug_toolbar.panels.versions.VersionsPanel',

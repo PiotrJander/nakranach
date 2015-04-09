@@ -1,9 +1,11 @@
 from django.contrib import admin
+from django.core.urlresolvers import reverse
+from django.utils import timezone
 
 from .models import *
 
 from app.users.admin import ProfilePubInline
-from django.utils import timezone
+from app.fb.utils import save_pub_in_session
 
 class VolumeAdminInline(admin.StackedInline):
     model = Volume
@@ -20,6 +22,10 @@ class TapAdminInline(admin.StackedInline):
 @admin.register(Pub)
 class PubAdmin(admin.ModelAdmin):
     inlines = (VolumeAdminInline, TapAdminInline, WaitinBeerAdminInline, ProfilePubInline)
+
+    def change_view(self, request, object_id, *args, **kwargs):
+        save_pub_in_session(request, object_id, reverse('admin:pubs_pub_change', args=(object_id,)))
+        return super(PubAdmin, self).change_view(request, object_id, *args, **kwargs)
 
     def save_model(self, request, obj, form, change):
         if 'avatar' in form.changed_data:

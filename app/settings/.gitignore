@@ -2,3 +2,4 @@
 *.pyo
 db.py
 oauth.py
+fb.py
