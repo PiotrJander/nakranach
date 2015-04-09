@@ -135,6 +135,9 @@ class ChangeBeerView(PubDetailView):
 
         previous_beer = tap.beer
 
+        if beer == previous_beer:
+            return Response({'error': 'Attempting to change to the same beer'}, status=400)
+
         tap.beer = beer
         tap.save()
 
