@@ -11,12 +11,12 @@ from app.pubs import models as pubs_models
 from app.taps import models as taps_models
 from app.beers import models as beer_models
 
-from app.api.serializers import PubSerializer, TapSerializer, BeerSerializer, TapChangeSerializer
+from app.api.serializers import PubSerializer, TapSerializer, BeerSerializer, TapChangeSerializer, WaitingBeerSerializer
 from app.api.permissions import IsPubManager
 
 from .helpers import tap_changes_response
 from .mixins import AuthMixin
-from app.api.pagination import TapChangePagination, PubListPagination, TapListPagination, BeerPagination
+from app.api.pagination import TapChangePagination, PubListPagination, TapListPagination, BeerPagination, WaitingBeerPagination
 
 # view classes
 class PubList(AuthMixin, mixins.ListModelMixin,
@@ -83,15 +83,15 @@ class WaitingBeerList(PubDetailView):
     authentication_classes = (OAuth2Authentication, SessionAuthentication,)
     permission_classes = (IsPubManager,)
 
-    pagination_class = BeerPagination
-    serializer_class = BeerSerializer
+    pagination_class = WaitingBeerPagination
+    serializer_class = WaitingBeerSerializer
 
     def get(self, request, slug, format=None):
         pub = self.get_pub(slug)
 
         self.check_object_permissions(request, pub)
 
-        qs = pub.waiting_beers
+        qs = pubs_models.WaitingBeer.objects.filter(pub=pub)
         return self.get_response(qs)
 
 class ChangeBeerView(PubDetailView):
@@ -108,6 +108,7 @@ class ChangeBeerView(PubDetailView):
 
         tap = None
         beer = None
+        waiting_beer = None
 
         try:
             tap_pk = request.data['tap']
@@ -118,21 +119,33 @@ class ChangeBeerView(PubDetailView):
 
         try:
             tap = pub.taps.get(pk=tap_pk)
-        except pub_models.Tap.DoesNotExist:
+        except pubs_models.Tap.DoesNotExist:
             return Response({'error': 'Tap is undefined'}, status=404)
 
         try:
             if beer_pk is not None:
                 beer = beer_models.Beer.objects.get(pk=beer_pk)
+                waiting_beer = pubs_models.WaitingBeer.objects.get(beer=beer, pub=tap.pub)
             else:
                 beer = None
         except beer_models.Beer.DoesNotExist:
             return Response({'error': 'Beer is undefined'}, status=404)
+        except pubs_models.WaitingBeer.DoesNotExist:
+            return Response({'error': 'Beer is not available in selected pub'}, status=404)
 
         previous_beer = tap.beer
 
+        if beer == previous_beer:
+            return Response({'error': 'Attempting to change to the same beer'}, status=400)
+
         tap.beer = beer
         tap.save()
+
+        if beer is not None:
+            tap.prices.all().delete()
+
+            for price in waiting_beer.prices.all():
+                price.copy_to_tap(tap)
 
         tap_change = taps_models.TapChange.objects.create(tap=tap,
                                                     previous_beer=previous_beer,

@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.core.urlresolvers import reverse
+from django.utils import timezone
 
 from .models import *
 
@@ -26,6 +27,12 @@ class PubAdmin(admin.ModelAdmin):
         save_pub_in_session(request, object_id, reverse('admin:pubs_pub_change', args=(object_id,)))
         return super(PubAdmin, self).change_view(request, object_id, *args, **kwargs)
 
+    def save_model(self, request, obj, form, change):
+        if 'avatar' in form.changed_data:
+            obj.avatar_timestamp = timezone.now()
+
+        super(PubAdmin, self).save_model(request, obj, form, change)
+
 class PriceAdminInline(admin.TabularInline):
     model = Price
 
@@ -40,16 +47,31 @@ class PriceAdminInline(admin.TabularInline):
 
         return field
 
-@admin.register(Tap)
-class TapAdmin(admin.ModelAdmin):
-    def add_view(self, *args, **kwargs):
-        self.inlines = ()
-        return super(TapAdmin, self).add_view(*args, **kwargs)
+class PriceAdminBeerInline(PriceAdminInline):
+    exclude = ['tap',]
 
-    def change_view(self, *args, **kwargs):
-        self.inlines = (PriceAdminInline,)
-        return super(TapAdmin, self).change_view(*args, **kwargs)
+class PriceAdminTapInline(PriceAdminInline):
+    exclude = ['beer',]
+
+class PriceOwnerAdmin(admin.ModelAdmin):
+    price_class = PriceAdminInline
 
     def get_form(self, request, obj=None, **kwargs):
         request._obj_ = obj
-        return super(TapAdmin, self).get_form(request, obj, **kwargs)
+        return super(PriceOwnerAdmin, self).get_form(request, obj, **kwargs)
+
+    def add_view(self, *args, **kwargs):
+        self.inlines = ()
+        return super(PriceOwnerAdmin, self).add_view(*args, **kwargs)
+
+    def change_view(self, *args, **kwargs):
+        self.inlines = (self.price_class,)
+        return super(PriceOwnerAdmin, self).change_view(*args, **kwargs)
+
+@admin.register(Tap)
+class TapAdmin(PriceOwnerAdmin):
+    price_class = PriceAdminTapInline
+
+@admin.register(WaitingBeer)
+class WaitingBeerAdmin(PriceOwnerAdmin):
+    price_class = PriceAdminBeerInline

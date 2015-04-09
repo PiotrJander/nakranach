@@ -21,6 +21,14 @@ class BrewerySerializer(serializers.ModelSerializer):
         model = beer_models.Brewery
         fields = ('name', 'country')
 
+class PriceSerializer(serializers.ModelSerializer):
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, source='value')
+    volume = serializers.IntegerField(source='volume.value')
+
+    class Meta:
+        model = pubs_models.Price
+        fields = ('volume', 'price')
+
 class BeerSerializer(serializers.ModelSerializer):
     brewery = BrewerySerializer(read_only=True)
     style = serializers.StringRelatedField()
@@ -29,6 +37,19 @@ class BeerSerializer(serializers.ModelSerializer):
         model = beer_models.Beer
         fields = ('id', 'name', 'ibu', 'abv', 'brewery', 'style')
 
+class WaitingBeerSerializer(BeerSerializer):
+    id = serializers.IntegerField(source='beer.id')
+    name = serializers.CharField(source='beer.name')
+    ibu = serializers.IntegerField(source='beer.ibu')
+    abv = serializers.DecimalField(source='beer.abv', max_digits=3, decimal_places=1)
+    brewery = BrewerySerializer(source='beer.brewery', read_only=True)
+    style = serializers.StringRelatedField(source='beer.style')
+    prices = PriceSerializer(many=True)
+
+    class Meta:
+        model = pubs_models.WaitingBeer
+        fields = ('id', 'name', 'ibu', 'abv', 'brewery', 'style', 'prices')        
+
 class PubSerializer(serializers.HyperlinkedModelSerializer):
     taps = serializers.HyperlinkedIdentityField(view_name='api-pub-taps', lookup_field='slug')
     tap_changes = serializers.HyperlinkedIdentityField(view_name='api-pub-tap-changes', lookup_field='slug')
@@ -36,7 +57,7 @@ class PubSerializer(serializers.HyperlinkedModelSerializer):
     
     class Meta:
         model = pubs_models.Pub
-        fields = ('name', 'slug', 'city', 'address', 'longitude', 'latitude', 'taps', 'tap_changes', 'avatar', 'is_open')
+        fields = ('name', 'slug', 'city', 'address', 'longitude', 'latitude', 'taps', 'tap_changes', 'avatar', 'avatar_timestamp', 'is_open')
 
     @property
     def favorites(self):
@@ -66,14 +87,6 @@ class ManagedPubSerializer(PubSerializer):
 
     class Meta(PubSerializer.Meta):
         fields = ('name', 'slug', 'city', 'address', 'longitude', 'latitude', 'taps', 'tap_changes', 'avatar', 'is_open', 'waiting_beers', 'change_beer')
-
-class PriceSerializer(serializers.ModelSerializer):
-    price = serializers.DecimalField(max_digits=10, decimal_places=2, source='value')
-    volume = serializers.IntegerField(source='volume.value')
-
-    class Meta:
-        model = pubs_models.Price
-        fields = ('volume', 'price')
 
 class TapSerializer(serializers.HyperlinkedModelSerializer):
     pub = PubSerializer(read_only=True)

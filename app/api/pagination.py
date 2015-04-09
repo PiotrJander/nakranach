@@ -15,3 +15,7 @@ class TapListPagination(CursorPagination):
 class BeerPagination(CursorPagination):
     page_size = 10
     ordering = 'name'
+
+class WaitingBeerPagination(CursorPagination):
+    page_size = 10
+    ordering = 'beer'
