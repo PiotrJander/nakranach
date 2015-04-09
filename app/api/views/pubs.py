@@ -11,12 +11,12 @@ from app.pubs import models as pubs_models
 from app.taps import models as taps_models
 from app.beers import models as beer_models
 
-from app.api.serializers import PubSerializer, TapSerializer, BeerSerializer, TapChangeSerializer
+from app.api.serializers import PubSerializer, TapSerializer, BeerSerializer, TapChangeSerializer, WaitingBeerSerializer
 from app.api.permissions import IsPubManager
 
 from .helpers import tap_changes_response
 from .mixins import AuthMixin
-from app.api.pagination import TapChangePagination, PubListPagination, TapListPagination, BeerPagination
+from app.api.pagination import TapChangePagination, PubListPagination, TapListPagination, BeerPagination, WaitingBeerPagination
 
 # view classes
 class PubList(AuthMixin, mixins.ListModelMixin,
@@ -83,15 +83,15 @@ class WaitingBeerList(PubDetailView):
     authentication_classes = (OAuth2Authentication, SessionAuthentication,)
     permission_classes = (IsPubManager,)
 
-    pagination_class = BeerPagination
-    serializer_class = BeerSerializer
+    pagination_class = WaitingBeerPagination
+    serializer_class = WaitingBeerSerializer
 
     def get(self, request, slug, format=None):
         pub = self.get_pub(slug)
 
         self.check_object_permissions(request, pub)
 
-        qs = pub.waiting_beers
+        qs = pubs_models.WaitingBeer.objects.filter(pub=pub)
         return self.get_response(qs)
 
 class ChangeBeerView(PubDetailView):
