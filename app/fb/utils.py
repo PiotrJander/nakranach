@@ -11,6 +11,7 @@ from .exceptions import FacebookException
 from app.pubs.models import Pub
 
 PUB_SESSION_KEY = 'fb_pub'
+REDIRECT_SESSION_KEY = 'fb_redirect'
 
 def parse_signed_request(signed_request):
     signature, payload = signed_request.split('.')
@@ -34,16 +35,23 @@ def get_page_ids(request):
                 page_id = key[11:][:-1]
                 yield page_id
 
-def save_pub_in_session(request, pub_pk):
+def save_pub_in_session(request, pub_pk, redirect):
     request.session[PUB_SESSION_KEY] = pub_pk
+    request.session[REDIRECT_SESSION_KEY] = redirect
 
 def restore_pub_from_session(request):
     try:
         pub_pk = request.session.get(PUB_SESSION_KEY, None)
+        redirect = request.session.get(REDIRECT_SESSION_KEY, None)
+
+        if redirect is not None:
+            del request.session[REDIRECT_SESSION_KEY]
+
         if pub_pk is not None:
             del request.session[PUB_SESSION_KEY]
-            pub = Pub.objects.get(pk=pub_pk)
+            return Pub.objects.get(pk=pub_pk), redirect
+            
     except Pub.DoesNotExist:
         pass
 
-    return None
+    return None, None

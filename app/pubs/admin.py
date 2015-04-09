@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.core.urlresolvers import reverse
 
 from .models import *
 
@@ -22,7 +23,7 @@ class PubAdmin(admin.ModelAdmin):
     inlines = (VolumeAdminInline, TapAdminInline, WaitinBeerAdminInline, ProfilePubInline)
 
     def change_view(self, request, object_id, *args, **kwargs):
-        save_pub_in_session(request, object_id)
+        save_pub_in_session(request, object_id, reverse('admin:pubs_pub_change', args=(object_id,)))
         return super(PubAdmin, self).change_view(request, object_id, *args, **kwargs)
 
 class PriceAdminInline(admin.TabularInline):
