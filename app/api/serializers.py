@@ -99,6 +99,13 @@ class TapSerializer(serializers.HyperlinkedModelSerializer):
         model = pubs_models.Tap
         fields = ('id', 'sort_order', 'type', 'pub', 'pub_name', 'beer', 'pub_slug', 'prices')
 
+    def to_representation(self, obj):
+        result = super(TapSerializer, self).to_representation(obj)
+
+        result['sort_order'] = obj.tap_number
+
+        return result
+
 class TapChangeSerializer(serializers.ModelSerializer):
     tap = TapSerializer(read_only=True)
     pub = PubSerializer(read_only=True)

@@ -108,6 +108,10 @@ class Tap(models.Model):
 
     type = models.CharField(_(u'Rodzaj kranu'), max_length=32, choices=TAP_TYPES, default='tap')
 
+    @property
+    def tap_number(self):
+        return self.sort_order + 1
+
     class Meta:
         ordering = ('sort_order',)
         unique_together = ('pub', 'sort_order')
