@@ -33,6 +33,9 @@ class BaseAuthView(APIView):
         from django.contrib.auth import get_user_model
         self.user_class = get_user_model()
 
+    def get_queryset(self):
+        return self.model.objects.all()
+
 class Login(BaseAuthView):
     authentication_classes = (OAuth2Authentication,)
     model = Profile
