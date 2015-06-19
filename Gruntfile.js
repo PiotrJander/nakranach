@@ -40,10 +40,15 @@ module.exports = function (grunt) {
 
         bower_concat: {
             install: {
-                dest: '<%= yeoman.public %>/<%= yeoman.local %>/js/plugins.js',
+                dest: '<%= yeoman.public %>/<%= yeoman.local %>/js/bower.js',
+                cssDest: '<%= yeoman.public %>/<%= yeoman.local %>/css/bower.css',
+                exclude: ['animate-css', 'font-awesome', 'weather-icons'],
                 mainFiles: {
-                    'bootstrap-touchspin': ['dist/jquery.bootstrap-touchspin.js'],
-                    'moment': ['../moment.js', '../locale/pl.js']
+                    'moment': ['../moment.js', '../locale/pl.js'],
+                    'jquery-easy-wizard': ['../../lib/jquery.easyWizard.js'],
+                    'niftymodals': ['../../js/jquery.modalEffects.js'],
+                    'sortable': ['../js/sortable.js']
+
                 },
                 callback: function(mainFiles, component) {
                     console.log(component, ":", mainFiles)
@@ -56,11 +61,13 @@ module.exports = function (grunt) {
             },
 
             dist: {
-                dest: '<%= yeoman.public %>/<%= yeoman.dist %>/js/plugins.js',
+                dest: '<%= yeoman.public %>/<%= yeoman.dist %>/js/bower.js',
+                cssDest: '<%= yeoman.public %>/<%= yeoman.dist %>/css/bower.css',
                 mainFiles: {
-                    'bootstrap-touchspin': ['dist/jquery.bootstrap-touchspin.js'],
-                    'moment': ['../moment.js', '../locale/pl.js']
-                },                
+                    'moment': ['../moment.js', '../locale/pl.js'],
+                    'jquery-easy-wizard': ['../../lib/jquery.easyWizard.js']
+                },
+                exclude: ['animate-css', 'font-awesome', 'weather-icons'],
                 callback: function(mainFiles, component) {
                     console.log(component, ":", mainFiles)
 
@@ -69,6 +76,17 @@ module.exports = function (grunt) {
                 dependencies: {
                     'underscore': 'jquery',
                 },
+            }
+        },
+
+        concat: {
+            dist: {
+                src: ['<%= yeoman.public %>/<%= yeoman.dist %>/js/bower.js', '<%= yeoman.app %>/vendor/lanceng/js/lanceng.js'],
+                dest: '<%= yeoman.public %>/<%= yeoman.dist %>/js/plugins.js'
+            },
+            install: {
+                src: ['<%= yeoman.public %>/<%= yeoman.local %>/js/bower.js', '<%= yeoman.app %>/vendor/lanceng/js/lanceng.js'],
+                dest: '<%= yeoman.public %>/<%= yeoman.local %>/js/plugins.js'              
             }
         },
 
@@ -163,12 +181,14 @@ module.exports = function (grunt) {
         'less:dist',
         'copy:dist',
         'bower_concat:dist',
+        'concat:dist',
         'uglify:dist',
     ]);
 
     grunt.registerTask('install', [
         'bower:install',
         'bower_concat:install',
+        'concat:install',
         'uglify:install',
         'coffee:watch',
         'less:watch',
