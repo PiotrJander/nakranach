@@ -48,7 +48,6 @@ module.exports = function (grunt) {
                     'jquery-easy-wizard': ['../../lib/jquery.easyWizard.js'],
                     'niftymodals': ['../../js/jquery.modalEffects.js'],
                     'sortable': ['../js/sortable.js']
-
                 },
                 callback: function(mainFiles, component) {
                     console.log(component, ":", mainFiles)
