@@ -11511,6 +11511,3464 @@ if (typeof jQuery === 'undefined') {
 
 }(jQuery);
 
+/* =========================================================
+ * bootstrap-datepicker.js
+ * Repo: https://github.com/eternicode/bootstrap-datepicker/
+ * Demo: http://eternicode.github.io/bootstrap-datepicker/
+ * Docs: http://bootstrap-datepicker.readthedocs.org/
+ * Forked from http://www.eyecon.ro/bootstrap-datepicker
+ * =========================================================
+ * Started by Stefan Petre; improvements by Andrew Rowls + contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ========================================================= */
+
+(function($, undefined){
+
+	function UTCDate(){
+		return new Date(Date.UTC.apply(Date, arguments));
+	}
+	function UTCToday(){
+		var today = new Date();
+		return UTCDate(today.getFullYear(), today.getMonth(), today.getDate());
+	}
+	function isUTCEquals(date1, date2) {
+		return (
+			date1.getUTCFullYear() === date2.getUTCFullYear() &&
+			date1.getUTCMonth() === date2.getUTCMonth() &&
+			date1.getUTCDate() === date2.getUTCDate()
+		);
+	}
+	function alias(method){
+		return function(){
+			return this[method].apply(this, arguments);
+		};
+	}
+
+	var DateArray = (function(){
+		var extras = {
+			get: function(i){
+				return this.slice(i)[0];
+			},
+			contains: function(d){
+				// Array.indexOf is not cross-browser;
+				// $.inArray doesn't work with Dates
+				var val = d && d.valueOf();
+				for (var i=0, l=this.length; i < l; i++)
+					if (this[i].valueOf() === val)
+						return i;
+				return -1;
+			},
+			remove: function(i){
+				this.splice(i,1);
+			},
+			replace: function(new_array){
+				if (!new_array)
+					return;
+				if (!$.isArray(new_array))
+					new_array = [new_array];
+				this.clear();
+				this.push.apply(this, new_array);
+			},
+			clear: function(){
+				this.length = 0;
+			},
+			copy: function(){
+				var a = new DateArray();
+				a.replace(this);
+				return a;
+			}
+		};
+
+		return function(){
+			var a = [];
+			a.push.apply(a, arguments);
+			$.extend(a, extras);
+			return a;
+		};
+	})();
+
+
+	// Picker object
+
+	var Datepicker = function(element, options){
+		this._process_options(options);
+
+		this.dates = new DateArray();
+		this.viewDate = this.o.defaultViewDate;
+		this.focusDate = null;
+
+		this.element = $(element);
+		this.isInline = false;
+		this.isInput = this.element.is('input');
+		this.component = this.element.hasClass('date') ? this.element.find('.add-on, .input-group-addon, .btn') : false;
+		this.hasInput = this.component && this.element.find('input').length;
+		if (this.component && this.component.length === 0)
+			this.component = false;
+
+		this.picker = $(DPGlobal.template);
+		this._buildEvents();
+		this._attachEvents();
+
+		if (this.isInline){
+			this.picker.addClass('datepicker-inline').appendTo(this.element);
+		}
+		else {
+			this.picker.addClass('datepicker-dropdown dropdown-menu');
+		}
+
+		if (this.o.rtl){
+			this.picker.addClass('datepicker-rtl');
+		}
+
+		this.viewMode = this.o.startView;
+
+		if (this.o.calendarWeeks)
+			this.picker.find('tfoot .today, tfoot .clear')
+						.attr('colspan', function(i, val){
+							return parseInt(val) + 1;
+						});
+
+		this._allow_update = false;
+
+		this.setStartDate(this._o.startDate);
+		this.setEndDate(this._o.endDate);
+		this.setDaysOfWeekDisabled(this.o.daysOfWeekDisabled);
+		this.setDatesDisabled(this.o.datesDisabled);
+
+		this.fillDow();
+		this.fillMonths();
+
+		this._allow_update = true;
+
+		this.update();
+		this.showMode();
+
+		if (this.isInline){
+			this.show();
+		}
+	};
+
+	Datepicker.prototype = {
+		constructor: Datepicker,
+
+		_process_options: function(opts){
+			// Store raw options for reference
+			this._o = $.extend({}, this._o, opts);
+			// Processed options
+			var o = this.o = $.extend({}, this._o);
+
+			// Check if "de-DE" style date is available, if not language should
+			// fallback to 2 letter code eg "de"
+			var lang = o.language;
+			if (!dates[lang]){
+				lang = lang.split('-')[0];
+				if (!dates[lang])
+					lang = defaults.language;
+			}
+			o.language = lang;
+
+			switch (o.startView){
+				case 2:
+				case 'decade':
+					o.startView = 2;
+					break;
+				case 1:
+				case 'year':
+					o.startView = 1;
+					break;
+				default:
+					o.startView = 0;
+			}
+
+			switch (o.minViewMode){
+				case 1:
+				case 'months':
+					o.minViewMode = 1;
+					break;
+				case 2:
+				case 'years':
+					o.minViewMode = 2;
+					break;
+				default:
+					o.minViewMode = 0;
+			}
+
+			o.startView = Math.max(o.startView, o.minViewMode);
+
+			// true, false, or Number > 0
+			if (o.multidate !== true){
+				o.multidate = Number(o.multidate) || false;
+				if (o.multidate !== false)
+					o.multidate = Math.max(0, o.multidate);
+			}
+			o.multidateSeparator = String(o.multidateSeparator);
+
+			o.weekStart %= 7;
+			o.weekEnd = ((o.weekStart + 6) % 7);
+
+			var format = DPGlobal.parseFormat(o.format);
+			if (o.startDate !== -Infinity){
+				if (!!o.startDate){
+					if (o.startDate instanceof Date)
+						o.startDate = this._local_to_utc(this._zero_time(o.startDate));
+					else
+						o.startDate = DPGlobal.parseDate(o.startDate, format, o.language);
+				}
+				else {
+					o.startDate = -Infinity;
+				}
+			}
+			if (o.endDate !== Infinity){
+				if (!!o.endDate){
+					if (o.endDate instanceof Date)
+						o.endDate = this._local_to_utc(this._zero_time(o.endDate));
+					else
+						o.endDate = DPGlobal.parseDate(o.endDate, format, o.language);
+				}
+				else {
+					o.endDate = Infinity;
+				}
+			}
+
+			o.daysOfWeekDisabled = o.daysOfWeekDisabled||[];
+			if (!$.isArray(o.daysOfWeekDisabled))
+				o.daysOfWeekDisabled = o.daysOfWeekDisabled.split(/[,\s]*/);
+			o.daysOfWeekDisabled = $.map(o.daysOfWeekDisabled, function(d){
+				return parseInt(d, 10);
+			});
+
+			o.datesDisabled = o.datesDisabled||[];
+			if (!$.isArray(o.datesDisabled)) {
+				var datesDisabled = [];
+				datesDisabled.push(DPGlobal.parseDate(o.datesDisabled, format, o.language));
+				o.datesDisabled = datesDisabled;
+			}
+			o.datesDisabled = $.map(o.datesDisabled,function(d){
+				return DPGlobal.parseDate(d, format, o.language);
+			});
+
+			var plc = String(o.orientation).toLowerCase().split(/\s+/g),
+				_plc = o.orientation.toLowerCase();
+			plc = $.grep(plc, function(word){
+				return /^auto|left|right|top|bottom$/.test(word);
+			});
+			o.orientation = {x: 'auto', y: 'auto'};
+			if (!_plc || _plc === 'auto')
+				; // no action
+			else if (plc.length === 1){
+				switch (plc[0]){
+					case 'top':
+					case 'bottom':
+						o.orientation.y = plc[0];
+						break;
+					case 'left':
+					case 'right':
+						o.orientation.x = plc[0];
+						break;
+				}
+			}
+			else {
+				_plc = $.grep(plc, function(word){
+					return /^left|right$/.test(word);
+				});
+				o.orientation.x = _plc[0] || 'auto';
+
+				_plc = $.grep(plc, function(word){
+					return /^top|bottom$/.test(word);
+				});
+				o.orientation.y = _plc[0] || 'auto';
+			}
+			if (o.defaultViewDate) {
+				var year = o.defaultViewDate.year || new Date().getFullYear();
+				var month = o.defaultViewDate.month || 0;
+				var day = o.defaultViewDate.day || 1;
+				o.defaultViewDate = UTCDate(year, month, day);
+			} else {
+				o.defaultViewDate = UTCToday();
+			}
+			o.showOnFocus = o.showOnFocus !== undefined ? o.showOnFocus : true;
+		},
+		_events: [],
+		_secondaryEvents: [],
+		_applyEvents: function(evs){
+			for (var i=0, el, ch, ev; i < evs.length; i++){
+				el = evs[i][0];
+				if (evs[i].length === 2){
+					ch = undefined;
+					ev = evs[i][1];
+				}
+				else if (evs[i].length === 3){
+					ch = evs[i][1];
+					ev = evs[i][2];
+				}
+				el.on(ev, ch);
+			}
+		},
+		_unapplyEvents: function(evs){
+			for (var i=0, el, ev, ch; i < evs.length; i++){
+				el = evs[i][0];
+				if (evs[i].length === 2){
+					ch = undefined;
+					ev = evs[i][1];
+				}
+				else if (evs[i].length === 3){
+					ch = evs[i][1];
+					ev = evs[i][2];
+				}
+				el.off(ev, ch);
+			}
+		},
+		_buildEvents: function(){
+            var events = {
+                keyup: $.proxy(function(e){
+                    if ($.inArray(e.keyCode, [27, 37, 39, 38, 40, 32, 13, 9]) === -1)
+                        this.update();
+                }, this),
+                keydown: $.proxy(this.keydown, this)
+            };
+
+            if (this.o.showOnFocus === true) {
+                events.focus = $.proxy(this.show, this);
+            }
+
+            if (this.isInput) { // single input
+                this._events = [
+                    [this.element, events]
+                ];
+            }
+            else if (this.component && this.hasInput) { // component: input + button
+                this._events = [
+                    // For components that are not readonly, allow keyboard nav
+                    [this.element.find('input'), events],
+                    [this.component, {
+                        click: $.proxy(this.show, this)
+                    }]
+                ];
+            }
+			else if (this.element.is('div')){  // inline datepicker
+				this.isInline = true;
+			}
+			else {
+				this._events = [
+					[this.element, {
+						click: $.proxy(this.show, this)
+					}]
+				];
+			}
+			this._events.push(
+				// Component: listen for blur on element descendants
+				[this.element, '*', {
+					blur: $.proxy(function(e){
+						this._focused_from = e.target;
+					}, this)
+				}],
+				// Input: listen for blur on element
+				[this.element, {
+					blur: $.proxy(function(e){
+						this._focused_from = e.target;
+					}, this)
+				}]
+			);
+
+			this._secondaryEvents = [
+				[this.picker, {
+					click: $.proxy(this.click, this)
+				}],
+				[$(window), {
+					resize: $.proxy(this.place, this)
+				}],
+				[$(document), {
+					'mousedown touchstart': $.proxy(function(e){
+						// Clicked outside the datepicker, hide it
+						if (!(
+							this.element.is(e.target) ||
+							this.element.find(e.target).length ||
+							this.picker.is(e.target) ||
+							this.picker.find(e.target).length
+						)){
+							this.hide();
+						}
+					}, this)
+				}]
+			];
+		},
+		_attachEvents: function(){
+			this._detachEvents();
+			this._applyEvents(this._events);
+		},
+		_detachEvents: function(){
+			this._unapplyEvents(this._events);
+		},
+		_attachSecondaryEvents: function(){
+			this._detachSecondaryEvents();
+			this._applyEvents(this._secondaryEvents);
+		},
+		_detachSecondaryEvents: function(){
+			this._unapplyEvents(this._secondaryEvents);
+		},
+		_trigger: function(event, altdate){
+			var date = altdate || this.dates.get(-1),
+				local_date = this._utc_to_local(date);
+
+			this.element.trigger({
+				type: event,
+				date: local_date,
+				dates: $.map(this.dates, this._utc_to_local),
+				format: $.proxy(function(ix, format){
+					if (arguments.length === 0){
+						ix = this.dates.length - 1;
+						format = this.o.format;
+					}
+					else if (typeof ix === 'string'){
+						format = ix;
+						ix = this.dates.length - 1;
+					}
+					format = format || this.o.format;
+					var date = this.dates.get(ix);
+					return DPGlobal.formatDate(date, format, this.o.language);
+				}, this)
+			});
+		},
+
+		show: function(){
+			if (this.element.attr('readonly') && this.o.enableOnReadonly === false)
+				return;
+			if (!this.isInline)
+				this.picker.appendTo(this.o.container);
+			this.place();
+			this.picker.show();
+			this._attachSecondaryEvents();
+			this._trigger('show');
+			if ((window.navigator.msMaxTouchPoints || 'ontouchstart' in document) && this.o.disableTouchKeyboard) {
+				$(this.element).blur();
+			}
+			return this;
+		},
+
+		hide: function(){
+			if (this.isInline)
+				return this;
+			if (!this.picker.is(':visible'))
+				return this;
+			this.focusDate = null;
+			this.picker.hide().detach();
+			this._detachSecondaryEvents();
+			this.viewMode = this.o.startView;
+			this.showMode();
+
+			if (
+				this.o.forceParse &&
+				(
+					this.isInput && this.element.val() ||
+					this.hasInput && this.element.find('input').val()
+				)
+			)
+				this.setValue();
+			this._trigger('hide');
+			return this;
+		},
+
+		remove: function(){
+			this.hide();
+			this._detachEvents();
+			this._detachSecondaryEvents();
+			this.picker.remove();
+			delete this.element.data().datepicker;
+			if (!this.isInput){
+				delete this.element.data().date;
+			}
+			return this;
+		},
+
+		_utc_to_local: function(utc){
+			return utc && new Date(utc.getTime() + (utc.getTimezoneOffset()*60000));
+		},
+		_local_to_utc: function(local){
+			return local && new Date(local.getTime() - (local.getTimezoneOffset()*60000));
+		},
+		_zero_time: function(local){
+			return local && new Date(local.getFullYear(), local.getMonth(), local.getDate());
+		},
+		_zero_utc_time: function(utc){
+			return utc && new Date(Date.UTC(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate()));
+		},
+
+		getDates: function(){
+			return $.map(this.dates, this._utc_to_local);
+		},
+
+		getUTCDates: function(){
+			return $.map(this.dates, function(d){
+				return new Date(d);
+			});
+		},
+
+		getDate: function(){
+			return this._utc_to_local(this.getUTCDate());
+		},
+
+		getUTCDate: function(){
+			var selected_date = this.dates.get(-1);
+			if (typeof selected_date !== 'undefined') {
+				return new Date(selected_date);
+			} else {
+				return null;
+			}
+		},
+
+		clearDates: function(){
+			var element;
+			if (this.isInput) {
+				element = this.element;
+			} else if (this.component) {
+				element = this.element.find('input');
+			}
+
+			if (element) {
+				element.val('').change();
+			}
+
+			this.update();
+			this._trigger('changeDate');
+
+			if (this.o.autoclose) {
+				this.hide();
+			}
+		},
+		setDates: function(){
+			var args = $.isArray(arguments[0]) ? arguments[0] : arguments;
+			this.update.apply(this, args);
+			this._trigger('changeDate');
+			this.setValue();
+			return this;
+		},
+
+		setUTCDates: function(){
+			var args = $.isArray(arguments[0]) ? arguments[0] : arguments;
+			this.update.apply(this, $.map(args, this._utc_to_local));
+			this._trigger('changeDate');
+			this.setValue();
+			return this;
+		},
+
+		setDate: alias('setDates'),
+		setUTCDate: alias('setUTCDates'),
+
+		setValue: function(){
+			var formatted = this.getFormattedDate();
+			if (!this.isInput){
+				if (this.component){
+					this.element.find('input').val(formatted).change();
+				}
+			}
+			else {
+				this.element.val(formatted).change();
+			}
+			return this;
+		},
+
+		getFormattedDate: function(format){
+			if (format === undefined)
+				format = this.o.format;
+
+			var lang = this.o.language;
+			return $.map(this.dates, function(d){
+				return DPGlobal.formatDate(d, format, lang);
+			}).join(this.o.multidateSeparator);
+		},
+
+		setStartDate: function(startDate){
+			this._process_options({startDate: startDate});
+			this.update();
+			this.updateNavArrows();
+			return this;
+		},
+
+		setEndDate: function(endDate){
+			this._process_options({endDate: endDate});
+			this.update();
+			this.updateNavArrows();
+			return this;
+		},
+
+		setDaysOfWeekDisabled: function(daysOfWeekDisabled){
+			this._process_options({daysOfWeekDisabled: daysOfWeekDisabled});
+			this.update();
+			this.updateNavArrows();
+			return this;
+		},
+
+		setDatesDisabled: function(datesDisabled){
+			this._process_options({datesDisabled: datesDisabled});
+			this.update();
+			this.updateNavArrows();
+		},
+
+		place: function(){
+			if (this.isInline)
+				return this;
+			var calendarWidth = this.picker.outerWidth(),
+				calendarHeight = this.picker.outerHeight(),
+				visualPadding = 10,
+				windowWidth = $(this.o.container).width(),
+				windowHeight = $(this.o.container).height(),
+				scrollTop = $(this.o.container).scrollTop(),
+				appendOffset = $(this.o.container).offset();
+
+			var parentsZindex = [];
+			this.element.parents().each(function(){
+				var itemZIndex = $(this).css('z-index');
+				if (itemZIndex !== 'auto' && itemZIndex !== 0) parentsZindex.push(parseInt(itemZIndex));
+			});
+			var zIndex = Math.max.apply(Math, parentsZindex) + 10;
+			var offset = this.component ? this.component.parent().offset() : this.element.offset();
+			var height = this.component ? this.component.outerHeight(true) : this.element.outerHeight(false);
+			var width = this.component ? this.component.outerWidth(true) : this.element.outerWidth(false);
+			var left = offset.left - appendOffset.left,
+				top = offset.top - appendOffset.top;
+
+			this.picker.removeClass(
+				'datepicker-orient-top datepicker-orient-bottom '+
+				'datepicker-orient-right datepicker-orient-left'
+			);
+
+			if (this.o.orientation.x !== 'auto'){
+				this.picker.addClass('datepicker-orient-' + this.o.orientation.x);
+				if (this.o.orientation.x === 'right')
+					left -= calendarWidth - width;
+			}
+			// auto x orientation is best-placement: if it crosses a window
+			// edge, fudge it sideways
+			else {
+				if (offset.left < 0) {
+					// component is outside the window on the left side. Move it into visible range
+					this.picker.addClass('datepicker-orient-left');
+					left -= offset.left - visualPadding;
+				} else if (left + calendarWidth > windowWidth) {
+					// the calendar passes the widow right edge. Align it to component right side
+					this.picker.addClass('datepicker-orient-right');
+					left = offset.left + width - calendarWidth;
+				} else {
+					// Default to left
+					this.picker.addClass('datepicker-orient-left');
+				}
+			}
+
+			// auto y orientation is best-situation: top or bottom, no fudging,
+			// decision based on which shows more of the calendar
+			var yorient = this.o.orientation.y,
+				top_overflow, bottom_overflow;
+			if (yorient === 'auto'){
+				top_overflow = -scrollTop + top - calendarHeight;
+				bottom_overflow = scrollTop + windowHeight - (top + height + calendarHeight);
+				if (Math.max(top_overflow, bottom_overflow) === bottom_overflow)
+					yorient = 'top';
+				else
+					yorient = 'bottom';
+			}
+			this.picker.addClass('datepicker-orient-' + yorient);
+			if (yorient === 'top')
+				top += height;
+			else
+				top -= calendarHeight + parseInt(this.picker.css('padding-top'));
+
+			if (this.o.rtl) {
+				var right = windowWidth - (left + width);
+				this.picker.css({
+					top: top,
+					right: right,
+					zIndex: zIndex
+				});
+			} else {
+				this.picker.css({
+					top: top,
+					left: left,
+					zIndex: zIndex
+				});
+			}
+			return this;
+		},
+
+		_allow_update: true,
+		update: function(){
+			if (!this._allow_update)
+				return this;
+
+			var oldDates = this.dates.copy(),
+				dates = [],
+				fromArgs = false;
+			if (arguments.length){
+				$.each(arguments, $.proxy(function(i, date){
+					if (date instanceof Date)
+						date = this._local_to_utc(date);
+					dates.push(date);
+				}, this));
+				fromArgs = true;
+			}
+			else {
+				dates = this.isInput
+						? this.element.val()
+						: this.element.data('date') || this.element.find('input').val();
+				if (dates && this.o.multidate)
+					dates = dates.split(this.o.multidateSeparator);
+				else
+					dates = [dates];
+				delete this.element.data().date;
+			}
+
+			dates = $.map(dates, $.proxy(function(date){
+				return DPGlobal.parseDate(date, this.o.format, this.o.language);
+			}, this));
+			dates = $.grep(dates, $.proxy(function(date){
+				return (
+					date < this.o.startDate ||
+					date > this.o.endDate ||
+					!date
+				);
+			}, this), true);
+			this.dates.replace(dates);
+
+			if (this.dates.length)
+				this.viewDate = new Date(this.dates.get(-1));
+			else if (this.viewDate < this.o.startDate)
+				this.viewDate = new Date(this.o.startDate);
+			else if (this.viewDate > this.o.endDate)
+				this.viewDate = new Date(this.o.endDate);
+
+			if (fromArgs){
+				// setting date by clicking
+				this.setValue();
+			}
+			else if (dates.length){
+				// setting date by typing
+				if (String(oldDates) !== String(this.dates))
+					this._trigger('changeDate');
+			}
+			if (!this.dates.length && oldDates.length)
+				this._trigger('clearDate');
+
+			this.fill();
+			return this;
+		},
+
+		fillDow: function(){
+			var dowCnt = this.o.weekStart,
+				html = '<tr>';
+			if (this.o.calendarWeeks){
+				this.picker.find('.datepicker-days thead tr:first-child .datepicker-switch')
+					.attr('colspan', function(i, val){
+						return parseInt(val) + 1;
+					});
+				var cell = '<th class="cw">&#160;</th>';
+				html += cell;
+			}
+			while (dowCnt < this.o.weekStart + 7){
+				html += '<th class="dow">'+dates[this.o.language].daysMin[(dowCnt++)%7]+'</th>';
+			}
+			html += '</tr>';
+			this.picker.find('.datepicker-days thead').append(html);
+		},
+
+		fillMonths: function(){
+			var html = '',
+			i = 0;
+			while (i < 12){
+				html += '<span class="month">'+dates[this.o.language].monthsShort[i++]+'</span>';
+			}
+			this.picker.find('.datepicker-months td').html(html);
+		},
+
+		setRange: function(range){
+			if (!range || !range.length)
+				delete this.range;
+			else
+				this.range = $.map(range, function(d){
+					return d.valueOf();
+				});
+			this.fill();
+		},
+
+		getClassNames: function(date){
+			var cls = [],
+				year = this.viewDate.getUTCFullYear(),
+				month = this.viewDate.getUTCMonth(),
+				today = new Date();
+			if (date.getUTCFullYear() < year || (date.getUTCFullYear() === year && date.getUTCMonth() < month)){
+				cls.push('old');
+			}
+			else if (date.getUTCFullYear() > year || (date.getUTCFullYear() === year && date.getUTCMonth() > month)){
+				cls.push('new');
+			}
+			if (this.focusDate && date.valueOf() === this.focusDate.valueOf())
+				cls.push('focused');
+			// Compare internal UTC date with local today, not UTC today
+			if (this.o.todayHighlight &&
+				date.getUTCFullYear() === today.getFullYear() &&
+				date.getUTCMonth() === today.getMonth() &&
+				date.getUTCDate() === today.getDate()){
+				cls.push('today');
+			}
+			if (this.dates.contains(date) !== -1)
+				cls.push('active');
+			if (date.valueOf() < this.o.startDate || date.valueOf() > this.o.endDate ||
+				$.inArray(date.getUTCDay(), this.o.daysOfWeekDisabled) !== -1){
+				cls.push('disabled');
+			}
+			if (this.o.datesDisabled.length > 0 &&
+				$.grep(this.o.datesDisabled, function(d){
+					return isUTCEquals(date, d); }).length > 0) {
+				cls.push('disabled', 'disabled-date');
+			}
+
+			if (this.range){
+				if (date > this.range[0] && date < this.range[this.range.length-1]){
+					cls.push('range');
+				}
+				if ($.inArray(date.valueOf(), this.range) !== -1){
+					cls.push('selected');
+				}
+			}
+			return cls;
+		},
+
+		fill: function(){
+			var d = new Date(this.viewDate),
+				year = d.getUTCFullYear(),
+				month = d.getUTCMonth(),
+				startYear = this.o.startDate !== -Infinity ? this.o.startDate.getUTCFullYear() : -Infinity,
+				startMonth = this.o.startDate !== -Infinity ? this.o.startDate.getUTCMonth() : -Infinity,
+				endYear = this.o.endDate !== Infinity ? this.o.endDate.getUTCFullYear() : Infinity,
+				endMonth = this.o.endDate !== Infinity ? this.o.endDate.getUTCMonth() : Infinity,
+				todaytxt = dates[this.o.language].today || dates['en'].today || '',
+				cleartxt = dates[this.o.language].clear || dates['en'].clear || '',
+				tooltip;
+			if (isNaN(year) || isNaN(month))
+				return;
+			this.picker.find('.datepicker-days thead .datepicker-switch')
+						.text(dates[this.o.language].months[month]+' '+year);
+			this.picker.find('tfoot .today')
+						.text(todaytxt)
+						.toggle(this.o.todayBtn !== false);
+			this.picker.find('tfoot .clear')
+						.text(cleartxt)
+						.toggle(this.o.clearBtn !== false);
+			this.updateNavArrows();
+			this.fillMonths();
+			var prevMonth = UTCDate(year, month-1, 28),
+				day = DPGlobal.getDaysInMonth(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth());
+			prevMonth.setUTCDate(day);
+			prevMonth.setUTCDate(day - (prevMonth.getUTCDay() - this.o.weekStart + 7)%7);
+			var nextMonth = new Date(prevMonth);
+			nextMonth.setUTCDate(nextMonth.getUTCDate() + 42);
+			nextMonth = nextMonth.valueOf();
+			var html = [];
+			var clsName;
+			while (prevMonth.valueOf() < nextMonth){
+				if (prevMonth.getUTCDay() === this.o.weekStart){
+					html.push('<tr>');
+					if (this.o.calendarWeeks){
+						// ISO 8601: First week contains first thursday.
+						// ISO also states week starts on Monday, but we can be more abstract here.
+						var
+							// Start of current week: based on weekstart/current date
+							ws = new Date(+prevMonth + (this.o.weekStart - prevMonth.getUTCDay() - 7) % 7 * 864e5),
+							// Thursday of this week
+							th = new Date(Number(ws) + (7 + 4 - ws.getUTCDay()) % 7 * 864e5),
+							// First Thursday of year, year from thursday
+							yth = new Date(Number(yth = UTCDate(th.getUTCFullYear(), 0, 1)) + (7 + 4 - yth.getUTCDay())%7*864e5),
+							// Calendar week: ms between thursdays, div ms per day, div 7 days
+							calWeek =  (th - yth) / 864e5 / 7 + 1;
+						html.push('<td class="cw">'+ calWeek +'</td>');
+
+					}
+				}
+				clsName = this.getClassNames(prevMonth);
+				clsName.push('day');
+
+				if (this.o.beforeShowDay !== $.noop){
+					var before = this.o.beforeShowDay(this._utc_to_local(prevMonth));
+					if (before === undefined)
+						before = {};
+					else if (typeof(before) === 'boolean')
+						before = {enabled: before};
+					else if (typeof(before) === 'string')
+						before = {classes: before};
+					if (before.enabled === false)
+						clsName.push('disabled');
+					if (before.classes)
+						clsName = clsName.concat(before.classes.split(/\s+/));
+					if (before.tooltip)
+						tooltip = before.tooltip;
+				}
+
+				clsName = $.unique(clsName);
+				html.push('<td class="'+clsName.join(' ')+'"' + (tooltip ? ' title="'+tooltip+'"' : '') + '>'+prevMonth.getUTCDate() + '</td>');
+				tooltip = null;
+				if (prevMonth.getUTCDay() === this.o.weekEnd){
+					html.push('</tr>');
+				}
+				prevMonth.setUTCDate(prevMonth.getUTCDate()+1);
+			}
+			this.picker.find('.datepicker-days tbody').empty().append(html.join(''));
+
+			var months = this.picker.find('.datepicker-months')
+						.find('th:eq(1)')
+							.text(year)
+							.end()
+						.find('span').removeClass('active');
+
+			$.each(this.dates, function(i, d){
+				if (d.getUTCFullYear() === year)
+					months.eq(d.getUTCMonth()).addClass('active');
+			});
+
+			if (year < startYear || year > endYear){
+				months.addClass('disabled');
+			}
+			if (year === startYear){
+				months.slice(0, startMonth).addClass('disabled');
+			}
+			if (year === endYear){
+				months.slice(endMonth+1).addClass('disabled');
+			}
+
+			if (this.o.beforeShowMonth !== $.noop){
+				var that = this;
+				$.each(months, function(i, month){
+					if (!$(month).hasClass('disabled')) {
+						var moDate = new Date(year, i, 1);
+						var before = that.o.beforeShowMonth(moDate);
+						if (before === false)
+							$(month).addClass('disabled');
+					}
+				});
+			}
+
+			html = '';
+			year = parseInt(year/10, 10) * 10;
+			var yearCont = this.picker.find('.datepicker-years')
+								.find('th:eq(1)')
+									.text(year + '-' + (year + 9))
+									.end()
+								.find('td');
+			year -= 1;
+			var years = $.map(this.dates, function(d){
+					return d.getUTCFullYear();
+				}),
+				classes;
+			for (var i = -1; i < 11; i++){
+				classes = ['year'];
+				if (i === -1)
+					classes.push('old');
+				else if (i === 10)
+					classes.push('new');
+				if ($.inArray(year, years) !== -1)
+					classes.push('active');
+				if (year < startYear || year > endYear)
+					classes.push('disabled');
+				html += '<span class="' + classes.join(' ') + '">' + year + '</span>';
+				year += 1;
+			}
+			yearCont.html(html);
+		},
+
+		updateNavArrows: function(){
+			if (!this._allow_update)
+				return;
+
+			var d = new Date(this.viewDate),
+				year = d.getUTCFullYear(),
+				month = d.getUTCMonth();
+			switch (this.viewMode){
+				case 0:
+					if (this.o.startDate !== -Infinity && year <= this.o.startDate.getUTCFullYear() && month <= this.o.startDate.getUTCMonth()){
+						this.picker.find('.prev').css({visibility: 'hidden'});
+					}
+					else {
+						this.picker.find('.prev').css({visibility: 'visible'});
+					}
+					if (this.o.endDate !== Infinity && year >= this.o.endDate.getUTCFullYear() && month >= this.o.endDate.getUTCMonth()){
+						this.picker.find('.next').css({visibility: 'hidden'});
+					}
+					else {
+						this.picker.find('.next').css({visibility: 'visible'});
+					}
+					break;
+				case 1:
+				case 2:
+					if (this.o.startDate !== -Infinity && year <= this.o.startDate.getUTCFullYear()){
+						this.picker.find('.prev').css({visibility: 'hidden'});
+					}
+					else {
+						this.picker.find('.prev').css({visibility: 'visible'});
+					}
+					if (this.o.endDate !== Infinity && year >= this.o.endDate.getUTCFullYear()){
+						this.picker.find('.next').css({visibility: 'hidden'});
+					}
+					else {
+						this.picker.find('.next').css({visibility: 'visible'});
+					}
+					break;
+			}
+		},
+
+		click: function(e){
+			e.preventDefault();
+			var target = $(e.target).closest('span, td, th'),
+				year, month, day;
+			if (target.length === 1){
+				switch (target[0].nodeName.toLowerCase()){
+					case 'th':
+						switch (target[0].className){
+							case 'datepicker-switch':
+								this.showMode(1);
+								break;
+							case 'prev':
+							case 'next':
+								var dir = DPGlobal.modes[this.viewMode].navStep * (target[0].className === 'prev' ? -1 : 1);
+								switch (this.viewMode){
+									case 0:
+										this.viewDate = this.moveMonth(this.viewDate, dir);
+										this._trigger('changeMonth', this.viewDate);
+										break;
+									case 1:
+									case 2:
+										this.viewDate = this.moveYear(this.viewDate, dir);
+										if (this.viewMode === 1)
+											this._trigger('changeYear', this.viewDate);
+										break;
+								}
+								this.fill();
+								break;
+							case 'today':
+								var date = new Date();
+								date = UTCDate(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0);
+
+								this.showMode(-2);
+								var which = this.o.todayBtn === 'linked' ? null : 'view';
+								this._setDate(date, which);
+								break;
+							case 'clear':
+								this.clearDates();
+								break;
+						}
+						break;
+					case 'span':
+						if (!target.hasClass('disabled')){
+							this.viewDate.setUTCDate(1);
+							if (target.hasClass('month')){
+								day = 1;
+								month = target.parent().find('span').index(target);
+								year = this.viewDate.getUTCFullYear();
+								this.viewDate.setUTCMonth(month);
+								this._trigger('changeMonth', this.viewDate);
+								if (this.o.minViewMode === 1){
+									this._setDate(UTCDate(year, month, day));
+								}
+							}
+							else {
+								day = 1;
+								month = 0;
+								year = parseInt(target.text(), 10)||0;
+								this.viewDate.setUTCFullYear(year);
+								this._trigger('changeYear', this.viewDate);
+								if (this.o.minViewMode === 2){
+									this._setDate(UTCDate(year, month, day));
+								}
+							}
+							this.showMode(-1);
+							this.fill();
+						}
+						break;
+					case 'td':
+						if (target.hasClass('day') && !target.hasClass('disabled')){
+							day = parseInt(target.text(), 10)||1;
+							year = this.viewDate.getUTCFullYear();
+							month = this.viewDate.getUTCMonth();
+							if (target.hasClass('old')){
+								if (month === 0){
+									month = 11;
+									year -= 1;
+								}
+								else {
+									month -= 1;
+								}
+							}
+							else if (target.hasClass('new')){
+								if (month === 11){
+									month = 0;
+									year += 1;
+								}
+								else {
+									month += 1;
+								}
+							}
+							this._setDate(UTCDate(year, month, day));
+						}
+						break;
+				}
+			}
+			if (this.picker.is(':visible') && this._focused_from){
+				$(this._focused_from).focus();
+			}
+			delete this._focused_from;
+		},
+
+		_toggle_multidate: function(date){
+			var ix = this.dates.contains(date);
+			if (!date){
+				this.dates.clear();
+			}
+
+			if (ix !== -1){
+				if (this.o.multidate === true || this.o.multidate > 1 || this.o.toggleActive){
+					this.dates.remove(ix);
+				}
+			} else if (this.o.multidate === false) {
+				this.dates.clear();
+				this.dates.push(date);
+			}
+			else {
+				this.dates.push(date);
+			}
+
+			if (typeof this.o.multidate === 'number')
+				while (this.dates.length > this.o.multidate)
+					this.dates.remove(0);
+		},
+
+		_setDate: function(date, which){
+			if (!which || which === 'date')
+				this._toggle_multidate(date && new Date(date));
+			if (!which || which  === 'view')
+				this.viewDate = date && new Date(date);
+
+			this.fill();
+			this.setValue();
+			if (!which || which  !== 'view') {
+				this._trigger('changeDate');
+			}
+			var element;
+			if (this.isInput){
+				element = this.element;
+			}
+			else if (this.component){
+				element = this.element.find('input');
+			}
+			if (element){
+				element.change();
+			}
+			if (this.o.autoclose && (!which || which === 'date')){
+				this.hide();
+			}
+		},
+
+		moveMonth: function(date, dir){
+			if (!date)
+				return undefined;
+			if (!dir)
+				return date;
+			var new_date = new Date(date.valueOf()),
+				day = new_date.getUTCDate(),
+				month = new_date.getUTCMonth(),
+				mag = Math.abs(dir),
+				new_month, test;
+			dir = dir > 0 ? 1 : -1;
+			if (mag === 1){
+				test = dir === -1
+					// If going back one month, make sure month is not current month
+					// (eg, Mar 31 -> Feb 31 == Feb 28, not Mar 02)
+					? function(){
+						return new_date.getUTCMonth() === month;
+					}
+					// If going forward one month, make sure month is as expected
+					// (eg, Jan 31 -> Feb 31 == Feb 28, not Mar 02)
+					: function(){
+						return new_date.getUTCMonth() !== new_month;
+					};
+				new_month = month + dir;
+				new_date.setUTCMonth(new_month);
+				// Dec -> Jan (12) or Jan -> Dec (-1) -- limit expected date to 0-11
+				if (new_month < 0 || new_month > 11)
+					new_month = (new_month + 12) % 12;
+			}
+			else {
+				// For magnitudes >1, move one month at a time...
+				for (var i=0; i < mag; i++)
+					// ...which might decrease the day (eg, Jan 31 to Feb 28, etc)...
+					new_date = this.moveMonth(new_date, dir);
+				// ...then reset the day, keeping it in the new month
+				new_month = new_date.getUTCMonth();
+				new_date.setUTCDate(day);
+				test = function(){
+					return new_month !== new_date.getUTCMonth();
+				};
+			}
+			// Common date-resetting loop -- if date is beyond end of month, make it
+			// end of month
+			while (test()){
+				new_date.setUTCDate(--day);
+				new_date.setUTCMonth(new_month);
+			}
+			return new_date;
+		},
+
+		moveYear: function(date, dir){
+			return this.moveMonth(date, dir*12);
+		},
+
+		dateWithinRange: function(date){
+			return date >= this.o.startDate && date <= this.o.endDate;
+		},
+
+		keydown: function(e){
+			if (!this.picker.is(':visible')){
+				if (e.keyCode === 27) // allow escape to hide and re-show picker
+					this.show();
+				return;
+			}
+			var dateChanged = false,
+				dir, newDate, newViewDate,
+				focusDate = this.focusDate || this.viewDate;
+			switch (e.keyCode){
+				case 27: // escape
+					if (this.focusDate){
+						this.focusDate = null;
+						this.viewDate = this.dates.get(-1) || this.viewDate;
+						this.fill();
+					}
+					else
+						this.hide();
+					e.preventDefault();
+					break;
+				case 37: // left
+				case 39: // right
+					if (!this.o.keyboardNavigation)
+						break;
+					dir = e.keyCode === 37 ? -1 : 1;
+					if (e.ctrlKey){
+						newDate = this.moveYear(this.dates.get(-1) || UTCToday(), dir);
+						newViewDate = this.moveYear(focusDate, dir);
+						this._trigger('changeYear', this.viewDate);
+					}
+					else if (e.shiftKey){
+						newDate = this.moveMonth(this.dates.get(-1) || UTCToday(), dir);
+						newViewDate = this.moveMonth(focusDate, dir);
+						this._trigger('changeMonth', this.viewDate);
+					}
+					else {
+						newDate = new Date(this.dates.get(-1) || UTCToday());
+						newDate.setUTCDate(newDate.getUTCDate() + dir);
+						newViewDate = new Date(focusDate);
+						newViewDate.setUTCDate(focusDate.getUTCDate() + dir);
+					}
+					if (this.dateWithinRange(newViewDate)){
+						this.focusDate = this.viewDate = newViewDate;
+						this.setValue();
+						this.fill();
+						e.preventDefault();
+					}
+					break;
+				case 38: // up
+				case 40: // down
+					if (!this.o.keyboardNavigation)
+						break;
+					dir = e.keyCode === 38 ? -1 : 1;
+					if (e.ctrlKey){
+						newDate = this.moveYear(this.dates.get(-1) || UTCToday(), dir);
+						newViewDate = this.moveYear(focusDate, dir);
+						this._trigger('changeYear', this.viewDate);
+					}
+					else if (e.shiftKey){
+						newDate = this.moveMonth(this.dates.get(-1) || UTCToday(), dir);
+						newViewDate = this.moveMonth(focusDate, dir);
+						this._trigger('changeMonth', this.viewDate);
+					}
+					else {
+						newDate = new Date(this.dates.get(-1) || UTCToday());
+						newDate.setUTCDate(newDate.getUTCDate() + dir * 7);
+						newViewDate = new Date(focusDate);
+						newViewDate.setUTCDate(focusDate.getUTCDate() + dir * 7);
+					}
+					if (this.dateWithinRange(newViewDate)){
+						this.focusDate = this.viewDate = newViewDate;
+						this.setValue();
+						this.fill();
+						e.preventDefault();
+					}
+					break;
+				case 32: // spacebar
+					// Spacebar is used in manually typing dates in some formats.
+					// As such, its behavior should not be hijacked.
+					break;
+				case 13: // enter
+					focusDate = this.focusDate || this.dates.get(-1) || this.viewDate;
+					if (this.o.keyboardNavigation) {
+						this._toggle_multidate(focusDate);
+						dateChanged = true;
+					}
+					this.focusDate = null;
+					this.viewDate = this.dates.get(-1) || this.viewDate;
+					this.setValue();
+					this.fill();
+					if (this.picker.is(':visible')){
+						e.preventDefault();
+						if (typeof e.stopPropagation === 'function') {
+							e.stopPropagation(); // All modern browsers, IE9+
+						} else {
+							e.cancelBubble = true; // IE6,7,8 ignore "stopPropagation"
+						}
+						if (this.o.autoclose)
+							this.hide();
+					}
+					break;
+				case 9: // tab
+					this.focusDate = null;
+					this.viewDate = this.dates.get(-1) || this.viewDate;
+					this.fill();
+					this.hide();
+					break;
+			}
+			if (dateChanged){
+				if (this.dates.length)
+					this._trigger('changeDate');
+				else
+					this._trigger('clearDate');
+				var element;
+				if (this.isInput){
+					element = this.element;
+				}
+				else if (this.component){
+					element = this.element.find('input');
+				}
+				if (element){
+					element.change();
+				}
+			}
+		},
+
+		showMode: function(dir){
+			if (dir){
+				this.viewMode = Math.max(this.o.minViewMode, Math.min(2, this.viewMode + dir));
+			}
+			this.picker
+				.children('div')
+				.hide()
+				.filter('.datepicker-' + DPGlobal.modes[this.viewMode].clsName)
+					.css('display', 'block');
+			this.updateNavArrows();
+		}
+	};
+
+	var DateRangePicker = function(element, options){
+		this.element = $(element);
+		this.inputs = $.map(options.inputs, function(i){
+			return i.jquery ? i[0] : i;
+		});
+		delete options.inputs;
+
+		datepickerPlugin.call($(this.inputs), options)
+			.bind('changeDate', $.proxy(this.dateUpdated, this));
+
+		this.pickers = $.map(this.inputs, function(i){
+			return $(i).data('datepicker');
+		});
+		this.updateDates();
+	};
+	DateRangePicker.prototype = {
+		updateDates: function(){
+			this.dates = $.map(this.pickers, function(i){
+				return i.getUTCDate();
+			});
+			this.updateRanges();
+		},
+		updateRanges: function(){
+			var range = $.map(this.dates, function(d){
+				return d.valueOf();
+			});
+			$.each(this.pickers, function(i, p){
+				p.setRange(range);
+			});
+		},
+		dateUpdated: function(e){
+			// `this.updating` is a workaround for preventing infinite recursion
+			// between `changeDate` triggering and `setUTCDate` calling.  Until
+			// there is a better mechanism.
+			if (this.updating)
+				return;
+			this.updating = true;
+
+			var dp = $(e.target).data('datepicker'),
+				new_date = dp.getUTCDate(),
+				i = $.inArray(e.target, this.inputs),
+				j = i - 1,
+				k = i + 1,
+				l = this.inputs.length;
+			if (i === -1)
+				return;
+
+			$.each(this.pickers, function(i, p){
+				if (!p.getUTCDate())
+					p.setUTCDate(new_date);
+			});
+
+			if (new_date < this.dates[j]){
+				// Date being moved earlier/left
+				while (j >= 0 && new_date < this.dates[j]){
+					this.pickers[j--].setUTCDate(new_date);
+				}
+			}
+			else if (new_date > this.dates[k]){
+				// Date being moved later/right
+				while (k < l && new_date > this.dates[k]){
+					this.pickers[k++].setUTCDate(new_date);
+				}
+			}
+			this.updateDates();
+
+			delete this.updating;
+		},
+		remove: function(){
+			$.map(this.pickers, function(p){ p.remove(); });
+			delete this.element.data().datepicker;
+		}
+	};
+
+	function opts_from_el(el, prefix){
+		// Derive options from element data-attrs
+		var data = $(el).data(),
+			out = {}, inkey,
+			replace = new RegExp('^' + prefix.toLowerCase() + '([A-Z])');
+		prefix = new RegExp('^' + prefix.toLowerCase());
+		function re_lower(_,a){
+			return a.toLowerCase();
+		}
+		for (var key in data)
+			if (prefix.test(key)){
+				inkey = key.replace(replace, re_lower);
+				out[inkey] = data[key];
+			}
+		return out;
+	}
+
+	function opts_from_locale(lang){
+		// Derive options from locale plugins
+		var out = {};
+		// Check if "de-DE" style date is available, if not language should
+		// fallback to 2 letter code eg "de"
+		if (!dates[lang]){
+			lang = lang.split('-')[0];
+			if (!dates[lang])
+				return;
+		}
+		var d = dates[lang];
+		$.each(locale_opts, function(i,k){
+			if (k in d)
+				out[k] = d[k];
+		});
+		return out;
+	}
+
+	var old = $.fn.datepicker;
+	var datepickerPlugin = function(option){
+		var args = Array.apply(null, arguments);
+		args.shift();
+		var internal_return;
+		this.each(function(){
+			var $this = $(this),
+				data = $this.data('datepicker'),
+				options = typeof option === 'object' && option;
+			if (!data){
+				var elopts = opts_from_el(this, 'date'),
+					// Preliminary otions
+					xopts = $.extend({}, defaults, elopts, options),
+					locopts = opts_from_locale(xopts.language),
+					// Options priority: js args, data-attrs, locales, defaults
+					opts = $.extend({}, defaults, locopts, elopts, options);
+				if ($this.hasClass('input-daterange') || opts.inputs){
+					var ropts = {
+						inputs: opts.inputs || $this.find('input').toArray()
+					};
+					$this.data('datepicker', (data = new DateRangePicker(this, $.extend(opts, ropts))));
+				}
+				else {
+					$this.data('datepicker', (data = new Datepicker(this, opts)));
+				}
+			}
+			if (typeof option === 'string' && typeof data[option] === 'function'){
+				internal_return = data[option].apply(data, args);
+				if (internal_return !== undefined)
+					return false;
+			}
+		});
+		if (internal_return !== undefined)
+			return internal_return;
+		else
+			return this;
+	};
+	$.fn.datepicker = datepickerPlugin;
+
+	var defaults = $.fn.datepicker.defaults = {
+		autoclose: false,
+		beforeShowDay: $.noop,
+		beforeShowMonth: $.noop,
+		calendarWeeks: false,
+		clearBtn: false,
+		toggleActive: false,
+		daysOfWeekDisabled: [],
+		datesDisabled: [],
+		endDate: Infinity,
+		forceParse: true,
+		format: 'mm/dd/yyyy',
+		keyboardNavigation: true,
+		language: 'en',
+		minViewMode: 0,
+		multidate: false,
+		multidateSeparator: ',',
+		orientation: "auto",
+		rtl: false,
+		startDate: -Infinity,
+		startView: 0,
+		todayBtn: false,
+		todayHighlight: false,
+		weekStart: 0,
+		disableTouchKeyboard: false,
+        enableOnReadonly: true,
+		container: 'body'
+	};
+	var locale_opts = $.fn.datepicker.locale_opts = [
+		'format',
+		'rtl',
+		'weekStart'
+	];
+	$.fn.datepicker.Constructor = Datepicker;
+	var dates = $.fn.datepicker.dates = {
+		en: {
+			days: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+			daysShort: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+			daysMin: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"],
+			months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+			monthsShort: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+			today: "Today",
+			clear: "Clear"
+		}
+	};
+
+	var DPGlobal = {
+		modes: [
+			{
+				clsName: 'days',
+				navFnc: 'Month',
+				navStep: 1
+			},
+			{
+				clsName: 'months',
+				navFnc: 'FullYear',
+				navStep: 1
+			},
+			{
+				clsName: 'years',
+				navFnc: 'FullYear',
+				navStep: 10
+		}],
+		isLeapYear: function(year){
+			return (((year % 4 === 0) && (year % 100 !== 0)) || (year % 400 === 0));
+		},
+		getDaysInMonth: function(year, month){
+			return [31, (DPGlobal.isLeapYear(year) ? 29 : 28), 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month];
+		},
+		validParts: /dd?|DD?|mm?|MM?|yy(?:yy)?/g,
+		nonpunctuation: /[^ -\/:-@\[\u3400-\u9fff-`{-~\t\n\r]+/g,
+		parseFormat: function(format){
+			// IE treats \0 as a string end in inputs (truncating the value),
+			// so it's a bad format delimiter, anyway
+			var separators = format.replace(this.validParts, '\0').split('\0'),
+				parts = format.match(this.validParts);
+			if (!separators || !separators.length || !parts || parts.length === 0){
+				throw new Error("Invalid date format.");
+			}
+			return {separators: separators, parts: parts};
+		},
+		parseDate: function(date, format, language){
+			if (!date)
+				return undefined;
+			if (date instanceof Date)
+				return date;
+			if (typeof format === 'string')
+				format = DPGlobal.parseFormat(format);
+			var part_re = /([\-+]\d+)([dmwy])/,
+				parts = date.match(/([\-+]\d+)([dmwy])/g),
+				part, dir, i;
+			if (/^[\-+]\d+[dmwy]([\s,]+[\-+]\d+[dmwy])*$/.test(date)){
+				date = new Date();
+				for (i=0; i < parts.length; i++){
+					part = part_re.exec(parts[i]);
+					dir = parseInt(part[1]);
+					switch (part[2]){
+						case 'd':
+							date.setUTCDate(date.getUTCDate() + dir);
+							break;
+						case 'm':
+							date = Datepicker.prototype.moveMonth.call(Datepicker.prototype, date, dir);
+							break;
+						case 'w':
+							date.setUTCDate(date.getUTCDate() + dir * 7);
+							break;
+						case 'y':
+							date = Datepicker.prototype.moveYear.call(Datepicker.prototype, date, dir);
+							break;
+					}
+				}
+				return UTCDate(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0);
+			}
+			parts = date && date.match(this.nonpunctuation) || [];
+			date = new Date();
+			var parsed = {},
+				setters_order = ['yyyy', 'yy', 'M', 'MM', 'm', 'mm', 'd', 'dd'],
+				setters_map = {
+					yyyy: function(d,v){
+						return d.setUTCFullYear(v);
+					},
+					yy: function(d,v){
+						return d.setUTCFullYear(2000+v);
+					},
+					m: function(d,v){
+						if (isNaN(d))
+							return d;
+						v -= 1;
+						while (v < 0) v += 12;
+						v %= 12;
+						d.setUTCMonth(v);
+						while (d.getUTCMonth() !== v)
+							d.setUTCDate(d.getUTCDate()-1);
+						return d;
+					},
+					d: function(d,v){
+						return d.setUTCDate(v);
+					}
+				},
+				val, filtered;
+			setters_map['M'] = setters_map['MM'] = setters_map['mm'] = setters_map['m'];
+			setters_map['dd'] = setters_map['d'];
+			date = UTCDate(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0);
+			var fparts = format.parts.slice();
+			// Remove noop parts
+			if (parts.length !== fparts.length){
+				fparts = $(fparts).filter(function(i,p){
+					return $.inArray(p, setters_order) !== -1;
+				}).toArray();
+			}
+			// Process remainder
+			function match_part(){
+				var m = this.slice(0, parts[i].length),
+					p = parts[i].slice(0, m.length);
+				return m.toLowerCase() === p.toLowerCase();
+			}
+			if (parts.length === fparts.length){
+				var cnt;
+				for (i=0, cnt = fparts.length; i < cnt; i++){
+					val = parseInt(parts[i], 10);
+					part = fparts[i];
+					if (isNaN(val)){
+						switch (part){
+							case 'MM':
+								filtered = $(dates[language].months).filter(match_part);
+								val = $.inArray(filtered[0], dates[language].months) + 1;
+								break;
+							case 'M':
+								filtered = $(dates[language].monthsShort).filter(match_part);
+								val = $.inArray(filtered[0], dates[language].monthsShort) + 1;
+								break;
+						}
+					}
+					parsed[part] = val;
+				}
+				var _date, s;
+				for (i=0; i < setters_order.length; i++){
+					s = setters_order[i];
+					if (s in parsed && !isNaN(parsed[s])){
+						_date = new Date(date);
+						setters_map[s](_date, parsed[s]);
+						if (!isNaN(_date))
+							date = _date;
+					}
+				}
+			}
+			return date;
+		},
+		formatDate: function(date, format, language){
+			if (!date)
+				return '';
+			if (typeof format === 'string')
+				format = DPGlobal.parseFormat(format);
+			var val = {
+				d: date.getUTCDate(),
+				D: dates[language].daysShort[date.getUTCDay()],
+				DD: dates[language].days[date.getUTCDay()],
+				m: date.getUTCMonth() + 1,
+				M: dates[language].monthsShort[date.getUTCMonth()],
+				MM: dates[language].months[date.getUTCMonth()],
+				yy: date.getUTCFullYear().toString().substring(2),
+				yyyy: date.getUTCFullYear()
+			};
+			val.dd = (val.d < 10 ? '0' : '') + val.d;
+			val.mm = (val.m < 10 ? '0' : '') + val.m;
+			date = [];
+			var seps = $.extend([], format.separators);
+			for (var i=0, cnt = format.parts.length; i <= cnt; i++){
+				if (seps.length)
+					date.push(seps.shift());
+				date.push(val[format.parts[i]]);
+			}
+			return date.join('');
+		},
+		headTemplate: '<thead>'+
+							'<tr>'+
+								'<th class="prev">&#171;</th>'+
+								'<th colspan="5" class="datepicker-switch"></th>'+
+								'<th class="next">&#187;</th>'+
+							'</tr>'+
+						'</thead>',
+		contTemplate: '<tbody><tr><td colspan="7"></td></tr></tbody>',
+		footTemplate: '<tfoot>'+
+							'<tr>'+
+								'<th colspan="7" class="today"></th>'+
+							'</tr>'+
+							'<tr>'+
+								'<th colspan="7" class="clear"></th>'+
+							'</tr>'+
+						'</tfoot>'
+	};
+	DPGlobal.template = '<div class="datepicker">'+
+							'<div class="datepicker-days">'+
+								'<table class=" table-condensed">'+
+									DPGlobal.headTemplate+
+									'<tbody></tbody>'+
+									DPGlobal.footTemplate+
+								'</table>'+
+							'</div>'+
+							'<div class="datepicker-months">'+
+								'<table class="table-condensed">'+
+									DPGlobal.headTemplate+
+									DPGlobal.contTemplate+
+									DPGlobal.footTemplate+
+								'</table>'+
+							'</div>'+
+							'<div class="datepicker-years">'+
+								'<table class="table-condensed">'+
+									DPGlobal.headTemplate+
+									DPGlobal.contTemplate+
+									DPGlobal.footTemplate+
+								'</table>'+
+							'</div>'+
+						'</div>';
+
+	$.fn.datepicker.DPGlobal = DPGlobal;
+
+
+	/* DATEPICKER NO CONFLICT
+	* =================== */
+
+	$.fn.datepicker.noConflict = function(){
+		$.fn.datepicker = old;
+		return this;
+	};
+
+	/* DATEPICKER VERSION
+	 * =================== */
+	$.fn.datepicker.version =  "1.4.0";
+
+	/* DATEPICKER DATA-API
+	* ================== */
+
+	$(document).on(
+		'focus.datepicker.data-api click.datepicker.data-api',
+		'[data-provide="datepicker"]',
+		function(e){
+			var $this = $(this);
+			if ($this.data('datepicker'))
+				return;
+			e.preventDefault();
+			// component click requires us to explicitly show it
+			datepickerPlugin.call($this, 'show');
+		}
+	);
+	$(function(){
+		datepickerPlugin.call($('[data-provide="datepicker-inline"]'));
+	});
+
+}(window.jQuery));
+
+/*!
+ * @copyright Copyright &copy; Kartik Visweswaran, Krajee.com, 2014 - 2015
+ * @version 4.2.2
+ *
+ * File input styled for Bootstrap 3.0 that utilizes HTML5 File Input's advanced 
+ * features including the FileReader API. 
+ * 
+ * The plugin drastically enhances the HTML file input to preview multiple files on the client before
+ * upload. In addition it provides the ability to preview content of images, text, videos, audio, html, 
+ * flash and other objects. It also offers the ability to upload and delete files using AJAX, and add 
+ * files in batches (i.e. preview, append, or remove before upload).
+ * 
+ * Author: Kartik Visweswaran
+ * Copyright: 2015, Kartik Visweswaran, Krajee.com
+ * For more JQuery plugins visit http://plugins.krajee.com
+ * For more Yii related demos visit http://demos.krajee.com
+ */!function(e){"use strict";e.fn.fileinputLocales={},String.prototype.repl=function(e,i){return this.split(e).join(i)};var i=function(e){var i,t=document.createElement("div");return t.innerHTML="<!--[if IE "+e+"]><i></i><![endif]-->",i=1===t.getElementsByTagName("i").length,document.body.appendChild(t),t.parentNode.removeChild(t),i},t={data:{},init:function(e){var i=e.initialPreview,a=e.id;i.length>0&&!z(i)&&(i=i.split(e.initialPreviewDelimiter)),t.data[a]={content:i,config:e.initialPreviewConfig,tags:e.initialPreviewThumbTags,delimiter:e.initialPreviewDelimiter,template:e.previewGenericTemplate,msg:function(i){return e.getMsgSelected(i)},initId:e.previewInitId,footer:e.getLayoutTemplate("footer"),isDelete:e.initialPreviewShowDelete,caption:e.initialCaption,actions:function(i,t,a,n,r){return e.renderFileActions(i,t,a,n,r)}}},fetch:function(e){return t.data[e].content.filter(function(e){return null!==e})},count:function(e,i){return t.data[e]&&t.data[e].content?i?t.data[e].content.length:t.fetch(e).length:0},get:function(i,a,n){var r,l,o="init_"+a,s=t.data[i],d=s.config[a],c=s.initId+"-"+o,p=" file-preview-initial";return n=void 0===n?!0:n,null===s.content[a]?"":(R(d)||R(d.frameClass)||(p+=" "+d.frameClass),r=s.template.repl("{previewId}",c).repl("{frameClass}",p).repl("{fileindex}",o).repl("{content}",s.content[a]).repl("{footer}",t.footer(i,a,n)),s.tags.length&&s.tags[a]&&(r=H(r,s.tags[a])),R(d)||R(d.frameAttr)||(l=e(document.createElement("div")).html(r),l.find(".file-preview-initial").attr(d.frameAttr),r=l.html(),l.remove()),r)},add:function(i,a,n,r,l){var o,s=e.extend(!0,{},t.data[i]);return z(a)||(a=a.split(s.delimiter)),l?(o=s.content.push(a)-1,s.config[o]=n,s.tags[o]=r):(o=a.length,s.content=a,s.config=n,s.tags=r),t.data[i]=s,o},set:function(i,a,n,r,l){var o,s=e.extend(!0,{},t.data[i]);if(z(a)||(a=a.split(s.delimiter)),l){for(o=0;o<a.length;o++)s.content.push(a[o]);for(o=0;o<n.length;o++)s.config.push(n[o]);for(o=0;o<r.length;o++)s.tags.push(r[o])}else s.content=a,s.config=n,s.tags=r;t.data[i]=s},unset:function(e,i){var a=t.count(e);if(a){if(1===a)return t.data[e].content=[],void(t.data[e].config=[]);t.data[e].content[i]=null,t.data[e].config[i]=null}},out:function(e){var i,a="",n=t.data[e],r=t.count(e,!0);if(0===r)return{content:"",caption:""};for(var l=0;r>l;l++)a+=t.get(e,l);return i=n.msg(t.count(e)),{content:a,caption:i}},footer:function(e,i,a){var n=t.data[e];if(a=void 0===a?!0:a,0===n.config.length||R(n.config[i]))return"";var r=n.config[i],l=M("caption",r)?r.caption:"",o=M("width",r)?r.width:"auto",s=M("url",r)?r.url:!1,d=M("key",r)?r.key:null,c=s===!1&&a,p=n.isDelete?n.actions(!1,!0,c,s,d):"",u=n.footer.repl("{actions}",p);return u.repl("{caption}",l).repl("{width}",o).repl("{indicator}","").repl("{indicatorTitle}","")}},a=function(e,i){return i=i||0,"number"==typeof e?e:("string"==typeof e&&(e=parseFloat(e)),isNaN(e)?i:e)},n=function(){return window.File&&window.FileReader},r=function(){var e=document.createElement("div");return!i(9)&&(void 0!==e.draggable||void 0!==e.ondragstart&&void 0!==e.ondrop)},l=function(){return n()&&window.FormData},o=function(e,i){e.removeClass(i).addClass(i)},s='style="width:{width};height:{height};"',d='      <param name="controller" value="true" />\n      <param name="allowFullScreen" value="true" />\n      <param name="allowScriptAccess" value="always" />\n      <param name="autoPlay" value="false" />\n      <param name="autoStart" value="false" />\n      <param name="quality" value="high" />\n',c='<div class="file-preview-other">\n       {previewFileIcon}\n   </div>',p={removeIcon:'<i class="glyphicon glyphicon-trash text-danger"></i>',removeClass:"btn btn-xs btn-default",removeTitle:"Remove file",uploadIcon:'<i class="glyphicon glyphicon-upload text-info"></i>',uploadClass:"btn btn-xs btn-default",uploadTitle:"Upload file",indicatorNew:'<i class="glyphicon glyphicon-hand-down text-warning"></i>',indicatorSuccess:'<i class="glyphicon glyphicon-ok-sign file-icon-large text-success"></i>',indicatorError:'<i class="glyphicon glyphicon-exclamation-sign text-danger"></i>',indicatorLoading:'<i class="glyphicon glyphicon-hand-up text-muted"></i>',indicatorNewTitle:"Not uploaded yet",indicatorSuccessTitle:"Uploaded",indicatorErrorTitle:"Upload Error",indicatorLoadingTitle:"Uploading ..."},u='{preview}\n<div class="kv-upload-progress hide"></div>\n<div class="input-group {class}">\n   {caption}\n   <div class="input-group-btn">\n       {remove}\n       {cancel}\n       {upload}\n       {browse}\n   </div>\n</div>',f='{preview}\n<div class="kv-upload-progress hide"></div>\n{remove}\n{cancel}\n{upload}\n{browse}\n',v='<div class="file-preview {class}">\n    <div class="close fileinput-remove">&times;</div>\n    <div class="{dropClass}">\n    <div class="file-preview-thumbnails">\n    </div>\n    <div class="clearfix"></div>    <div class="file-preview-status text-center text-success"></div>\n    <div class="kv-fileinput-error"></div>\n    </div>\n</div>',h='<span class="glyphicon glyphicon-file kv-caption-icon"></span>',m='<div tabindex="-1" class="form-control file-caption {class}">\n   <span class="file-caption-ellipsis">&hellip;</span>\n   <div class="file-caption-name"></div>\n</div>',g='<div id="{id}" class="modal fade">\n  <div class="modal-dialog modal-lg">\n    <div class="modal-content">\n      <div class="modal-header">\n        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>\n        <h3 class="modal-title">Detailed Preview <small>{title}</small></h3>\n      </div>\n      <div class="modal-body">\n        <textarea class="form-control" style="font-family:Monaco,Consolas,monospace; height: {height}px;" readonly>{body}</textarea>\n      </div>\n    </div>\n  </div>\n</div>',w='<div class="progress">\n    <div class="{class}" role="progressbar" aria-valuenow="{percent}" aria-valuemin="0" aria-valuemax="100" style="width:{percent}%;">\n        {percent}%\n     </div>\n</div>',b='<div class="file-thumbnail-footer">\n    <div class="file-caption-name">{caption}</div>\n    {actions}\n</div>',x='<div class="file-actions">\n    <div class="file-footer-buttons">\n        {upload}{delete}{other}    </div>\n    <div class="file-upload-indicator" tabindex="-1" title="{indicatorTitle}">{indicator}</div>\n    <div class="clearfix"></div>\n</div>',C='<button type="button" class="kv-file-remove {removeClass}" title="{removeTitle}"{dataUrl}{dataKey}>{removeIcon}</button>\n',y='<button type="button" class="kv-file-upload {uploadClass}" title="{uploadTitle}">   {uploadIcon}\n</button>\n',T='<div class="file-preview-frame{frameClass}" id="{previewId}" data-fileindex="{fileindex}">\n   {content}\n   {footer}\n</div>\n',E='<div class="file-preview-frame{frameClass}" id="{previewId}" data-fileindex="{fileindex}">\n    <object data="{data}" type="{type}" width="{width}" height="{height}">\n       '+c+"\n    </object>\n   {footer}\n</div>",k='<div class="file-preview-frame{frameClass}" id="{previewId}" data-fileindex="{fileindex}">\n   <img src="{data}" class="file-preview-image" title="{caption}" alt="{caption}" '+s+">\n   {footer}\n</div>\n",F='<div class="file-preview-frame{frameClass}" id="{previewId}" data-fileindex="{fileindex}">\n   <div class="file-preview-text" title="{caption}" '+s+">\n       {data}\n   </div>\n   {footer}\n</div>",$='<div class="file-preview-frame{frameClass}" id="{previewId}" data-fileindex="{fileindex}" title="{caption}" '+s+'>\n   <video width="{width}" height="{height}" controls>\n       <source src="{data}" type="{type}">\n       '+c+"\n   </video>\n   {footer}\n</div>\n",I='<div class="file-preview-frame{frameClass}" id="{previewId}" data-fileindex="{fileindex}" title="{caption}" '+s+'>\n   <audio controls>\n       <source src="{data}" type="{type}">\n       '+c+"\n   </audio>\n   {footer}\n</div>",D='<div class="file-preview-frame{frameClass}" id="{previewId}" data-fileindex="{fileindex}" title="{caption}" '+s+'>\n   <object type="application/x-shockwave-flash" width="{width}" height="{height}" data="{data}">\n'+d+"       "+c+"\n   </object>\n   {footer}\n</div>\n",P='<div class="file-preview-frame{frameClass}" id="{previewId}" data-fileindex="{fileindex}" title="{caption}" '+s+'>\n   <object data="{data}" type="{type}" width="{width}" height="{height}">\n       <param name="movie" value="{caption}" />\n'+d+"         "+c+"\n   </object>\n   {footer}\n</div>",S='<div class="file-preview-frame{frameClass}" id="{previewId}" data-fileindex="{fileindex}" title="{caption}" '+s+">\n   "+c+"\n   {footer}\n</div>",U={main1:u,main2:f,preview:v,icon:h,caption:m,modal:g,progress:w,footer:b,actions:x,actionDelete:C,actionUpload:y},j={generic:T,html:E,image:k,text:F,video:$,audio:I,flash:D,object:P,other:S},A=["image","html","text","video","audio","flash","object"],L={image:{width:"auto",height:"160px"},html:{width:"213px",height:"160px"},text:{width:"160px",height:"160px"},video:{width:"213px",height:"160px"},audio:{width:"213px",height:"80px"},flash:{width:"213px",height:"160px"},object:{width:"160px",height:"160px"},other:{width:"160px",height:"160px"}},O={image:function(e,i){return void 0!==e?e.match("image.*"):i.match(/\.(gif|png|jpe?g)$/i)},html:function(e,i){return void 0!==e?"text/html"===e:i.match(/\.(htm|html)$/i)},text:function(e,i){return void 0!==e&&e.match("text.*")||i.match(/\.(txt|md|csv|nfo|php|ini)$/i)},video:function(e,i){return void 0!==e&&e.match(/\.video\/(ogg|mp4|webm)$/i)||i.match(/\.(og?|mp4|webm)$/i)},audio:function(e,i){return void 0!==e&&e.match(/\.audio\/(ogg|mp3|wav)$/i)||i.match(/\.(ogg|mp3|wav)$/i)},flash:function(e,i){return void 0!==e&&"application/x-shockwave-flash"===e||i.match(/\.(swf)$/i)},object:function(){return!0},other:function(){return!0}},R=function(i,t){return null===i||void 0===i||0===i.length||t&&""===e.trim(i)},z=function(e){return Array.isArray(e)||"[object Array]"===Object.prototype.toString.call(e)},M=function(e,i){return"object"==typeof i&&e in i},N=function(i,t,a){return R(i)||R(i[t])?a:e(i[t])},B=function(){return Math.round((new Date).getTime()+100*Math.random())},Z=function(e){return String(e).repl("&","&amp;").repl('"',"&quot;").repl("'","&#39;").repl("<","&lt;").repl(">","&gt;")},H=function(i,t){var a=i;return t=t||{},e.each(t,function(e,i){"function"==typeof i&&(i=i()),a=a.repl(e,i)}),a},W=window.URL||window.webkitURL,_=function(t,a){var r=this;r.$element=e(t),r.validate()&&(r.isPreviewable=n(),r.isIE9=i(9),r.isIE10=i(10),r.isPreviewable||r.isIE9?(r.init(a),r.listen()):r.$element.removeClass("file-loading"))};_.prototype={constructor:_,validate:function(){var e,i=this;return"file"===i.$element.attr("type")?!0:(e='<div class="help-block alert alert-warning"><h4>Invalid Input Type</h4>You must set an input <code>type = file</code> for <b>bootstrap-fileinput</b> plugin to initialize.</div>',i.$element.after(e),!1)},init:function(i){var n,s=this,d=s.$element;e.each(i,function(e,i){s[e]="maxFileCount"===e||"maxFileSize"===e?a(i):i}),s.fileInputCleared=!1,s.fileBatchCompleted=!0,R(s.allowedPreviewTypes)&&(s.allowedPreviewTypes=A),s.isPreviewable||(s.showPreview=!1),s.uploadFileAttr=R(d.attr("name"))?"file_data":d.attr("name"),s.reader=null,s.formdata={},s.filestack=[],s.ajaxRequests=[],s.isError=!1,s.ajaxAborted=!1,s.dropZoneEnabled=r()&&s.dropZoneEnabled,s.isDisabled=s.$element.attr("disabled")||s.$element.attr("readonly"),s.isUploadable=l()&&!R(s.uploadUrl),s.slug="function"==typeof i.slugCallback?i.slugCallback:s.slugDefault,s.mainTemplate=s.getLayoutTemplate(s.showCaption?"main1":"main2"),s.captionTemplate=s.getLayoutTemplate("caption"),s.previewGenericTemplate=s.getPreviewTemplate("generic"),R(s.$element.attr("id"))&&s.$element.attr("id",B()),void 0===s.$container?s.$container=s.createContainer():s.refreshContainer(),s.$progress=s.$container.find(".kv-upload-progress"),s.$btnUpload=s.$container.find(".kv-fileinput-upload"),s.$captionContainer=N(i,"elCaptionContainer",s.$container.find(".file-caption")),s.$caption=N(i,"elCaptionText",s.$container.find(".file-caption-name")),s.$previewContainer=N(i,"elPreviewContainer",s.$container.find(".file-preview")),s.$preview=N(i,"elPreviewImage",s.$container.find(".file-preview-thumbnails")),s.$previewStatus=N(i,"elPreviewStatus",s.$container.find(".file-preview-status")),s.$errorContainer=N(i,"elErrorContainer",s.$previewContainer.find(".kv-fileinput-error")),R(s.msgErrorClass)||o(s.$errorContainer,s.msgErrorClass),s.$errorContainer.hide(),s.fileActionSettings=e.extend(p,i.fileActionSettings),s.previewInitId="preview-"+B(),s.id=s.$element.attr("id"),t.init(s),s.initPreview(!0),s.initPreviewDeletes(),s.options=i,s.setFileDropZoneTitle(),s.uploadCount=0,s.uploadPercent=0,s.$element.removeClass("file-loading"),n=s.getLayoutTemplate("progress"),s.progressTemplate=n.replace("{class}",s.progressClass),s.progressCompleteTemplate=n.replace("{class}",s.progressCompleteClass),s.setEllipsis()},parseError:function(i,t,a){var n=this,r=e.trim(t+""),l="."===r.slice(-1)?"":".",o=void 0!==i.responseJSON&&void 0!==i.responseJSON.error?i.responseJSON.error:i.responseText;return n.showAjaxErrorDetails?(o=e.trim(o.replace(/\n\s*\n/g,"\n")),o=o.length>0?"<pre>"+o+"</pre>":"",r+=l+o):r+=l,a?"<b>"+a+": </b>"+i:r},raise:function(i,t){var a=this,n=e.Event(i);if(void 0!==t?a.$element.trigger(n,t):a.$element.trigger(n),!n.result)return n.result;switch(i){case"filebatchuploadcomplete":case"filebatchuploadsuccess":case"fileuploaded":case"fileclear":case"filecleared":case"filereset":case"fileerror":case"filefoldererror":case"fileuploaderror":case"filebatchuploaderror":case"filedeleteerror":case"filecustomerror":case"filesuccessremove":break;default:a.ajaxAborted=n.result}return!0},getLayoutTemplate:function(e){var i=this,t=M(e,i.layoutTemplates)?i.layoutTemplates[e]:U[e];return R(i.customLayoutTags)?t:H(t,i.customLayoutTags)},getPreviewTemplate:function(e){var i=this,t=M(e,i.previewTemplates)?i.previewTemplates[e]:j[e];return t=t.repl("{previewFileIcon}",i.previewFileIcon),R(i.customPreviewTags)?t:H(t,i.customPreviewTags)},getOutData:function(e,i,t){var a=this;return e=e||{},i=i||{},t=t||a.filestack.slice(0)||{},{form:a.formdata,files:t,extra:a.getExtraData(),response:i,reader:a.reader,jqXHR:e}},setEllipsis:function(){var e=this,i=e.$captionContainer,t=e.$caption,a=t.clone().css("height","auto").hide();i.parent().before(a),i.removeClass("kv-has-ellipsis"),a.outerWidth()>t.outerWidth()&&i.addClass("kv-has-ellipsis"),a.remove()},listen:function(){var i=this,t=i.$element,a=i.$captionContainer,n=i.$btnFile,r=t.closest("form");t.on("change",e.proxy(i.change,i)),e(window).on("resize",function(){i.setEllipsis()}),n.off("click").on("click",function(){i.raise("filebrowse"),i.isError&&!i.isUploadable&&i.clear(),a.focus()}),r.off("reset").on("reset",e.proxy(i.reset,i)),i.$container.off("click").on("click",".fileinput-remove:not([disabled])",e.proxy(i.clear,i)).on("click",".fileinput-cancel",e.proxy(i.cancel,i)),i.isUploadable&&i.dropZoneEnabled&&i.showPreview&&i.initDragDrop(),i.isUploadable||r.on("submit",e.proxy(i.submitForm,i)),i.$container.find(".kv-fileinput-upload").off("click").on("click",function(t){var a,n=e(this),r=!n.hasClass("disabled")&&R(n.attr("disabled"));return i.isUploadable?(t.preventDefault(),void(r&&i.upload())):void(r&&"submit"!==n.attr("type")&&(a=n.closest("form"),a.length&&a.trigger("submit"),t.preventDefault()))})},submitForm:function(){var e=this,i=e.$element,t=i.get(0).files;return t&&t.length<e.minFileCount&&e.minFileCount>0?(e.noFilesError({}),!1):!e.abort({})},abort:function(i){var t,a=this;return a.ajaxAborted&&"object"==typeof a.ajaxAborted&&void 0!==a.ajaxAborted.message?(t=e.extend(a.getOutData(),i),t.abortData=a.ajaxAborted.data||{},t.abortMessage=a.ajaxAborted.message,a.showUploadError(a.ajaxAborted.message,t,"filecustomerror"),!0):!1},noFilesError:function(e){var i=this,t=i.minFileCount>1?i.filePlural:i.fileSingle,a=i.msgFilesTooLess.replace("{n}",i.minFileCount).replace("{files}",t),n=i.$errorContainer;n.html(a),i.isError=!0,i.updateFileDetails(0),n.fadeIn(800),i.raise("fileerror",[e]),i.clearFileInput(),o(i.$container,"has-error")},setProgress:function(e){var i=this,t=Math.min(e,100),a=100>t?i.progressTemplate:i.progressCompleteTemplate;R(a)||i.$progress.html(a.repl("{percent}",t))},upload:function(){var i,t,a,n=this,r=n.getFileStack().length,l={},o=!e.isEmptyObject(n.getExtraData());if(r<n.minFileCount&&n.minFileCount>0)return void n.noFilesError(l);if(n.isUploadable&&!n.isDisabled&&(0!==r||o)){if(n.resetUpload(),n.$progress.removeClass("hide"),n.uploadCount=0,n.uploadPercent=0,n.lock(),n.setProgress(0),0===r&&o)return void n.uploadExtraOnly();if(a=n.filestack.length,n.hasInitData=!1,n.uploadAsync&&n.showPreview)for(t=n.getOutData(),n.raise("filebatchpreupload",[t]),n.fileBatchCompleted=!1,n.uploadCache={content:[],config:[],tags:[],append:!0},i=0;a>i;i+=1)void 0!==n.filestack[i]&&n.uploadSingle(i,n.filestack,!0);else n.uploadBatch()}},lock:function(){var e=this;e.resetErrors(),e.disable(),e.showRemove&&o(e.$container.find(".fileinput-remove"),"hide"),e.showCancel&&e.$container.find(".fileinput-cancel").removeClass("hide"),e.raise("filelock",[e.filestack,e.getExtraData()])},unlock:function(e){var i=this;void 0===e&&(e=!0),i.enable(),i.showCancel&&o(i.$container.find(".fileinput-cancel"),"hide"),i.showRemove&&i.$container.find(".fileinput-remove").removeClass("hide"),e&&i.resetFileStack(),i.raise("fileunlock",[i.filestack,i.getExtraData()])},resetFileStack:function(){var i=this,t=0,a=[];i.getThumbs().each(function(){var n=e(this),r=n.attr("data-fileindex"),l=i.filestack[r];-1!==r&&(void 0!==l?(a[t]=l,n.attr({id:i.previewInitId+"-"+t,"data-fileindex":t}),t+=1):n.attr({id:"uploaded-"+B(),"data-fileindex":"-1"}))}),i.filestack=a},refresh:function(i){var t,a=this,n=a.$element,r=arguments.length?e.extend(a.options,i):a.options;n.off(),a.init(r),t=a.$container.find(".file-drop-zone"),t.off("dragenter dragover dragleave drop"),e(document).off("dragenter dragover drop"),a.listen(),a.setFileDropZoneTitle()},initDragDrop:function(){var i=this,t=i.$container.find(".file-drop-zone");t.off("dragenter dragover dragleave drop"),e(document).off("dragenter dragover drop"),t.on("dragenter dragover",function(t){var a=e.inArray("Files",t.originalEvent.dataTransfer.types)>-1;return t.stopPropagation(),t.preventDefault(),i.isDisabled||!a?(t.originalEvent.dataTransfer.effectAllowed="none",void(t.originalEvent.dataTransfer.dropEffect="none")):void o(e(this),"highlighted")}),t.on("dragleave",function(t){t.stopPropagation(),t.preventDefault(),i.isDisabled||e(this).removeClass("highlighted")}),t.on("drop",function(t){t.preventDefault(),i.isDisabled||R(t.originalEvent.dataTransfer.files)||(i.change(t,"dragdrop"),e(this).removeClass("highlighted"))}),e(document).on("dragenter dragover drop",function(e){e.stopPropagation(),e.preventDefault()})},setFileDropZoneTitle:function(){var e=this,i=e.$container.find(".file-drop-zone");i.find("."+e.dropZoneTitleClass).remove(),e.isUploadable&&e.showPreview&&0!==i.length&&!(e.getFileStack().length>0)&&e.dropZoneEnabled&&(0===i.find(".file-preview-frame").length&&i.prepend('<div class="'+e.dropZoneTitleClass+'">'+e.dropZoneTitle+"</div>"),e.$container.removeClass("file-input-new"),o(e.$container,"file-input-ajax-new"))},initFileActions:function(){var i=this;i.$preview.find(".kv-file-remove").each(function(){var a,n,r=e(this),l=r.closest(".file-preview-frame"),o=l.attr("data-fileindex");r.off("click").on("click",function(){i.cleanMemory(l),l.fadeOut("slow",function(){i.filestack[o]=void 0,i.clearObjects(l),l.remove();var e=i.getFileStack(!0),r=e.length,s=t.count(i.id);i.clearFileInput(),0===r&&0===s?i.reset():(a=s+r,n=a>1?i.getMsgSelected(a):e[0]?e[0].name:"",i.setCaption(n))})})}),i.$preview.find(".kv-file-upload").each(function(){var t=e(this);t.off("click").on("click",function(){var e=t.closest(".file-preview-frame"),a=e.attr("data-fileindex");i.uploadSingle(a,i.filestack,!1)})})},getMsgSelected:function(e){var i=this,t=1===e?i.fileSingle:i.filePlural;return i.msgSelected.replace("{n}",e).replace("{files}",t)},renderFileFooter:function(e,i){var t,a,n=this,r=n.fileActionSettings,l=n.getLayoutTemplate("footer");return n.isUploadable?(t=l.repl("{actions}",n.renderFileActions(!0,!0,!1,!1,!1)),a=t.repl("{caption}",e).repl("{width}",i).repl("{indicator}",r.indicatorNew).repl("{indicatorTitle}",r.indicatorNewTitle)):a=l.repl("{actions}","").repl("{caption}",e).repl("{width}",i).repl("{indicator}","").repl("{indicatorTitle}",""),a=H(a,n.previewThumbTags)},renderFileActions:function(e,i,t,a,n){if(!e&&!i)return"";var r=this,l=a===!1?"":' data-url="'+a+'"',o=n===!1?"":' data-key="'+n+'"',s=r.getLayoutTemplate("actionDelete"),d="",c=r.getLayoutTemplate("actions"),p=r.otherActionButtons.repl("{dataKey}",o),u=r.fileActionSettings,f=t?u.removeClass+" disabled":u.removeClass;return s=s.repl("{removeClass}",f).repl("{removeIcon}",u.removeIcon).repl("{removeTitle}",u.removeTitle).repl("{dataUrl}",l).repl("{dataKey}",o),e&&(d=r.getLayoutTemplate("actionUpload").repl("{uploadClass}",u.uploadClass).repl("{uploadIcon}",u.uploadIcon).repl("{uploadTitle}",u.uploadTitle)),c.repl("{delete}",s).repl("{upload}",d).repl("{other}",p)},setThumbStatus:function(e,i){var t=this,a="indicator"+i,n=a+"Title",r="file-preview-"+i.toLowerCase(),l=e.find(".file-upload-indicator"),o=t.fileActionSettings;e.removeClass("file-preview-success file-preview-error file-preview-loading"),l.html(o[a]),l.attr("title",o[n]),e.addClass(r)},clearPreview:function(){var e=this,i=e.$preview.find(e.showUploadedThumbs?".file-preview-frame:not(.file-preview-success)":".file-preview-frame");i.remove(),e.$preview.find(".file-preview-frame").length&&e.showPreview||e.resetUpload()},initPreview:function(e){var i,a=this,n=a.initialCaption||"";return t.count(a.id)?(i=t.out(a.id),n=e&&a.initialCaption?a.initialCaption:i.caption,a.$preview.html(i.content),a.setCaption(n),void(R(i.content)||a.$container.removeClass("file-input-new"))):(a.clearPreview(),void(e?a.setCaption(n):a.initCaption()))},initPreviewDeletes:function(){var i=this,a=i.deleteExtraData||{},n=function(){0===i.$preview.find(".kv-file-remove").length&&(i.reset(),i.initialCaption="")};i.$preview.find(".kv-file-remove").each(function(){var r=e(this),l=r.data("url")||i.deleteUrl,s=r.data("key");if(!R(l)&&void 0!==s){var d,c,p,u,f=r.closest(".file-preview-frame"),v=t.data[i.id],h=f.data("fileindex");h=parseInt(h.replace("init_","")),p=R(v.config)&&R(v.config[h])?null:v.config[h],u=R(p)||R(p.extra)?a:p.extra,"function"==typeof u&&(u=u()),c={id:r.attr("id"),key:s,extra:u},d=e.extend({url:l,type:"DELETE",dataType:"json",data:e.extend({key:s},u),beforeSend:function(e){i.ajaxAborted=!1,i.raise("filepredelete",[s,e,u]),i.ajaxAborted?e.abort():(o(f,"file-uploading"),o(r,"disabled"))},success:function(e,a,l){var o,d;return R(e)||R(e.error)?(t.unset(i.id,h),o=t.count(i.id),d=o>0?i.getMsgSelected(o):"",i.raise("filedeleted",[s,l,u]),i.setCaption(d),f.removeClass("file-uploading").addClass("file-deleted"),void f.fadeOut("slow",function(){i.clearObjects(f),f.remove(),n(),o||0!==i.getFileStack().length||(i.setCaption(""),i.reset())})):(c.jqXHR=l,c.response=e,i.showError(e.error,c,"filedeleteerror"),f.removeClass("file-uploading"),r.removeClass("disabled"),void n())},error:function(e,t,a){var r=i.parseError(e,a);c.jqXHR=e,c.response={},i.showError(r,c,"filedeleteerror"),f.removeClass("file-uploading"),n()}},i.ajaxDeleteSettings),r.off("click").on("click",function(){e.ajax(d)})}})},clearObjects:function(i){i.find("video audio").each(function(){this.pause(),e(this).remove()}),i.find("img object div").each(function(){e(this).remove()})},clearFileInput:function(){var i,t,a,n=this,r=n.$element;R(r.val())||(n.isIE9||n.isIE10?(i=r.closest("form"),t=e(document.createElement("form")),a=e(document.createElement("div")),r.before(a),i.length?i.after(t):a.after(t),t.append(r).trigger("reset"),a.before(r).remove(),t.remove()):r.val(""),n.fileInputCleared=!0)},resetUpload:function(){var e=this;e.uploadCache={content:[],config:[],tags:[],append:!0},e.uploadCount=0,e.uploadPercent=0,e.$btnUpload.removeAttr("disabled"),e.setProgress(0),o(e.$progress,"hide"),e.resetErrors(!1),e.ajaxAborted=!1,e.ajaxRequests=[]},cancel:function(){var i,t=this,a=t.ajaxRequests,n=a.length;if(n>0)for(i=0;n>i;i+=1)a[i].abort();t.getThumbs().each(function(){var i=e(this),a=i.attr("data-fileindex");i.removeClass("file-uploading"),void 0!==t.filestack[a]&&(i.find(".kv-file-upload").removeClass("disabled").removeAttr("disabled"),i.find(".kv-file-remove").removeClass("disabled").removeAttr("disabled")),t.unlock()})},cleanMemory:function(e){var i=e.is("img")?e.attr("src"):e.find("source").attr("src");W.revokeObjectURL(i)},hasInitialPreview:function(){var e=this;return!e.overwriteInitial&&t.count(e.id)},clear:function(){var i,t=this;t.$btnUpload.removeAttr("disabled"),t.getThumbs().find("video,audio,img").each(function(){t.cleanMemory(e(this))}),t.resetUpload(),t.filestack=[],t.clearFileInput(),t.resetErrors(!0),t.raise("fileclear"),t.hasInitialPreview()?(t.showFileIcon(),t.resetPreview(),t.setEllipsis(),t.initPreviewDeletes(),t.$container.removeClass("file-input-new")):(t.getThumbs().each(function(){t.clearObjects(e(this))}),t.$preview.html(""),i=!t.overwriteInitial&&t.initialCaption.length>0?t.initialCaption:"",t.setCaption(i),t.setEllipsis(),t.$caption.attr("title",""),o(t.$container,"file-input-new")),0===t.$container.find(".file-preview-frame").length&&(t.initCaption()||t.$captionContainer.find(".kv-caption-icon").hide(),t.setEllipsis()),t.hideFileIcon(),t.raise("filecleared"),t.$captionContainer.focus(),t.setFileDropZoneTitle()},resetPreview:function(){var e,i=this;t.count(i.id)?(e=t.out(i.id),i.$preview.html(e.content),i.setCaption(e.caption)):(i.clearPreview(),i.initCaption())},reset:function(){var e=this;e.resetPreview(),e.setEllipsis(),e.$container.find(".fileinput-filename").text(""),e.raise("filereset"),e.initialPreview.length>0&&e.$container.removeClass("file-input-new"),e.setFileDropZoneTitle(),e.filestack=[],e.formdata={}},disable:function(){var e=this;e.isDisabled=!0,e.raise("filedisabled"),e.$element.attr("disabled","disabled"),e.$container.find(".kv-fileinput-caption").addClass("file-caption-disabled"),e.$container.find(".btn-file, .fileinput-remove, .kv-fileinput-upload").attr("disabled",!0),e.initDragDrop()},enable:function(){var e=this;e.isDisabled=!1,e.raise("fileenabled"),e.$element.removeAttr("disabled"),e.$container.find(".kv-fileinput-caption").removeClass("file-caption-disabled"),e.$container.find(".btn-file, .fileinput-remove, .kv-fileinput-upload").removeAttr("disabled"),e.initDragDrop()},getThumbs:function(e){return e=e||"",this.$preview.find(".file-preview-frame:not(.file-preview-initial)"+e)},getExtraData:function(){var e=this,i=e.uploadExtraData;return"function"==typeof e.uploadExtraData&&(i=e.uploadExtraData()),i},uploadExtra:function(){var i=this,t=i.getExtraData();0!==t.length&&e.each(t,function(e,t){i.formdata.append(e,t)})},initXhr:function(e,i){var t=this;return e.upload&&e.upload.addEventListener("progress",function(e){var a=0,n=e.loaded||e.position,r=e.total;e.lengthComputable&&(a=Math.ceil(n/r*i)),t.uploadPercent=Math.max(a,t.uploadPercent),t.setProgress(t.uploadPercent)},!1),e},ajaxSubmit:function(i,t,a,n){var r,l=this;l.uploadExtra(),r=e.extend({xhr:function(){var i=e.ajaxSettings.xhr();return l.initXhr(i,98)},url:l.uploadUrl,type:"POST",dataType:"json",data:l.formdata,cache:!1,processData:!1,contentType:!1,beforeSend:i,success:t,complete:a,error:n},l.ajaxSettings),l.ajaxRequests.push(e.ajax(r))},initUploadSuccess:function(i,a,n){var r,l,o,s,d,c,p,u=this;"object"!=typeof i||e.isEmptyObject(i)||void 0!==i.initialPreview&&i.initialPreview.length>0&&(u.hasInitData=!0,d=i.initialPreview||[],c=i.initialPreviewConfig||[],p=i.initialPreviewThumbTags||[],r=void 0===i.append||i.append?!0:!1,u.overwriteInitial=!1,void 0===a||n?n?(u.uploadCache.content.push(d[0]),u.uploadCache.config.push(c[0]),u.uploadCache.tags.push(p[0]),u.uploadCache.append=r):(t.set(u.id,d,c,p,r),u.initPreview(),u.initPreviewDeletes()):(o=t.add(u.id,d,c[0],p[0],r),l=t.get(u.id,o,!1),s=e(l).hide(),a.after(s).fadeOut("slow",function(){s.fadeIn("slow").css("display:inline-block"),u.initPreviewDeletes(),u.clearFileInput()})))},initSuccessThumbs:function(){var i=this;i.getThumbs(".file-preview-success").each(function(){var t=e(this),a=t.find(".kv-file-remove");a.removeAttr("disabled").off("click").on("click",function(){var e=i.raise("filesuccessremove",[t.attr("id"),t.data("fileindex")]);i.cleanMemory(t),e!==!1&&t.fadeOut("slow",function(){t.remove(),i.$preview.find(".file-preview-frame").length||i.reset()})})})},uploadSingle:function(i,a,n){var r,l,s,d,c,p,u,f,v,h=this,m=h.getFileStack().length,g=new FormData,w=h.previewInitId+"-"+i,b=e("#"+w+":not(.file-preview-initial)"),x=b.find(".kv-file-upload"),C=b.find(".kv-file-remove"),y=h.filestack.length>0||!e.isEmptyObject(h.uploadExtraData),T={id:w,index:i};h.formdata=g,0===m||!y||x.hasClass("disabled")||h.abort(T)||(s=function(){var e=h.getThumbs(".file-uploading");e.length>0||h.fileBatchCompleted||(h.fileBatchCompleted=!0,setTimeout(function(){t.set(h.id,h.uploadCache.content,h.uploadCache.config,h.uploadCache.tags,h.uploadCache.append),h.hasInitData&&(h.initPreview(),h.initPreviewDeletes()),h.setProgress(100),h.unlock(),h.clearFileInput(),h.raise("filebatchuploadcomplete",[h.filestack,h.getExtraData()])},100))},d=function(){!n||0===m||h.uploadPercent>=100||(h.uploadCount+=1,l=80+Math.ceil(20*h.uploadCount/m),h.uploadPercent=Math.max(l,h.uploadPercent),h.setProgress(h.uploadPercent),h.initPreviewDeletes())},c=function(){x.removeAttr("disabled"),C.removeAttr("disabled"),b.removeClass("file-uploading")},p=function(t){r=h.getOutData(t),b.hasClass("file-preview-success")||(h.setThumbStatus(b,"Loading"),o(b,"file-uploading")),x.attr("disabled",!0),C.attr("disabled",!0),n||h.lock(),h.raise("filepreupload",[r,w,i]),T=e.extend(T,r),h.abort(T)&&(t.abort(),h.setProgress(100))},u=function(t,a,l){r=h.getOutData(l,t),T=e.extend(T,r),setTimeout(function(){R(t)||R(t.error)?(h.setThumbStatus(b,"Success"),x.hide(),h.filestack[i]=void 0,h.raise("fileuploaded",[r,w,i]),h.initUploadSuccess(t,b,n),n||h.resetFileStack()):(h.setThumbStatus(b,"Error"),h.showUploadError(t.error,T))},100)},f=function(){setTimeout(function(){d(),c(),n?s():h.unlock(!1),h.initSuccessThumbs()},100)},v=function(t,r,l){var o=h.parseError(t,l,n?a[i].name:null);h.setThumbStatus(b,"Error"),T=e.extend(T,h.getOutData(t)),h.showUploadError(o,T)},g.append(h.uploadFileAttr,a[i]),g.append("file_id",i),h.ajaxSubmit(p,u,f,v))},uploadBatch:function(){var i,t,a,n,r,l=this,s=l.filestack,d=s.length,c=l.filestack.length>0||!e.isEmptyObject(l.uploadExtraData),p={};l.formdata=new FormData,0!==d&&c&&!l.abort(p)&&(i=function(){e.each(s,function(e){l.filestack[e]=void 0}),l.clearFileInput()},t=function(i){l.lock();var t=l.getOutData(i);l.showPreview&&l.getThumbs().each(function(){var i=e(this),t=i.find(".kv-file-upload"),a=i.find(".kv-file-remove");i.hasClass("file-preview-success")||(l.setThumbStatus(i,"Loading"),o(i,"file-uploading")),t.attr("disabled",!0),a.attr("disabled",!0)}),l.raise("filebatchpreupload",[t]),l.abort(t)&&i.abort()},a=function(t,a,n){var r=l.getOutData(n,t),o=l.getThumbs(),s=R(t.errorkeys)?[]:t.errorkeys;R(t)||R(t.error)?(l.raise("filebatchuploadsuccess",[r]),i(),l.showPreview?(o.each(function(){var i=e(this),t=i.find(".kv-file-upload");i.find(".kv-file-upload").hide(),l.setThumbStatus(i,"Success"),i.removeClass("file-uploading"),t.removeAttr("disabled")}),l.initUploadSuccess(t)):l.reset()):(l.showPreview&&(o.each(function(){var i=e(this),t=i.find(".kv-file-remove"),a=i.find(".kv-file-upload");return i.removeClass("file-uploading"),a.removeAttr("disabled"),t.removeAttr("disabled"),0===s.length?void l.setThumbStatus(i,"Error"):void(-1!==e.inArray(key,s)?l.setThumbStatus(i,"Error"):(i.find(".kv-file-upload").hide(),l.setThumbStatus(i,"Success"),l.filestack[key]=void 0));
+
+}),l.initUploadSuccess(t)),l.showUploadError(t.error,r,"filebatchuploaderror"))},n=function(){l.setProgress(100),l.unlock(),l.initSuccessThumbs(),l.raise("filebatchuploadcomplete",[l.filestack,l.getExtraData()]),l.clearFileInput()},r=function(i,t,a){var n=l.getOutData(i),r=l.parseError(i,a);l.showUploadError(r,n,"filebatchuploaderror"),l.uploadFileCount=d-1,l.showPreview&&(l.getThumbs().each(function(){var i=e(this),t=i.attr("data-fileindex");i.removeClass("file-uploading"),void 0!==l.filestack[t]&&l.setThumbStatus(i,"Error")}),l.getThumbs().removeClass("file-uploading"),l.getThumbs(" .kv-file-upload").removeAttr("disabled"),l.getThumbs(" .kv-file-delete").removeAttr("disabled"))},e.each(s,function(e,i){R(s[e])||l.formdata.append(l.uploadFileAttr,i)}),l.ajaxSubmit(t,a,n,r))},uploadExtraOnly:function(){var e,i,t,a,n=this,r={};n.formdata=new FormData,n.abort(r)||(e=function(e){n.lock();var i=n.getOutData(e);n.raise("filebatchpreupload",[i]),n.setProgress(50),r.data=i,r.xhr=e,n.abort(r)&&(e.abort(),n.setProgress(100))},i=function(e,i,t){var a=n.getOutData(t,e);R(e)||R(e.error)?(n.raise("filebatchuploadsuccess",[a]),n.clearFileInput(),n.initUploadSuccess(e)):n.showUploadError(e.error,a,"filebatchuploaderror")},t=function(){n.setProgress(100),n.unlock(),n.raise("filebatchuploadcomplete",[n.filestack,n.getExtraData()]),n.clearFileInput()},a=function(e,i,t){var a=n.getOutData(e),l=n.parseError(e,t);r.data=a,n.showUploadError(l,a,"filebatchuploaderror")},n.ajaxSubmit(e,i,t,a))},hideFileIcon:function(){this.overwriteInitial&&this.$captionContainer.find(".kv-caption-icon").hide()},showFileIcon:function(){this.$captionContainer.find(".kv-caption-icon").show()},resetErrors:function(e){var i=this,t=i.$errorContainer;i.isError=!1,i.$container.removeClass("has-error"),t.html(""),e?t.fadeOut("slow"):t.hide()},showFolderError:function(e){var i=this,t=i.$errorContainer;e&&(t.html(i.msgFoldersNotAllowed.repl("{n}",e)),t.fadeIn(800),o(i.$container,"has-error"),i.raise("filefoldererror",[e]))},showUploadError:function(e,i,t){var a=this,n=a.$errorContainer,r=t||"fileuploaderror";return 0===n.find("ul").length?n.html("<ul><li>"+e+"</li></ul>"):n.find("ul").append("<li>"+e+"</li>"),n.fadeIn(800),a.raise(r,[i]),o(a.$container,"has-error"),!0},showError:function(e,i,t){var a=this,n=a.$errorContainer,r=t||"fileerror";return i=i||{},i.reader=a.reader,n.html(e),n.fadeIn(800),a.raise(r,[i]),a.isUploadable||a.clearFileInput(),o(a.$container,"has-error"),a.$btnUpload.attr("disabled",!0),!0},errorHandler:function(e,i){var t=this,a=e.target.error;switch(a.code){case a.NOT_FOUND_ERR:t.showError(t.msgFileNotFound.replace("{name}",i));break;case a.SECURITY_ERR:t.showError(t.msgFileSecured.replace("{name}",i));break;case a.NOT_READABLE_ERR:t.showError(t.msgFileNotReadable.replace("{name}",i));break;case a.ABORT_ERR:t.showError(t.msgFilePreviewAborted.replace("{name}",i));break;default:t.showError(t.msgFilePreviewError.replace("{name}",i))}},parseFileType:function(e){var i,t,a,n,r=this;for(n=0;n<A.length;n+=1)if(a=A[n],i=M(a,r.fileTypeSettings)?r.fileTypeSettings[a]:O[a],t=i(e.type,e.name)?a:"",!R(t))return t;return"other"},previewDefault:function(i,t,a){if(this.showPreview){var n=this,r=W.createObjectURL(i),l=(e("#"+t),n.previewSettings.other||L.other),o=n.renderFileFooter(i.name,l.width),s=n.getPreviewTemplate("other"),d=t.slice(t.lastIndexOf("-")+1),c="";a===!0&&(c=" btn disabled",o+='<div class="file-other-error text-danger"><i class="glyphicon glyphicon-exclamation-sign"></i></div>'),n.$preview.append("\n"+s.repl("{previewId}",t).repl("{frameClass}",c).repl("{fileindex}",d).repl("{caption}",n.slug(i.name)).repl("{width}",l.width).repl("{height}",l.height).repl("{type}",i.type).repl("{data}",r).repl("{footer}",o))}},previewFile:function(e,i,t,a,n){if(this.showPreview){var r,l,o,s,d=this,c=d.parseFileType(i),p=d.slug(i.name),u=d.allowedPreviewTypes,f=d.allowedPreviewMimeTypes,v=d.getPreviewTemplate(c),h=M(c,d.previewSettings)?d.previewSettings[c]:L[c],m=parseInt(d.wrapTextLength,10),g=d.wrapIndicator,w=u.indexOf(c)>=0,b=R(f)||!R(f)&&-1!==f.indexOf(i.type),x=d.renderFileFooter(p,h.width),C="",y=a.slice(a.lastIndexOf("-")+1);w&&b?("text"===c?(l=Z(t.target.result),l.length>m&&(o="text-"+B(),s=.75*window.innerHeight,C=d.getLayoutTemplate("modal").repl("{id}",o).repl("{title}",p).repl("{height}",s).repl("{body}",l),g=g.repl("{title}",p).repl("{dialog}","$('#"+o+"').modal('show')"),l=l.substring(0,m-1)+g),r=v.repl("{previewId}",a).repl("{caption}",p).repl("{frameClass}","").repl("{type}",i.type).repl("{width}",h.width).repl("{height}",h.height).repl("{data}",l).repl("{footer}",x).repl("{fileindex}",y)+C):r=v.repl("{previewId}",a).repl("{caption}",p).repl("{frameClass}","").repl("{type}",i.type).repl("{data}",n).repl("{width}",h.width).repl("{height}",h.height).repl("{footer}",x).repl("{fileindex}",y),d.$preview.append("\n"+r),d.validateImage(e,a)):d.previewDefault(i,a)}},slugDefault:function(e){return R(e)?"":e.split(/(\\|\/)/g).pop().replace(/[^\w\u00C0-\u017F\-.\\\/ ]+/g,"")},getFileStack:function(e){var i=this;return i.filestack.filter(function(i){return e?void 0!==i:void 0!==i&&null!==i})},readFiles:function(i){function t(e){if(R(n.attr("multiple"))&&(u=1),e>=u)return a.isUploadable&&a.filestack.length>0?a.raise("filebatchselected",[a.getFileStack()]):a.raise("filebatchselected",[i]),o.removeClass("loading"),void s.html("");var m,g,w,b,x,C,y=v+e,T=p+"-"+y,E=i[e],k=a.slug(E.name),F=(E.size||0)/1e3,$="",I=W.createObjectURL(E),D=0,P=a.allowedFileTypes,S=R(P)?"":P.join(", "),U=a.allowedFileExtensions,j=R(U)?"":U.join(", ");if(R(U)||($=new RegExp("\\.("+U.join("|")+")$","i")),F=F.toFixed(2),a.maxFileSize>0&&F>a.maxFileSize)return b=a.msgSizeTooLarge.replace("{name}",k).replace("{size}",F).replace("{maxSize}",a.maxFileSize),void(a.isError=h(b,E,T,e));if(!R(P)&&z(P)){for(w=0;w<P.length;w+=1)x=P[w],g=f[x],C=void 0!==g&&g(E.type,k),D+=R(C)?0:C.length;if(0===D)return b=a.msgInvalidFileType.replace("{name}",k).replace("{types}",S),void(a.isError=h(b,E,T,e))}return 0!==D||R(U)||!z(U)||R($)||(C=k.match($),D+=R(C)?0:C.length,0!==D)?a.showPreview?(r.length>0&&void 0!==FileReader?(s.html(d.replace("{index}",e+1).replace("{files}",u)),o.addClass("loading"),l.onerror=function(e){a.errorHandler(e,k)},l.onload=function(i){a.previewFile(e,E,i,T,I),a.initFileActions()},l.onloadend=function(){b=c.replace("{index}",e+1).replace("{files}",u).replace("{percent}",50).replace("{name}",k),setTimeout(function(){s.html(b),t(e+1),a.updateFileDetails(u)},100),a.raise("fileloaded",[E,T,e,l])},l.onprogress=function(i){if(i.lengthComputable){var t=i.loaded/i.total*100,a=Math.ceil(t);b=c.replace("{index}",e+1).replace("{files}",u).replace("{percent}",a).replace("{name}",k),setTimeout(function(){s.html(b)},100)}},m=M("text",f)?f.text:O.text,m(E.type,k)?l.readAsText(E,a.textEncoding):l.readAsArrayBuffer(E)):(a.previewDefault(E,T),setTimeout(function(){t(e+1),a.updateFileDetails(u)},100),a.raise("fileloaded",[E,T,e,l])),void a.filestack.push(E)):(a.filestack.push(E),setTimeout(t(e+1),100),void a.raise("fileloaded",[E,T,e,l])):(b=a.msgInvalidFileExtension.replace("{name}",k).replace("{extensions}",j),void(a.isError=h(b,E,T,e)))}this.reader=new FileReader;var a=this,n=a.$element,r=a.$preview,l=a.reader,o=a.$previewContainer,s=a.$previewStatus,d=a.msgLoading,c=a.msgProgress,p=a.previewInitId,u=i.length,f=a.fileTypeSettings,v=a.filestack.length,h=function(t,n,r,l){var o=e.extend(a.getOutData({},{},i),{id:r,index:l}),s={id:r,index:l,file:n,files:i};return a.previewDefault(n,r,!0),a.isUploadable?a.showUploadError(t,o):a.showError(t,s)};t(0),a.updateFileDetails(u,!1)},updateFileDetails:function(e){var i=this,a=i.$element,n=i.getFileStack(),r=a.val()||n.length&&n[0].name||"",l=i.slug(r),o=i.isUploadable?n.length:e,s=t.count(i.id)+o,d=o>1?i.getMsgSelected(s):l;i.isError?(i.$previewContainer.removeClass("loading"),i.$previewStatus.html(""),i.$captionContainer.find(".kv-caption-icon").hide()):i.showFileIcon(),i.setCaption(d,i.isError),i.$container.removeClass("file-input-new file-input-ajax-new"),1===arguments.length&&i.raise("fileselect",[e,l]),t.count(i.id)&&i.initPreviewDeletes()},change:function(i){var a=this,n=a.$element;if(!a.isUploadable&&R(n.val())&&a.fileInputCleared)return void(a.fileInputCleared=!1);a.fileInputCleared=!1;var r,l,o,s,d=a.$preview,c=arguments.length>1,p=c?i.originalEvent.dataTransfer.files:n.get(0).files,u=R(n.attr("multiple")),f=0,v=0,h=a.filestack.length,m=a.isUploadable,g=function(i,t,n,r){var l=e.extend(a.getOutData({},{},p),{id:n,index:r}),o={id:n,index:r,file:t,files:p};return a.isUploadable?a.showUploadError(i,l):a.showError(i,o)};if(a.reader=null,a.resetUpload(),a.hideFileIcon(),a.isUploadable&&a.$container.find(".file-drop-zone ."+a.dropZoneTitleClass).remove(),c)for(r=[];p[f];)s=p[f],s.type||s.size%4096!==0?r.push(s):v++,f++;else r=void 0===i.target.files?i.target&&i.target.value?[{name:i.target.value.replace(/^.+\\/,"")}]:[]:i.target.files;if(R(r)||0===r.length)return m||a.clear(),a.showFolderError(v),void a.raise("fileselectnone");if(a.resetErrors(),o=a.isUploadable?a.getFileStack().length+r.length:r.length,a.maxFileCount>0&&o>a.maxFileCount)return l=a.msgFilesTooMany.replace("{m}",a.maxFileCount).replace("{n}",o),a.isError=g(l,null,null,null),a.$captionContainer.find(".kv-caption-icon").hide(),a.setCaption("",!0),a.setEllipsis(),void a.$container.removeClass("file-input-new file-input-ajax-new");if(!m||u&&h>0){if(a.hasInitialPreview()){var w=t.out(a.id);d.html(w.content),a.setCaption(w.caption),a.initPreviewDeletes()}else a.clearPreview();u&&h>0&&(a.filestack=[])}else!m||0!==h||t.count(a.id)&&!a.overwriteInitial||(a.clearPreview(),a.filestack=[]);a.isPreviewable?a.readFiles(r):a.updateFileDetails(1),a.showFolderError(v)},validateImage:function(e,i){var t,a,n,r,l=this,o=l.$preview,s=o.find("#"+i),d="Untitled",c=s.find("img");c.length&&c.on("load",function(){a=s.width(),n=o.width(),a>n&&(c.css("width","100%"),s.css("width","97%")),r=c.closest(".file-preview-frame").find(".file-caption-name"),r.length&&(r.width(c.width()),d=r.text(),r.attr("title",d)),t={ind:e,id:i},l.checkDimensions(e,"Small",c,s,d,"Width",t),l.checkDimensions(e,"Small",c,s,d,"Height",t),l.checkDimensions(e,"Large",c,s,d,"Width",t),l.checkDimensions(e,"Large",c,s,d,"Height",t),l.raise("fileimageloaded",[i]),W.revokeObjectURL(c.attr("src"))})},checkDimensions:function(e,i,t,a,n,r,l){var o,s,d,c,p=this,u="Small"===i?"min":"max",f=p[u+"Image"+r];!R(f)&&t.length&&(d=t[0],s="Width"===r?d.naturalWidth||d.width:d.naturalHeight||d.height,c="Small"===i?s>=f:f>=s,c||(o=p["msgImage"+r+i].replace("{name}",n).replace("{size}",f),p.showUploadError(o,l),p.setThumbStatus(a,"Error"),p.filestack[e]=null))},initCaption:function(){var e=this,i=e.initialCaption||"";return e.overwriteInitial||R(i)?(e.$caption.html(""),!1):(e.setCaption(i),!0)},setCaption:function(i,t){var a,n,r=this;if(t)a=e("<div>"+r.msgValidationError+"</div>").text(),n='<span class="'+r.msgValidationErrorClass+'">'+r.msgValidationErrorIcon+a+"</span>";else{if(R(i)||0===r.$caption.length)return;a=e("<div>"+i+"</div>").text(),n=r.getLayoutTemplate("icon")+a}r.$caption.html(n),r.$caption.attr("title",a),r.$captionContainer.find(".file-caption-ellipsis").attr("title",a),r.setEllipsis()},initBrowse:function(e){var i=this;i.$btnFile=e.find(".btn-file"),i.$btnFile.append(i.$element)},createContainer:function(){var i=this,t=e(document.createElement("span")).attr({"class":"file-input file-input-new"}).html(i.renderMain());return i.$element.before(t),i.initBrowse(t),t},refreshContainer:function(){var e=this,i=e.$container;i.before(e.$element),i.html(e.renderMain()),e.initBrowse(i)},renderMain:function(){var e=this,i=e.isUploadable&&e.dropZoneEnabled?" file-drop-zone":"",t=e.showPreview?e.getLayoutTemplate("preview").repl("{class}",e.previewClass).repl("{dropClass}",i):"",a=e.isDisabled?e.captionClass+" file-caption-disabled":e.captionClass,n=e.captionTemplate.repl("{class}",a+" kv-fileinput-caption");return e.mainTemplate.repl("{class}",e.mainClass).repl("{preview}",t).repl("{caption}",n).repl("{upload}",e.renderUpload()).repl("{remove}",e.renderRemove()).repl("{cancel}",e.renderCancel()).repl("{browse}",e.renderBrowse())},renderBrowse:function(){var e=this,i=e.browseClass+" btn-file",t="";return e.isDisabled&&(t=" disabled "),'<div class="'+i+'"'+t+"> "+e.browseIcon+e.browseLabel+" </div>"},renderRemove:function(){var e=this,i=e.removeClass+" fileinput-remove fileinput-remove-button",t="";return e.showRemove?(e.isDisabled&&(t=" disabled "),'<button type="button" title="'+e.removeTitle+'" class="'+i+'"'+t+">"+e.removeIcon+e.removeLabel+"</button>"):""},renderCancel:function(){var e=this,i=e.cancelClass+" fileinput-cancel fileinput-cancel-button";return e.showCancel?'<button type="button" title="'+e.cancelTitle+'" class="hide '+i+'">'+e.cancelIcon+e.cancelLabel+"</button>":""},renderUpload:function(){var e=this,i=e.uploadClass+" kv-fileinput-upload fileinput-upload-button",t="",a="";return e.showUpload?(e.isDisabled&&(a=" disabled "),t=!e.isUploadable||e.isDisabled?'<button type="submit" title="'+e.uploadTitle+'"class="'+i+'"'+a+">"+e.uploadIcon+e.uploadLabel+"</button>":'<a href="'+e.uploadUrl+'" title="'+e.uploadTitle+'" class="'+i+'"'+a+">"+e.uploadIcon+e.uploadLabel+"</a>"):""}},e.fn.fileinput=function(t){if(n()||i(9)){var a=Array.apply(null,arguments);return a.shift(),this.each(function(){var i,n=e(this),r=n.data("fileinput"),l="object"==typeof t&&t,o=l.language||n.data("language")||"en";r||(i=e.extend({},e.fn.fileinput.defaults),"en"===o||R(e.fn.fileinputLocales[o])||(i=e.extend(i,e.fn.fileinputLocales[o])),r=new _(this,e.extend(i,l,n.data())),n.data("fileinput",r)),"string"==typeof t&&r[t].apply(r,a)})}},e.fn.fileinput.defaults={language:"en",showCaption:!0,showPreview:!0,showRemove:!0,showUpload:!0,showCancel:!0,showUploadedThumbs:!0,mainClass:"",previewClass:"",captionClass:"",mainTemplate:null,initialCaption:"",initialPreview:[],initialPreviewDelimiter:"*$$*",initialPreviewConfig:[],initialPreviewThumbTags:[],previewThumbTags:{},initialPreviewShowDelete:!0,deleteUrl:"",deleteExtraData:{},overwriteInitial:!0,layoutTemplates:U,previewTemplates:j,allowedPreviewTypes:A,allowedPreviewMimeTypes:null,allowedFileTypes:null,allowedFileExtensions:null,customLayoutTags:{},customPreviewTags:{},previewSettings:L,fileTypeSettings:O,previewFileIcon:'<i class="glyphicon glyphicon-file"></i>',browseIcon:'<i class="glyphicon glyphicon-folder-open"></i> &nbsp;',browseClass:"btn btn-primary",removeIcon:'<i class="glyphicon glyphicon-trash"></i> ',removeClass:"btn btn-default",cancelIcon:'<i class="glyphicon glyphicon-ban-circle"></i> ',cancelClass:"btn btn-default",uploadIcon:'<i class="glyphicon glyphicon-upload"></i> ',uploadClass:"btn btn-default",uploadUrl:null,uploadAsync:!0,uploadExtraData:{},minImageWidth:null,minImageHeight:null,maxImageWidth:null,maxImageHeight:null,maxFileSize:0,minFileCount:0,maxFileCount:0,msgValidationErrorClass:"text-danger",msgValidationErrorIcon:'<i class="glyphicon glyphicon-exclamation-sign"></i> ',msgErrorClass:"file-error-message",progressClass:"progress-bar progress-bar-success progress-bar-striped active",progressCompleteClass:"progress-bar progress-bar-success",previewFileType:"image",wrapTextLength:250,wrapIndicator:' <span class="wrap-indicator" title="{title}" onclick="{dialog}">[&hellip;]</span>',elCaptionContainer:null,elCaptionText:null,elPreviewContainer:null,elPreviewImage:null,elPreviewStatus:null,elErrorContainer:null,slugCallback:null,dropZoneEnabled:!0,dropZoneTitleClass:"file-drop-zone-title",fileActionSettings:{},otherActionButtons:"",textEncoding:"UTF-8",ajaxSettings:{},ajaxDeleteSettings:{},showAjaxErrorDetails:!0},e.fn.fileinputLocales.en={fileSingle:"file",filePlural:"files",browseLabel:"Browse &hellip;",removeLabel:"Remove",removeTitle:"Clear selected files",cancelLabel:"Cancel",cancelTitle:"Abort ongoing upload",uploadLabel:"Upload",uploadTitle:"Upload selected files",msgSizeTooLarge:'File "{name}" (<b>{size} KB</b>) exceeds maximum allowed upload size of <b>{maxSize} KB</b>. Please retry your upload!',msgFilesTooLess:"You must select at least <b>{n}</b> {files} to upload. Please retry your upload!",msgFilesTooMany:"Number of files selected for upload <b>({n})</b> exceeds maximum allowed limit of <b>{m}</b>. Please retry your upload!",msgFileNotFound:'File "{name}" not found!',msgFileSecured:'Security restrictions prevent reading the file "{name}".',msgFileNotReadable:'File "{name}" is not readable.',msgFilePreviewAborted:'File preview aborted for "{name}".',msgFilePreviewError:'An error occurred while reading the file "{name}".',msgInvalidFileType:'Invalid type for file "{name}". Only "{types}" files are supported.',msgInvalidFileExtension:'Invalid extension for file "{name}". Only "{extensions}" files are supported.',msgValidationError:"File Upload Error",msgLoading:"Loading file {index} of {files} &hellip;",msgProgress:"Loading file {index} of {files} - {name} - {percent}% completed.",msgSelected:"{n} {files} selected",msgFoldersNotAllowed:"Drag & drop files only! {n} folder(s) dropped were skipped.",msgImageWidthSmall:'Width of image file "{name}" must be at least {size} px.',msgImageHeightSmall:'Height of image file "{name}" must be at least {size} px.',msgImageWidthLarge:'Width of image file "{name}" cannot exceed {size} px.',msgImageHeightLarge:'Height of image file "{name}" cannot exceed {size} px.',dropZoneTitle:"Drag & drop files here &hellip;"},e.extend(e.fn.fileinput.defaults,e.fn.fileinputLocales.en),e.fn.fileinput.Constructor=_,e(document).ready(function(){var i=e("input.file[type=file]");i.length&&i.fileinput()})}(window.jQuery);
+/*!
+ * Bootstrap-select v1.7.2 (http://silviomoreto.github.io/bootstrap-select)
+ *
+ * Copyright 2013-2015 bootstrap-select
+ * Licensed under MIT (https://github.com/silviomoreto/bootstrap-select/blob/master/LICENSE)
+ */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(["jquery"], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof exports === 'object') {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require("jquery"));
+  } else {
+    factory(jQuery);
+  }
+}(this, function () {
+
+(function ($) {
+  'use strict';
+
+  //<editor-fold desc="Shims">
+  if (!String.prototype.includes) {
+    (function () {
+      'use strict'; // needed to support `apply`/`call` with `undefined`/`null`
+      var toString = {}.toString;
+      var defineProperty = (function () {
+        // IE 8 only supports `Object.defineProperty` on DOM elements
+        try {
+          var object = {};
+          var $defineProperty = Object.defineProperty;
+          var result = $defineProperty(object, object, object) && $defineProperty;
+        } catch (error) {
+        }
+        return result;
+      }());
+      var indexOf = ''.indexOf;
+      var includes = function (search) {
+        if (this == null) {
+          throw TypeError();
+        }
+        var string = String(this);
+        if (search && toString.call(search) == '[object RegExp]') {
+          throw TypeError();
+        }
+        var stringLength = string.length;
+        var searchString = String(search);
+        var searchLength = searchString.length;
+        var position = arguments.length > 1 ? arguments[1] : undefined;
+        // `ToInteger`
+        var pos = position ? Number(position) : 0;
+        if (pos != pos) { // better `isNaN`
+          pos = 0;
+        }
+        var start = Math.min(Math.max(pos, 0), stringLength);
+        // Avoid the `indexOf` call if no match is possible
+        if (searchLength + start > stringLength) {
+          return false;
+        }
+        return indexOf.call(string, searchString, pos) != -1;
+      };
+      if (defineProperty) {
+        defineProperty(String.prototype, 'includes', {
+          'value': includes,
+          'configurable': true,
+          'writable': true
+        });
+      } else {
+        String.prototype.includes = includes;
+      }
+    }());
+  }
+
+  if (!String.prototype.startsWith) {
+    (function () {
+      'use strict'; // needed to support `apply`/`call` with `undefined`/`null`
+      var defineProperty = (function () {
+        // IE 8 only supports `Object.defineProperty` on DOM elements
+        try {
+          var object = {};
+          var $defineProperty = Object.defineProperty;
+          var result = $defineProperty(object, object, object) && $defineProperty;
+        } catch (error) {
+        }
+        return result;
+      }());
+      var toString = {}.toString;
+      var startsWith = function (search) {
+        if (this == null) {
+          throw TypeError();
+        }
+        var string = String(this);
+        if (search && toString.call(search) == '[object RegExp]') {
+          throw TypeError();
+        }
+        var stringLength = string.length;
+        var searchString = String(search);
+        var searchLength = searchString.length;
+        var position = arguments.length > 1 ? arguments[1] : undefined;
+        // `ToInteger`
+        var pos = position ? Number(position) : 0;
+        if (pos != pos) { // better `isNaN`
+          pos = 0;
+        }
+        var start = Math.min(Math.max(pos, 0), stringLength);
+        // Avoid the `indexOf` call if no match is possible
+        if (searchLength + start > stringLength) {
+          return false;
+        }
+        var index = -1;
+        while (++index < searchLength) {
+          if (string.charCodeAt(start + index) != searchString.charCodeAt(index)) {
+            return false;
+          }
+        }
+        return true;
+      };
+      if (defineProperty) {
+        defineProperty(String.prototype, 'startsWith', {
+          'value': startsWith,
+          'configurable': true,
+          'writable': true
+        });
+      } else {
+        String.prototype.startsWith = startsWith;
+      }
+    }());
+  }
+
+  if (!Object.keys) {
+    Object.keys = function (
+      o, // object
+      k, // key
+      r  // result array
+      ){
+      // initialize object and result
+      r=[];
+      // iterate over object keys
+      for (k in o) 
+          // fill result array with non-prototypical keys
+        r.hasOwnProperty.call(o, k) && r.push(k);
+      // return result
+      return r
+    };
+  }
+  //</editor-fold>
+
+  // Case insensitive contains search
+  $.expr[':'].icontains = function (obj, index, meta) {
+    var $obj = $(obj);
+    var haystack = ($obj.data('tokens') || $obj.text()).toUpperCase();
+    return haystack.includes(meta[3].toUpperCase());
+  };
+
+  // Case insensitive begins search
+  $.expr[':'].ibegins = function (obj, index, meta) {
+    var $obj = $(obj);
+    var haystack = ($obj.data('tokens') || $obj.text()).toUpperCase();
+    return haystack.startsWith(meta[3].toUpperCase());
+  };
+
+  // Case and accent insensitive contains search
+  $.expr[':'].aicontains = function (obj, index, meta) {
+    var $obj = $(obj);
+    var haystack = ($obj.data('tokens') || $obj.data('normalizedText') || $obj.text()).toUpperCase();
+    return haystack.includes(meta[3].toUpperCase());
+  };
+
+  // Case and accent insensitive begins search
+  $.expr[':'].aibegins = function (obj, index, meta) {
+    var $obj = $(obj);
+    var haystack = ($obj.data('tokens') || $obj.data('normalizedText') || $obj.text()).toUpperCase();
+    return haystack.startsWith(meta[3].toUpperCase());
+  };
+
+  /**
+   * Remove all diatrics from the given text.
+   * @access private
+   * @param {String} text
+   * @returns {String}
+   */
+  function normalizeToBase(text) {
+    var rExps = [
+      {re: /[\xC0-\xC6]/g, ch: "A"},
+      {re: /[\xE0-\xE6]/g, ch: "a"},
+      {re: /[\xC8-\xCB]/g, ch: "E"},
+      {re: /[\xE8-\xEB]/g, ch: "e"},
+      {re: /[\xCC-\xCF]/g, ch: "I"},
+      {re: /[\xEC-\xEF]/g, ch: "i"},
+      {re: /[\xD2-\xD6]/g, ch: "O"},
+      {re: /[\xF2-\xF6]/g, ch: "o"},
+      {re: /[\xD9-\xDC]/g, ch: "U"},
+      {re: /[\xF9-\xFC]/g, ch: "u"},
+      {re: /[\xC7-\xE7]/g, ch: "c"},
+      {re: /[\xD1]/g, ch: "N"},
+      {re: /[\xF1]/g, ch: "n"}
+    ];
+    $.each(rExps, function () {
+      text = text.replace(this.re, this.ch);
+    });
+    return text;
+  }
+
+
+  function htmlEscape(html) {
+    var escapeMap = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#x27;',
+      '`': '&#x60;'
+    };
+    var source = '(?:' + Object.keys(escapeMap).join('|') + ')',
+        testRegexp = new RegExp(source),
+        replaceRegexp = new RegExp(source, 'g'),
+        string = html == null ? '' : '' + html;
+    return testRegexp.test(string) ? string.replace(replaceRegexp, function (match) {
+      return escapeMap[match];
+    }) : string;
+  }
+
+  var Selectpicker = function (element, options, e) {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+
+    this.$element = $(element);
+    this.$newElement = null;
+    this.$button = null;
+    this.$menu = null;
+    this.$lis = null;
+    this.options = options;
+
+    // If we have no title yet, try to pull it from the html title attribute (jQuery doesnt' pick it up as it's not a
+    // data-attribute)
+    if (this.options.title === null) {
+      this.options.title = this.$element.attr('title');
+    }
+
+    //Expose public methods
+    this.val = Selectpicker.prototype.val;
+    this.render = Selectpicker.prototype.render;
+    this.refresh = Selectpicker.prototype.refresh;
+    this.setStyle = Selectpicker.prototype.setStyle;
+    this.selectAll = Selectpicker.prototype.selectAll;
+    this.deselectAll = Selectpicker.prototype.deselectAll;
+    this.destroy = Selectpicker.prototype.remove;
+    this.remove = Selectpicker.prototype.remove;
+    this.show = Selectpicker.prototype.show;
+    this.hide = Selectpicker.prototype.hide;
+
+    this.init();
+  };
+
+  Selectpicker.VERSION = '1.7.2';
+
+  // part of this is duplicated in i18n/defaults-en_US.js. Make sure to update both.
+  Selectpicker.DEFAULTS = {
+    noneSelectedText: 'Nothing selected',
+    noneResultsText: 'No results matched {0}',
+    countSelectedText: function (numSelected, numTotal) {
+      return (numSelected == 1) ? "{0} item selected" : "{0} items selected";
+    },
+    maxOptionsText: function (numAll, numGroup) {
+      return [
+        (numAll == 1) ? 'Limit reached ({n} item max)' : 'Limit reached ({n} items max)',
+        (numGroup == 1) ? 'Group limit reached ({n} item max)' : 'Group limit reached ({n} items max)'
+      ];
+    },
+    selectAllText: 'Select All',
+    deselectAllText: 'Deselect All',
+    doneButton: false,
+    doneButtonText: 'Close',
+    multipleSeparator: ', ',
+    styleBase: 'btn',
+    style: 'btn-default',
+    size: 'auto',
+    title: null,
+    selectedTextFormat: 'values',
+    width: false,
+    container: false,
+    hideDisabled: false,
+    showSubtext: false,
+    showIcon: true,
+    showContent: true,
+    dropupAuto: true,
+    header: false,
+    liveSearch: false,
+    liveSearchPlaceholder: null,
+    liveSearchNormalize: false,
+    liveSearchStyle: 'contains',
+    actionsBox: false,
+    iconBase: 'glyphicon',
+    tickIcon: 'glyphicon-ok',
+    maxOptions: false,
+    mobile: false,
+    selectOnTab: false,
+    dropdownAlignRight: false
+  };
+
+  Selectpicker.prototype = {
+
+    constructor: Selectpicker,
+
+    init: function () {
+      var that = this,
+          id = this.$element.attr('id');
+
+      this.$element.addClass('bs-select-hidden');
+      // store originalIndex (key) and newIndex (value) in this.liObj for fast accessibility
+      // allows us to do this.$lis.eq(that.liObj[index]) instead of this.$lis.filter('[data-original-index="' + index + '"]')
+      this.liObj = {};
+      this.multiple = this.$element.prop('multiple');
+      this.autofocus = this.$element.prop('autofocus');
+      this.$newElement = this.createView();
+      this.$element.after(this.$newElement);
+      this.$button = this.$newElement.children('button');
+      this.$menu = this.$newElement.children('.dropdown-menu');
+      this.$menuInner = this.$menu.children('.inner');
+      this.$searchbox = this.$menu.find('input');
+
+      if (this.options.dropdownAlignRight)
+        this.$menu.addClass('dropdown-menu-right');
+
+      if (typeof id !== 'undefined') {
+        this.$button.attr('data-id', id);
+        $('label[for="' + id + '"]').click(function (e) {
+          e.preventDefault();
+          that.$button.focus();
+        });
+      }
+
+      this.checkDisabled();
+      this.clickListener();
+      if (this.options.liveSearch) this.liveSearchListener();
+      this.render();
+      this.setStyle();
+      this.setWidth();
+      if (this.options.container) this.selectPosition();
+      this.$menu.data('this', this);
+      this.$newElement.data('this', this);
+      if (this.options.mobile) this.mobile();
+
+      this.$newElement.on('hide.bs.dropdown', function (e) {
+        that.$element.trigger('hide.bs.select', e);
+      });
+      
+      this.$newElement.on('hidden.bs.dropdown', function (e) {
+        that.$element.trigger('hidden.bs.select', e);
+      });
+      
+      this.$newElement.on('show.bs.dropdown', function (e) {
+        that.$element.trigger('show.bs.select', e);
+      });
+      
+      this.$newElement.on('shown.bs.dropdown', function (e) {
+        that.$element.trigger('shown.bs.select', e);
+      });
+
+      setTimeout(function () {
+        that.$element.trigger('loaded.bs.select');
+      });
+    },
+
+    createDropdown: function () {
+      // Options
+      // If we are multiple, then add the show-tick class by default
+      var multiple = this.multiple ? ' show-tick' : '',
+          inputGroup = this.$element.parent().hasClass('input-group') ? ' input-group-btn' : '',
+          autofocus = this.autofocus ? ' autofocus' : '';
+      // Elements
+      var header = this.options.header ? '<div class="popover-title"><button type="button" class="close" aria-hidden="true">&times;</button>' + this.options.header + '</div>' : '';
+      var searchbox = this.options.liveSearch ?
+      '<div class="bs-searchbox">' +
+      '<input type="text" class="form-control" autocomplete="off"' +
+      (null === this.options.liveSearchPlaceholder ? '' : ' placeholder="' + htmlEscape(this.options.liveSearchPlaceholder) + '"') + '>' +
+      '</div>'
+          : '';
+      var actionsbox = this.multiple && this.options.actionsBox ?
+      '<div class="bs-actionsbox">' +
+      '<div class="btn-group btn-group-sm btn-block">' +
+      '<button type="button" class="actions-btn bs-select-all btn btn-default">' +
+      this.options.selectAllText +
+      '</button>' +
+      '<button type="button" class="actions-btn bs-deselect-all btn btn-default">' +
+      this.options.deselectAllText +
+      '</button>' +
+      '</div>' +
+      '</div>'
+          : '';
+      var donebutton = this.multiple && this.options.doneButton ?
+      '<div class="bs-donebutton">' +
+      '<div class="btn-group btn-block">' +
+      '<button type="button" class="btn btn-sm btn-default">' +
+      this.options.doneButtonText +
+      '</button>' +
+      '</div>' +
+      '</div>'
+          : '';
+      var drop =
+          '<div class="btn-group bootstrap-select' + multiple + inputGroup + '">' +
+          '<button type="button" class="' + this.options.styleBase + ' dropdown-toggle" data-toggle="dropdown"' + autofocus + '>' +
+          '<span class="filter-option pull-left"></span>&nbsp;' +
+          '<span class="caret"></span>' +
+          '</button>' +
+          '<div class="dropdown-menu open">' +
+          header +
+          searchbox +
+          actionsbox +
+          '<ul class="dropdown-menu inner" role="menu">' +
+          '</ul>' +
+          donebutton +
+          '</div>' +
+          '</div>';
+
+      return $(drop);
+    },
+
+    createView: function () {
+      var $drop = this.createDropdown(),
+          li = this.createLi();
+
+      $drop.find('ul')[0].innerHTML = li;
+      return $drop;
+    },
+
+    reloadLi: function () {
+      //Remove all children.
+      this.destroyLi();
+      //Re build
+      var li = this.createLi();
+      this.$menuInner[0].innerHTML = li;
+    },
+
+    destroyLi: function () {
+      this.$menu.find('li').remove();
+    },
+
+    createLi: function () {
+      var that = this,
+          _li = [],
+          optID = 0,
+          titleOption = document.createElement('option'),
+          liIndex = -1; // increment liIndex whenever a new <li> element is created to ensure liObj is correct
+
+      // Helper functions
+      /**
+       * @param content
+       * @param [index]
+       * @param [classes]
+       * @param [optgroup]
+       * @returns {string}
+       */
+      var generateLI = function (content, index, classes, optgroup) {
+        return '<li' +
+            ((typeof classes !== 'undefined' & '' !== classes) ? ' class="' + classes + '"' : '') +
+            ((typeof index !== 'undefined' & null !== index) ? ' data-original-index="' + index + '"' : '') +
+            ((typeof optgroup !== 'undefined' & null !== optgroup) ? 'data-optgroup="' + optgroup + '"' : '') +
+            '>' + content + '</li>';
+      };
+
+      /**
+       * @param text
+       * @param [classes]
+       * @param [inline]
+       * @param [tokens]
+       * @returns {string}
+       */
+      var generateA = function (text, classes, inline, tokens) {
+        return '<a tabindex="0"' +
+            (typeof classes !== 'undefined' ? ' class="' + classes + '"' : '') +
+            (typeof inline !== 'undefined' ? ' style="' + inline + '"' : '') +
+            (that.options.liveSearchNormalize ? ' data-normalized-text="' + normalizeToBase(htmlEscape(text)) + '"' : '') +
+            (typeof tokens !== 'undefined' || tokens !== null ? ' data-tokens="' + tokens + '"' : '') +
+            '>' + text +
+            '<span class="' + that.options.iconBase + ' ' + that.options.tickIcon + ' check-mark"></span>' +
+            '</a>';
+      };
+
+      if (this.options.title && !this.multiple) {
+        // this option doesn't create a new <li> element, but does add a new option, so liIndex is decreased
+        // since liObj is recalculated on every refresh, liIndex needs to be decreased even if the titleOption is already appended
+        liIndex--;
+
+        if (!this.$element.find('.bs-title-option').length) {
+          // Use native JS to prepend option (faster)
+          var element = this.$element[0];
+          titleOption.className = 'bs-title-option';
+          titleOption.appendChild(document.createTextNode(this.options.title));
+          titleOption.value = '';
+          element.insertBefore(titleOption, element.firstChild);
+          // Check if selected attribute is already set on an option. If not, select the titleOption option.
+          if (element.options[element.selectedIndex].getAttribute('selected') === null) titleOption.selected = true;
+        }
+      }
+
+      this.$element.find('option').each(function (index) {
+        var $this = $(this);
+
+        liIndex++;
+
+        if ($this.hasClass('bs-title-option')) return;
+
+        // Get the class and text for the option
+        var optionClass = this.className || '',
+            inline = this.style.cssText,
+            text = $this.data('content') ? $this.data('content') : $this.html(),
+            tokens = $this.data('tokens') ? $this.data('tokens') : null,
+            subtext = typeof $this.data('subtext') !== 'undefined' ? '<small class="text-muted">' + $this.data('subtext') + '</small>' : '',
+            icon = typeof $this.data('icon') !== 'undefined' ? '<span class="' + that.options.iconBase + ' ' + $this.data('icon') + '"></span> ' : '',
+            isDisabled = this.disabled || this.parentElement.tagName === 'OPTGROUP' && this.parentElement.disabled;
+
+        if (icon !== '' && isDisabled) {
+          icon = '<span>' + icon + '</span>';
+        }
+
+        if (that.options.hideDisabled && isDisabled) {
+          liIndex--;
+          return;
+        }
+
+        if (!$this.data('content')) {
+          // Prepend any icon and append any subtext to the main text.
+          text = icon + '<span class="text">' + text + subtext + '</span>';
+        }
+
+        if (this.parentElement.tagName === 'OPTGROUP' && $this.data('divider') !== true) {
+          if ($this.index() === 0) { // Is it the first option of the optgroup?
+            optID += 1;
+
+            // Get the opt group label
+            var label = this.parentElement.label,
+                labelSubtext = typeof $this.parent().data('subtext') !== 'undefined' ? '<small class="text-muted">' + $this.parent().data('subtext') + '</small>' : '',
+                labelIcon = $this.parent().data('icon') ? '<span class="' + that.options.iconBase + ' ' + $this.parent().data('icon') + '"></span> ' : '',
+                optGroupClass = ' ' + this.parentElement.className || '';
+            
+            label = labelIcon + '<span class="text">' + label + labelSubtext + '</span>';
+
+            if (index !== 0 && _li.length > 0) { // Is it NOT the first option of the select && are there elements in the dropdown?
+              liIndex++;
+              _li.push(generateLI('', null, 'divider', optID + 'div'));
+            }
+            liIndex++;
+            _li.push(generateLI(label, null, 'dropdown-header' + optGroupClass, optID));
+          }
+          _li.push(generateLI(generateA(text, 'opt ' + optionClass + optGroupClass, inline, tokens), index, '', optID));
+        } else if ($this.data('divider') === true) {
+          _li.push(generateLI('', index, 'divider'));
+        } else if ($this.data('hidden') === true) {
+          _li.push(generateLI(generateA(text, optionClass, inline, tokens), index, 'hidden is-hidden'));
+        } else {
+          if (this.previousElementSibling && this.previousElementSibling.tagName === 'OPTGROUP') {
+            liIndex++;
+            _li.push(generateLI('', null, 'divider', optID + 'div'));
+          }
+          _li.push(generateLI(generateA(text, optionClass, inline, tokens), index));
+        }
+
+        that.liObj[index] = liIndex;
+      });
+
+      //If we are not multiple, we don't have a selected item, and we don't have a title, select the first element so something is set in the button
+      if (!this.multiple && this.$element.find('option:selected').length === 0 && !this.options.title) {
+        this.$element.find('option').eq(0).prop('selected', true).attr('selected', 'selected');
+      }
+
+      return _li.join('');
+    },
+
+    findLis: function () {
+      if (this.$lis == null) this.$lis = this.$menu.find('li');
+      return this.$lis;
+    },
+
+    /**
+     * @param [updateLi] defaults to true
+     */
+    render: function (updateLi) {
+      var that = this,
+          notDisabled;
+
+      //Update the LI to match the SELECT
+      if (updateLi !== false) {
+        this.$element.find('option').each(function (index) {
+          var $lis = that.findLis().eq(that.liObj[index]);
+
+          that.setDisabled(index, this.disabled || this.parentElement.tagName === 'OPTGROUP' && this.parentElement.disabled, $lis);
+          that.setSelected(index, this.selected, $lis);
+        });
+      }
+
+      this.tabIndex();
+
+      var selectedItems = this.$element.find('option').map(function () {
+        if (this.selected) {
+          if (that.options.hideDisabled && (this.disabled || this.parentElement.tagName === 'OPTGROUP' && this.parentElement.disabled)) return false;
+
+          var $this = $(this),
+              icon = $this.data('icon') && that.options.showIcon ? '<i class="' + that.options.iconBase + ' ' + $this.data('icon') + '"></i> ' : '',
+              subtext;
+
+          if (that.options.showSubtext && $this.data('subtext') && !that.multiple) {
+            subtext = ' <small class="text-muted">' + $this.data('subtext') + '</small>';
+          } else {
+            subtext = '';
+          }
+          if (typeof $this.attr('title') !== 'undefined') {
+            return $this.attr('title');
+          } else if ($this.data('content') && that.options.showContent) {
+            return $this.data('content');
+          } else {
+            return icon + $this.html() + subtext;
+          }
+        }
+      }).toArray();
+
+      //Fixes issue in IE10 occurring when no default option is selected and at least one option is disabled
+      //Convert all the values into a comma delimited string
+      var title = !this.multiple ? selectedItems[0] : selectedItems.join(this.options.multipleSeparator);
+
+      //If this is multi select, and the selectText type is count, the show 1 of 2 selected etc..
+      if (this.multiple && this.options.selectedTextFormat.indexOf('count') > -1) {
+        var max = this.options.selectedTextFormat.split('>');
+        if ((max.length > 1 && selectedItems.length > max[1]) || (max.length == 1 && selectedItems.length >= 2)) {
+          notDisabled = this.options.hideDisabled ? ', [disabled]' : '';
+          var totalCount = this.$element.find('option').not('[data-divider="true"], [data-hidden="true"]' + notDisabled).length,
+              tr8nText = (typeof this.options.countSelectedText === 'function') ? this.options.countSelectedText(selectedItems.length, totalCount) : this.options.countSelectedText;
+          title = tr8nText.replace('{0}', selectedItems.length.toString()).replace('{1}', totalCount.toString());
+        }
+      }
+
+      if (this.options.title == undefined) {
+        this.options.title = this.$element.attr('title');
+      }
+
+      if (this.options.selectedTextFormat == 'static') {
+        title = this.options.title;
+      }
+
+      //If we dont have a title, then use the default, or if nothing is set at all, use the not selected text
+      if (!title) {
+        title = typeof this.options.title !== 'undefined' ? this.options.title : this.options.noneSelectedText;
+      }
+
+      //strip all html-tags and trim the result
+      this.$button.attr('title', $.trim(title.replace(/<[^>]*>?/g, '')));
+      this.$button.children('.filter-option').html(title);
+
+      this.$element.trigger('rendered.bs.select');
+    },
+
+    /**
+     * @param [style]
+     * @param [status]
+     */
+    setStyle: function (style, status) {
+      if (this.$element.attr('class')) {
+        this.$newElement.addClass(this.$element.attr('class').replace(/selectpicker|mobile-device|bs-select-hidden|validate\[.*\]/gi, ''));
+      }
+
+      var buttonClass = style ? style : this.options.style;
+
+      if (status == 'add') {
+        this.$button.addClass(buttonClass);
+      } else if (status == 'remove') {
+        this.$button.removeClass(buttonClass);
+      } else {
+        this.$button.removeClass(this.options.style);
+        this.$button.addClass(buttonClass);
+      }
+    },
+
+    liHeight: function (refresh) {
+      if (!refresh && (this.options.size === false || this.sizeInfo)) return;
+
+      var newElement = document.createElement('div'),
+          menu = document.createElement('div'),
+          menuInner = document.createElement('ul'),
+          divider = document.createElement('li'),
+          li = document.createElement('li'),
+          a = document.createElement('a'),
+          text = document.createElement('span'),
+          header = this.options.header ? this.$menu.find('.popover-title')[0].cloneNode(true) : null,
+          search = this.options.liveSearch ? document.createElement('div') : null,
+          actions = this.options.actionsBox && this.multiple ? this.$menu.find('.bs-actionsbox')[0].cloneNode(true) : null,
+          doneButton = this.options.doneButton && this.multiple ? this.$menu.find('.bs-donebutton')[0].cloneNode(true) : null;
+
+      text.className = 'text';
+      newElement.className = this.$menu[0].parentNode.className + ' open';
+      menu.className = 'dropdown-menu open';
+      menuInner.className = 'dropdown-menu inner';
+      divider.className = 'divider';
+
+      text.appendChild(document.createTextNode('Inner text'));
+      a.appendChild(text);
+      li.appendChild(a);
+      menuInner.appendChild(li);
+      menuInner.appendChild(divider);
+      if (header) menu.appendChild(header);
+      if (search) {
+        // create a span instead of input as creating an input element is slower
+        var input = document.createElement('span');
+        search.className = 'bs-searchbox';
+        input.className = 'form-control';
+        search.appendChild(input);
+        menu.appendChild(search);
+      }
+      if (actions) menu.appendChild(actions);
+      menu.appendChild(menuInner);
+      if (doneButton) menu.appendChild(doneButton);
+      newElement.appendChild(menu);
+
+      document.body.appendChild(newElement);
+
+      var liHeight = a.offsetHeight,
+          headerHeight = header ? header.offsetHeight : 0,
+          searchHeight = search ? search.offsetHeight : 0,
+          actionsHeight = actions ? actions.offsetHeight : 0,
+          doneButtonHeight = doneButton ? doneButton.offsetHeight : 0,
+          dividerHeight = $(divider).outerHeight(true),
+          // fall back to jQuery if getComputedStyle is not supported
+          menuStyle = getComputedStyle ? getComputedStyle(menu) : false,
+          $menu = menuStyle ? $(menu) : null,
+          menuPadding = parseInt(menuStyle ? menuStyle.paddingTop : $menu.css('paddingTop')) +
+                        parseInt(menuStyle ? menuStyle.paddingBottom : $menu.css('paddingBottom')) +
+                        parseInt(menuStyle ? menuStyle.borderTopWidth : $menu.css('borderTopWidth')) +
+                        parseInt(menuStyle ? menuStyle.borderBottomWidth : $menu.css('borderBottomWidth')),
+          menuExtras =  menuPadding + 
+                        parseInt(menuStyle ? menuStyle.marginTop : $menu.css('marginTop')) + 
+                        parseInt(menuStyle ? menuStyle.marginBottom : $menu.css('marginBottom')) + 2;
+
+      document.body.removeChild(newElement);
+
+      this.sizeInfo = {
+        liHeight: liHeight,
+        headerHeight: headerHeight,
+        searchHeight: searchHeight,
+        actionsHeight: actionsHeight,
+        doneButtonHeight: doneButtonHeight,
+        dividerHeight: dividerHeight,
+        menuPadding: menuPadding,
+        menuExtras: menuExtras
+      };
+    },
+
+    setSize: function () {
+      this.findLis();
+      this.liHeight();
+      var that = this,
+          $menu = this.$menu,
+          $menuInner = this.$menuInner,
+          $window = $(window),
+          selectHeight = this.$newElement[0].offsetHeight,
+          liHeight = this.sizeInfo['liHeight'],
+          headerHeight = this.sizeInfo['headerHeight'],
+          searchHeight = this.sizeInfo['searchHeight'],
+          actionsHeight = this.sizeInfo['actionsHeight'],
+          doneButtonHeight = this.sizeInfo['doneButtonHeight'],
+          divHeight = this.sizeInfo['dividerHeight'],
+          menuPadding = this.sizeInfo['menuPadding'],
+          menuExtras = this.sizeInfo['menuExtras'],
+          notDisabled = this.options.hideDisabled ? '.disabled' : '',
+          menuHeight,
+          getHeight,
+          selectOffsetTop,
+          selectOffsetBot,
+          posVert = function () {
+            selectOffsetTop = that.$newElement.offset().top - $window.scrollTop();
+            selectOffsetBot = $window.height() - selectOffsetTop - selectHeight;
+          };
+
+      posVert();
+
+      if (this.options.header) $menu.css('padding-top', 0);
+
+      if (this.options.size === 'auto') {
+        var getSize = function () {
+          var minHeight,
+              hasClass = function (className, include) {
+                return function (element) {
+                    if (include) {
+                        return (element.classList ? element.classList.contains(className) : $(element).hasClass(className));
+                    } else {
+                        return !(element.classList ? element.classList.contains(className) : $(element).hasClass(className));
+                    }
+                };
+              },
+              lis = that.$menuInner[0].getElementsByTagName('li'),
+              lisVisible = Array.prototype.filter ? Array.prototype.filter.call(lis, hasClass('hidden', false)) : that.$lis.not('.hidden'),
+              optGroup = Array.prototype.filter ? Array.prototype.filter.call(lisVisible, hasClass('dropdown-header', true)) : lisVisible.filter('.dropdown-header');
+
+          posVert();
+          menuHeight = selectOffsetBot - menuExtras;
+
+          if (that.options.container) {
+            if (!$menu.data('height')) $menu.data('height', $menu.height());
+            getHeight = $menu.data('height');
+          } else {
+            getHeight = $menu.height();
+          }
+
+          if (that.options.dropupAuto) {
+            that.$newElement.toggleClass('dropup', selectOffsetTop > selectOffsetBot && (menuHeight - menuExtras) < getHeight);
+          }
+          if (that.$newElement.hasClass('dropup')) {
+            menuHeight = selectOffsetTop - menuExtras;
+          }
+
+          if ((lisVisible.length + optGroup.length) > 3) {
+            minHeight = liHeight * 3 + menuExtras - 2;
+          } else {
+            minHeight = 0;
+          }
+
+          $menu.css({
+            'max-height': menuHeight + 'px',
+            'overflow': 'hidden',
+            'min-height': minHeight + headerHeight + searchHeight + actionsHeight + doneButtonHeight + 'px'
+          });
+          $menuInner.css({
+            'max-height': menuHeight - headerHeight - searchHeight - actionsHeight - doneButtonHeight - menuPadding + 'px',
+            'overflow-y': 'auto',
+            'min-height': Math.max(minHeight - menuPadding, 0) + 'px'
+          });
+        };
+        getSize();
+        this.$searchbox.off('input.getSize propertychange.getSize').on('input.getSize propertychange.getSize', getSize);
+        $window.off('resize.getSize scroll.getSize').on('resize.getSize scroll.getSize', getSize);
+      } else if (this.options.size && this.options.size != 'auto' && this.$lis.not(notDisabled).length > this.options.size) {
+        var optIndex = this.$lis.not('.divider').not(notDisabled).children().slice(0, this.options.size).last().parent().index(),
+            divLength = this.$lis.slice(0, optIndex + 1).filter('.divider').length;
+        menuHeight = liHeight * this.options.size + divLength * divHeight + menuPadding;
+
+        if (that.options.container) {
+          if (!$menu.data('height')) $menu.data('height', $menu.height());
+          getHeight = $menu.data('height');
+        } else {
+          getHeight = $menu.height();
+        }
+
+        if (that.options.dropupAuto) {
+          //noinspection JSUnusedAssignment
+          this.$newElement.toggleClass('dropup', selectOffsetTop > selectOffsetBot && (menuHeight - menuExtras) < getHeight);
+        }
+        $menu.css({
+          'max-height': menuHeight + headerHeight + searchHeight + actionsHeight + doneButtonHeight + 'px',
+          'overflow': 'hidden',
+          'min-height': ''
+        });
+        $menuInner.css({
+          'max-height': menuHeight - menuPadding + 'px',
+          'overflow-y': 'auto',
+          'min-height': ''
+        });
+      }
+    },
+
+    setWidth: function () {
+      if (this.options.width === 'auto') {
+        this.$menu.css('min-width', '0');
+
+        // Get correct width if element is hidden
+        var $selectClone = this.$menu.parent().clone().appendTo('body'),
+            $selectClone2 = this.options.container ? this.$newElement.clone().appendTo('body') : $selectClone,
+            ulWidth = $selectClone.children('.dropdown-menu').outerWidth(),
+            btnWidth = $selectClone2.css('width', 'auto').children('button').outerWidth();
+
+        $selectClone.remove();
+        $selectClone2.remove();
+
+        // Set width to whatever's larger, button title or longest option
+        this.$newElement.css('width', Math.max(ulWidth, btnWidth) + 'px');
+      } else if (this.options.width === 'fit') {
+        // Remove inline min-width so width can be changed from 'auto'
+        this.$menu.css('min-width', '');
+        this.$newElement.css('width', '').addClass('fit-width');
+      } else if (this.options.width) {
+        // Remove inline min-width so width can be changed from 'auto'
+        this.$menu.css('min-width', '');
+        this.$newElement.css('width', this.options.width);
+      } else {
+        // Remove inline min-width/width so width can be changed
+        this.$menu.css('min-width', '');
+        this.$newElement.css('width', '');
+      }
+      // Remove fit-width class if width is changed programmatically
+      if (this.$newElement.hasClass('fit-width') && this.options.width !== 'fit') {
+        this.$newElement.removeClass('fit-width');
+      }
+    },
+
+    selectPosition: function () {
+      var that = this,
+          drop = '<div />',
+          $drop = $(drop),
+          pos,
+          actualHeight,
+          getPlacement = function ($element) {
+            $drop.addClass($element.attr('class').replace(/form-control|fit-width/gi, '')).toggleClass('dropup', $element.hasClass('dropup'));
+            pos = $element.offset();
+            actualHeight = $element.hasClass('dropup') ? 0 : $element[0].offsetHeight;
+            $drop.css({
+              'top': pos.top + actualHeight,
+              'left': pos.left,
+              'width': $element[0].offsetWidth,
+              'position': 'absolute'
+            });
+          };
+
+      this.$newElement.on('click', function () {
+        if (that.isDisabled()) {
+          return;
+        }
+        getPlacement($(this));
+        $drop.appendTo(that.options.container);
+        $drop.toggleClass('open', !$(this).hasClass('open'));
+        $drop.append(that.$menu);
+      });
+
+      $(window).on('resize scroll', function () {
+        getPlacement(that.$newElement);
+      });
+
+      this.$element.on('hide.bs.select', function () {
+        that.$menu.data('height', that.$menu.height());
+        $drop.detach();
+      });
+    },
+
+    setSelected: function (index, selected, $lis) {
+      if (!$lis) {
+        var $lis = this.findLis().eq(this.liObj[index]);
+      }
+
+      $lis.toggleClass('selected', selected);
+    },
+
+    setDisabled: function (index, disabled, $lis) {
+      if (!$lis) {
+        var $lis = this.findLis().eq(this.liObj[index]);
+      }
+
+      if (disabled) {
+        $lis.addClass('disabled').children('a').attr('href', '#').attr('tabindex', -1);
+      } else {
+        $lis.removeClass('disabled').children('a').removeAttr('href').attr('tabindex', 0);
+      }
+    },
+
+    isDisabled: function () {
+      return this.$element[0].disabled;
+    },
+
+    checkDisabled: function () {
+      var that = this;
+
+      if (this.isDisabled()) {
+        this.$newElement.addClass('disabled');
+        this.$button.addClass('disabled').attr('tabindex', -1);
+      } else {
+        if (this.$button.hasClass('disabled')) {
+          this.$newElement.removeClass('disabled');
+          this.$button.removeClass('disabled');
+        }
+
+        if (this.$button.attr('tabindex') == -1 && !this.$element.data('tabindex')) {
+          this.$button.removeAttr('tabindex');
+        }
+      }
+
+      this.$button.click(function () {
+        return !that.isDisabled();
+      });
+    },
+
+    tabIndex: function () {
+      if (this.$element.is('[tabindex]')) {
+        this.$element.data('tabindex', this.$element.attr('tabindex'));
+        this.$button.attr('tabindex', this.$element.data('tabindex'));
+      }
+    },
+
+    clickListener: function () {
+      var that = this,
+          $document = $(document);
+
+      this.$newElement.on('touchstart.dropdown', '.dropdown-menu', function (e) {
+        e.stopPropagation();
+      });
+
+      $document.data('spaceSelect', false);
+      
+      this.$button.on('keyup', function (e) {
+        if (/(32)/.test(e.keyCode.toString(10)) && $document.data('spaceSelect')) {
+            e.preventDefault();
+            $document.data('spaceSelect', false);
+        }
+      });
+
+      this.$newElement.on('click', function () {
+        that.setSize();
+        that.$element.on('shown.bs.select', function () {
+          if (!that.options.liveSearch && !that.multiple) {
+            that.$menu.find('.selected a').focus();
+          } else if (!that.multiple) {
+            var selectedIndex = that.liObj[that.$element[0].selectedIndex];
+
+            if (typeof selectedIndex !== 'number') return;
+            
+            // scroll to selected option
+            var offset = that.$lis.eq(selectedIndex)[0].offsetTop - that.$menuInner[0].offsetTop;
+            offset = offset - that.$menuInner[0].offsetHeight/2 + that.sizeInfo.liHeight/2;
+            that.$menuInner[0].scrollTop = offset;
+          }
+        });
+      });
+
+      this.$menu.on('click', 'li a', function (e) {
+        var $this = $(this),
+            clickedIndex = $this.parent().data('originalIndex'),
+            prevValue = that.$element.val(),
+            prevIndex = that.$element.prop('selectedIndex');
+
+        // Don't close on multi choice menu
+        if (that.multiple) {
+          e.stopPropagation();
+        }
+
+        e.preventDefault();
+
+        //Don't run if we have been disabled
+        if (!that.isDisabled() && !$this.parent().hasClass('disabled')) {
+          var $options = that.$element.find('option'),
+              $option = $options.eq(clickedIndex),
+              state = $option.prop('selected'),
+              $optgroup = $option.parent('optgroup'),
+              maxOptions = that.options.maxOptions,
+              maxOptionsGrp = $optgroup.data('maxOptions') || false;
+
+          if (!that.multiple) { // Deselect all others if not multi select box
+            $options.prop('selected', false);
+            $option.prop('selected', true);
+            that.$menu.find('.selected').removeClass('selected');
+            that.setSelected(clickedIndex, true);
+          } else { // Toggle the one we have chosen if we are multi select.
+            $option.prop('selected', !state);
+            that.setSelected(clickedIndex, !state);
+            $this.blur();
+
+            if (maxOptions !== false || maxOptionsGrp !== false) {
+              var maxReached = maxOptions < $options.filter(':selected').length,
+                  maxReachedGrp = maxOptionsGrp < $optgroup.find('option:selected').length;
+
+              if ((maxOptions && maxReached) || (maxOptionsGrp && maxReachedGrp)) {
+                if (maxOptions && maxOptions == 1) {
+                  $options.prop('selected', false);
+                  $option.prop('selected', true);
+                  that.$menu.find('.selected').removeClass('selected');
+                  that.setSelected(clickedIndex, true);
+                } else if (maxOptionsGrp && maxOptionsGrp == 1) {
+                  $optgroup.find('option:selected').prop('selected', false);
+                  $option.prop('selected', true);
+                  var optgroupID = $this.parent().data('optgroup');
+                  that.$menu.find('[data-optgroup="' + optgroupID + '"]').removeClass('selected');
+                  that.setSelected(clickedIndex, true);
+                } else {
+                  var maxOptionsArr = (typeof that.options.maxOptionsText === 'function') ?
+                          that.options.maxOptionsText(maxOptions, maxOptionsGrp) : that.options.maxOptionsText,
+                      maxTxt = maxOptionsArr[0].replace('{n}', maxOptions),
+                      maxTxtGrp = maxOptionsArr[1].replace('{n}', maxOptionsGrp),
+                      $notify = $('<div class="notify"></div>');
+                  // If {var} is set in array, replace it
+                  /** @deprecated */
+                  if (maxOptionsArr[2]) {
+                    maxTxt = maxTxt.replace('{var}', maxOptionsArr[2][maxOptions > 1 ? 0 : 1]);
+                    maxTxtGrp = maxTxtGrp.replace('{var}', maxOptionsArr[2][maxOptionsGrp > 1 ? 0 : 1]);
+                  }
+
+                  $option.prop('selected', false);
+
+                  that.$menu.append($notify);
+
+                  if (maxOptions && maxReached) {
+                    $notify.append($('<div>' + maxTxt + '</div>'));
+                    that.$element.trigger('maxReached.bs.select');
+                  }
+
+                  if (maxOptionsGrp && maxReachedGrp) {
+                    $notify.append($('<div>' + maxTxtGrp + '</div>'));
+                    that.$element.trigger('maxReachedGrp.bs.select');
+                  }
+
+                  setTimeout(function () {
+                    that.setSelected(clickedIndex, false);
+                  }, 10);
+
+                  $notify.delay(750).fadeOut(300, function () {
+                    $(this).remove();
+                  });
+                }
+              }
+            }
+          }
+
+          if (!that.multiple) {
+            that.$button.focus();
+          } else if (that.options.liveSearch) {
+            that.$searchbox.focus();
+          }
+
+          // Trigger select 'change'
+          if ((prevValue != that.$element.val() && that.multiple) || (prevIndex != that.$element.prop('selectedIndex') && !that.multiple)) {
+            that.$element.change();
+            // $option.prop('selected') is current option state (selected/unselected). state is previous option state.
+            that.$element.trigger('changed.bs.select', [clickedIndex, $option.prop('selected'), state]);
+          }
+        }
+      });
+
+      this.$menu.on('click', 'li.disabled a, .popover-title, .popover-title :not(.close)', function (e) {
+        if (e.currentTarget == this) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (that.options.liveSearch && !$(e.target).hasClass('close')) {
+            that.$searchbox.focus();
+          } else {
+            that.$button.focus();
+          }
+        }
+      });
+
+      this.$menu.on('click', 'li.divider, li.dropdown-header', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (that.options.liveSearch) {
+          that.$searchbox.focus();
+        } else {
+          that.$button.focus();
+        }
+      });
+
+      this.$menu.on('click', '.popover-title .close', function () {
+        that.$button.click();
+      });
+
+      this.$searchbox.on('click', function (e) {
+        e.stopPropagation();
+      });
+
+      this.$menu.on('click', '.actions-btn', function (e) {
+        if (that.options.liveSearch) {
+          that.$searchbox.focus();
+        } else {
+          that.$button.focus();
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if ($(this).hasClass('bs-select-all')) {
+          that.selectAll();
+        } else {
+          that.deselectAll();
+        }
+        that.$element.change();
+      });
+
+      this.$element.change(function () {
+        that.render(false);
+      });
+    },
+
+    liveSearchListener: function () {
+      var that = this,
+          $no_results = $('<li class="no-results"></li>');
+
+      this.$newElement.on('click.dropdown.data-api touchstart.dropdown.data-api', function () {
+        that.$menuInner.find('.active').removeClass('active');
+        if (!!that.$searchbox.val()) {
+          that.$searchbox.val('');
+          that.$lis.not('.is-hidden').removeClass('hidden');
+          if (!!$no_results.parent().length) $no_results.remove();
+        }
+        if (!that.multiple) that.$menuInner.find('.selected').addClass('active');
+        setTimeout(function () {
+          that.$searchbox.focus();
+        }, 10);
+      });
+
+      this.$searchbox.on('click.dropdown.data-api focus.dropdown.data-api touchend.dropdown.data-api', function (e) {
+        e.stopPropagation();
+      });
+
+      this.$searchbox.on('input propertychange', function () {
+        if (that.$searchbox.val()) {
+          var $searchBase = that.$lis.not('.is-hidden').removeClass('hidden').children('a');
+          if (that.options.liveSearchNormalize) {
+            $searchBase = $searchBase.not(':a' + that._searchStyle() + '(' + normalizeToBase(that.$searchbox.val()) + ')');
+          } else {
+            $searchBase = $searchBase.not(':' + that._searchStyle() + '(' + that.$searchbox.val() + ')');
+          }
+          $searchBase.parent().addClass('hidden');
+
+          that.$lis.filter('.dropdown-header').each(function () {
+            var $this = $(this),
+                optgroup = $this.data('optgroup');
+
+            if (that.$lis.filter('[data-optgroup=' + optgroup + ']').not($this).not('.hidden').length === 0) {
+              $this.addClass('hidden');
+              that.$lis.filter('[data-optgroup=' + optgroup + 'div]').addClass('hidden');
+            }
+          });
+
+          var $lisVisible = that.$lis.not('.hidden');
+
+          // hide divider if first or last visible, or if followed by another divider
+          $lisVisible.each(function (index) {
+            var $this = $(this);
+
+            if ($this.hasClass('divider') && (
+              $this.index() === $lisVisible.eq(0).index() ||
+              $this.index() === $lisVisible.last().index() ||
+              $lisVisible.eq(index + 1).hasClass('divider'))) {
+              $this.addClass('hidden');
+            }
+          });
+
+          if (!that.$lis.not('.hidden, .no-results').length) {
+            if (!!$no_results.parent().length) {
+              $no_results.remove();
+            }
+            $no_results.html(that.options.noneResultsText.replace('{0}', '"' + htmlEscape(that.$searchbox.val()) + '"')).show();
+            that.$menuInner.append($no_results);
+          } else if (!!$no_results.parent().length) {
+            $no_results.remove();
+          }
+
+        } else {
+          that.$lis.not('.is-hidden').removeClass('hidden');
+          if (!!$no_results.parent().length) {
+            $no_results.remove();
+          }
+        }
+
+        that.$lis.filter('.active').removeClass('active');
+        that.$lis.not('.hidden, .divider, .dropdown-header').eq(0).addClass('active').children('a').focus();
+        $(this).focus();
+      });
+    },
+
+    _searchStyle: function () {
+      var style = 'icontains';
+      switch (this.options.liveSearchStyle) {
+        case 'begins':
+        case 'startsWith':
+          style = 'ibegins';
+          break;
+        case 'contains':
+        default:
+          break; //no need to change the default
+      }
+
+      return style;
+    },
+
+    val: function (value) {
+      if (typeof value !== 'undefined') {
+        this.$element.val(value);
+        this.render();
+
+        return this.$element;
+      } else {
+        return this.$element.val();
+      }
+    },
+
+    selectAll: function () {
+      this.findLis();
+      this.$element.find('option:enabled').not('[data-divider], [data-hidden]').prop('selected', true);
+      this.$lis.not('.divider, .dropdown-header, .disabled, .hidden').addClass('selected');
+      this.render(false);
+    },
+
+    deselectAll: function () {
+      this.findLis();
+      this.$element.find('option:enabled').not('[data-divider], [data-hidden]').prop('selected', false);
+      this.$lis.not('.divider, .dropdown-header, .disabled, .hidden').removeClass('selected');
+      this.render(false);
+    },
+
+    keydown: function (e) {
+      var $this = $(this),
+          $parent = $this.is('input') ? $this.parent().parent() : $this.parent(),
+          $items,
+          that = $parent.data('this'),
+          index,
+          next,
+          first,
+          last,
+          prev,
+          nextPrev,
+          prevIndex,
+          isActive,
+          selector = ':not(.disabled, .hidden, .dropdown-header, .divider)',
+          keyCodeMap = {
+            32: ' ',
+            48: '0',
+            49: '1',
+            50: '2',
+            51: '3',
+            52: '4',
+            53: '5',
+            54: '6',
+            55: '7',
+            56: '8',
+            57: '9',
+            59: ';',
+            65: 'a',
+            66: 'b',
+            67: 'c',
+            68: 'd',
+            69: 'e',
+            70: 'f',
+            71: 'g',
+            72: 'h',
+            73: 'i',
+            74: 'j',
+            75: 'k',
+            76: 'l',
+            77: 'm',
+            78: 'n',
+            79: 'o',
+            80: 'p',
+            81: 'q',
+            82: 'r',
+            83: 's',
+            84: 't',
+            85: 'u',
+            86: 'v',
+            87: 'w',
+            88: 'x',
+            89: 'y',
+            90: 'z',
+            96: '0',
+            97: '1',
+            98: '2',
+            99: '3',
+            100: '4',
+            101: '5',
+            102: '6',
+            103: '7',
+            104: '8',
+            105: '9'
+          };
+
+      if (that.options.liveSearch) $parent = $this.parent().parent();
+
+      if (that.options.container) $parent = that.$menu;
+
+      $items = $('[role=menu] li a', $parent);
+
+      isActive = that.$menu.parent().hasClass('open');
+
+      if (!isActive && (e.keyCode >= 48 && e.keyCode <= 57 || event.keyCode >= 65 && event.keyCode <= 90)) {
+        if (!that.options.container) {
+          that.setSize();
+          that.$menu.parent().addClass('open');
+          isActive = true;
+        } else {
+          that.$newElement.trigger('click');
+        }
+        that.$searchbox.focus();
+      }
+
+      if (that.options.liveSearch) {
+        if (/(^9$|27)/.test(e.keyCode.toString(10)) && isActive && that.$menu.find('.active').length === 0) {
+          e.preventDefault();
+          that.$menu.parent().removeClass('open');
+          if (that.options.container) that.$newElement.removeClass('open');
+          that.$button.focus();
+        }
+        // $items contains li elements when liveSearch is enabled
+        $items = $('[role=menu] li:not(.disabled, .hidden, .dropdown-header, .divider)', $parent);
+        if (!$this.val() && !/(38|40)/.test(e.keyCode.toString(10))) {
+          if ($items.filter('.active').length === 0) {
+            $items = that.$newElement.find('li');
+            if (that.options.liveSearchNormalize) {
+              $items = $items.filter(':a' + that._searchStyle() + '(' + normalizeToBase(keyCodeMap[e.keyCode]) + ')');
+            } else {
+              $items = $items.filter(':' + that._searchStyle() + '(' + keyCodeMap[e.keyCode] + ')');
+            }
+          }
+        }
+      }
+
+      if (!$items.length) return;
+
+      if (/(38|40)/.test(e.keyCode.toString(10))) {
+        index = $items.index($items.filter(':focus'));
+        first = $items.parent(selector).first().data('originalIndex');
+        last = $items.parent(selector).last().data('originalIndex');
+        next = $items.eq(index).parent().nextAll(selector).eq(0).data('originalIndex');
+        prev = $items.eq(index).parent().prevAll(selector).eq(0).data('originalIndex');
+        nextPrev = $items.eq(next).parent().prevAll(selector).eq(0).data('originalIndex');
+
+        if (that.options.liveSearch) {
+          $items.each(function (i) {
+            if (!$(this).hasClass('disabled')) {
+              $(this).data('index', i);
+            }
+          });
+          index = $items.index($items.filter('.active'));
+          first = $items.first().data('index');
+          last = $items.last().data('index');
+          next = $items.eq(index).nextAll().eq(0).data('index');
+          prev = $items.eq(index).prevAll().eq(0).data('index');
+          nextPrev = $items.eq(next).prevAll().eq(0).data('index');
+        }
+
+        prevIndex = $this.data('prevIndex');
+
+        if (e.keyCode == 38) {
+          if (that.options.liveSearch) index -= 1;
+          if (index != nextPrev && index > prev) index = prev;
+          if (index < first) index = first;
+          if (index == prevIndex) index = last;
+        } else if (e.keyCode == 40) {
+          if (that.options.liveSearch) index += 1;
+          if (index == -1) index = 0;
+          if (index != nextPrev && index < next) index = next;
+          if (index > last) index = last;
+          if (index == prevIndex) index = first;
+        }
+
+        $this.data('prevIndex', index);
+
+        if (!that.options.liveSearch) {
+          $items.eq(index).focus();
+        } else {
+          e.preventDefault();
+          if (!$this.hasClass('dropdown-toggle')) {
+            $items.removeClass('active').eq(index).addClass('active').children('a').focus();
+            $this.focus();
+          }
+        }
+
+      } else if (!$this.is('input')) {
+        var keyIndex = [],
+            count,
+            prevKey;
+
+        $items.each(function () {
+          if (!$(this).parent().hasClass('disabled')) {
+            if ($.trim($(this).text().toLowerCase()).substring(0, 1) == keyCodeMap[e.keyCode]) {
+              keyIndex.push($(this).parent().index());
+            }
+          }
+        });
+
+        count = $(document).data('keycount');
+        count++;
+        $(document).data('keycount', count);
+
+        prevKey = $.trim($(':focus').text().toLowerCase()).substring(0, 1);
+
+        if (prevKey != keyCodeMap[e.keyCode]) {
+          count = 1;
+          $(document).data('keycount', count);
+        } else if (count >= keyIndex.length) {
+          $(document).data('keycount', 0);
+          if (count > keyIndex.length) count = 1;
+        }
+
+        $items.eq(keyIndex[count - 1]).focus();
+      }
+
+      // Select focused option if "Enter", "Spacebar" or "Tab" (when selectOnTab is true) are pressed inside the menu.
+      if ((/(13|32)/.test(e.keyCode.toString(10)) || (/(^9$)/.test(e.keyCode.toString(10)) && that.options.selectOnTab)) && isActive) {
+        if (!/(32)/.test(e.keyCode.toString(10))) e.preventDefault();
+        if (!that.options.liveSearch) {
+          var elem = $(':focus');
+          elem.click();
+          // Bring back focus for multiselects
+          elem.focus();
+          // Prevent screen from scrolling if the user hit the spacebar
+          e.preventDefault();
+          // Fixes spacebar selection of dropdown items in FF & IE
+          $(document).data('spaceSelect', true);
+        } else if (!/(32)/.test(e.keyCode.toString(10))) {
+          that.$menu.find('.active a').click();
+          $this.focus();
+        }
+        $(document).data('keycount', 0);
+      }
+
+      if ((/(^9$|27)/.test(e.keyCode.toString(10)) && isActive && (that.multiple || that.options.liveSearch)) || (/(27)/.test(e.keyCode.toString(10)) && !isActive)) {
+        that.$menu.parent().removeClass('open');
+        if (that.options.container) that.$newElement.removeClass('open');
+        that.$button.focus();
+      }
+    },
+
+    mobile: function () {
+      this.$element.addClass('mobile-device').appendTo(this.$newElement);
+      if (this.options.container) this.$menu.hide();
+    },
+
+    refresh: function () {
+      this.$lis = null;
+      this.reloadLi();
+      this.render();
+      this.checkDisabled();
+      this.liHeight(true);
+      this.setStyle();
+      this.setWidth();
+      if (this.$lis) this.$searchbox.trigger('propertychange');
+
+      this.$element.trigger('refreshed.bs.select');
+    },
+
+    hide: function () {
+      this.$newElement.hide();
+    },
+
+    show: function () {
+      this.$newElement.show();
+    },
+
+    remove: function () {
+      this.$newElement.remove();
+      this.$element.remove();
+    }
+  };
+
+  // SELECTPICKER PLUGIN DEFINITION
+  // ==============================
+  function Plugin(option, event) {
+    // get the args of the outer function..
+    var args = arguments;
+    // The arguments of the function are explicitly re-defined from the argument list, because the shift causes them
+    // to get lost/corrupted in android 2.3 and IE9 #715 #775
+    var _option = option,
+        _event = event;
+    [].shift.apply(args);
+
+    var value;
+    var chain = this.each(function () {
+      var $this = $(this);
+      if ($this.is('select')) {
+        var data = $this.data('selectpicker'),
+            options = typeof _option == 'object' && _option;
+
+        if (!data) {
+          var config = $.extend({}, Selectpicker.DEFAULTS, $.fn.selectpicker.defaults || {}, $this.data(), options);
+          $this.data('selectpicker', (data = new Selectpicker(this, config, _event)));
+        } else if (options) {
+          for (var i in options) {
+            if (options.hasOwnProperty(i)) {
+              data.options[i] = options[i];
+            }
+          }
+        }
+
+        if (typeof _option == 'string') {
+          if (data[_option] instanceof Function) {
+            value = data[_option].apply(data, args);
+          } else {
+            value = data.options[_option];
+          }
+        }
+      }
+    });
+
+    if (typeof value !== 'undefined') {
+      //noinspection JSUnusedAssignment
+      return value;
+    } else {
+      return chain;
+    }
+  }
+
+  var old = $.fn.selectpicker;
+  $.fn.selectpicker = Plugin;
+  $.fn.selectpicker.Constructor = Selectpicker;
+
+  // SELECTPICKER NO CONFLICT
+  // ========================
+  $.fn.selectpicker.noConflict = function () {
+    $.fn.selectpicker = old;
+    return this;
+  };
+
+  $(document)
+      .data('keycount', 0)
+      .on('keydown', '.bootstrap-select [data-toggle=dropdown], .bootstrap-select [role="menu"], .bs-searchbox input', Selectpicker.prototype.keydown)
+      .on('focusin.modal', '.bootstrap-select [data-toggle=dropdown], .bootstrap-select [role="menu"], .bs-searchbox input', function (e) {
+        e.stopPropagation();
+      });
+
+  // SELECTPICKER DATA-API
+  // =====================
+  $(window).on('load.bs.select.data-api', function () {
+    $('.selectpicker').each(function () {
+      var $selectpicker = $(this);
+      Plugin.call($selectpicker, $selectpicker.data());
+    })
+  });
+})(jQuery);
+
+
+}));
+
+/*!
+ * Validator v0.8.1 for Bootstrap 3, by @1000hz
+ * Copyright 2015 Cina Saffary
+ * Licensed under http://opensource.org/licenses/MIT
+ *
+ * https://github.com/1000hz/bootstrap-validator
+ */
+
++function(a){"use strict";function b(b){return this.each(function(){var c=a(this),e=a.extend({},d.DEFAULTS,c.data(),"object"==typeof b&&b),f=c.data("bs.validator");(f||"destroy"!=b)&&(f||c.data("bs.validator",f=new d(this,e)),"string"==typeof b&&f[b]())})}var c=':input:not([type="submit"], button):enabled:visible',d=function(b,c){this.$element=a(b),this.options=c,c.errors=a.extend({},d.DEFAULTS.errors,c.errors);for(var e in c.custom)if(!c.errors[e])throw new Error("Missing default error message for custom validator: "+e);a.extend(d.VALIDATORS,c.custom),this.$element.attr("novalidate",!0),this.toggleSubmit(),this.$element.on("input.bs.validator change.bs.validator focusout.bs.validator",a.proxy(this.validateInput,this)),this.$element.on("submit.bs.validator",a.proxy(this.onSubmit,this)),this.$element.find("[data-match]").each(function(){var b=a(this),c=b.data("match");a(c).on("input.bs.validator",function(){b.val()&&b.trigger("input.bs.validator")})})};d.DEFAULTS={delay:500,html:!1,disable:!0,custom:{},errors:{match:"Does not match",minlength:"Not long enough"}},d.VALIDATORS={"native":function(a){var b=a[0];return b.checkValidity?b.checkValidity():!0},match:function(b){var c=b.data("match");return!b.val()||b.val()===a(c).val()},minlength:function(a){var b=a.data("minlength");return!a.val()||a.val().length>=b}},d.prototype.validateInput=function(b){var c=a(b.target),d=c.data("bs.validator.errors");if(c.is('[type="radio"]')&&(c=this.$element.find('input[name="'+c.attr("name")+'"]')),this.$element.trigger(b=a.Event("validate.bs.validator",{relatedTarget:c[0]})),!b.isDefaultPrevented()){var e=this;this.runValidators(c).done(function(f){c.data("bs.validator.errors",f),f.length?e.showErrors(c):e.clearErrors(c),d&&f.toString()===d.toString()||(b=f.length?a.Event("invalid.bs.validator",{relatedTarget:c[0],detail:f}):a.Event("valid.bs.validator",{relatedTarget:c[0],detail:d}),e.$element.trigger(b)),e.toggleSubmit(),e.$element.trigger(a.Event("validated.bs.validator",{relatedTarget:c[0]}))})}},d.prototype.runValidators=function(b){function c(a){return b.data(a+"-error")||b.data("error")||"native"==a&&b[0].validationMessage||g.errors[a]}var e=[],f=a.Deferred(),g=this.options;return b.data("bs.validator.deferred")&&b.data("bs.validator.deferred").reject(),b.data("bs.validator.deferred",f),a.each(d.VALIDATORS,a.proxy(function(a,d){if((b.data(a)||"native"==a)&&!d.call(this,b)){var f=c(a);!~e.indexOf(f)&&e.push(f)}},this)),!e.length&&b.val()&&b.data("remote")?this.defer(b,function(){var d={};d[b.attr("name")]=b.val(),a.get(b.data("remote"),d).fail(function(a,b,d){e.push(c("remote")||d)}).always(function(){f.resolve(e)})}):f.resolve(e),f.promise()},d.prototype.validate=function(){var a=this.options.delay;return this.options.delay=0,this.$element.find(c).trigger("input.bs.validator"),this.options.delay=a,this},d.prototype.showErrors=function(b){var c=this.options.html?"html":"text";this.defer(b,function(){var d=b.closest(".form-group"),e=d.find(".help-block.with-errors"),f=d.find(".form-control-feedback"),g=b.data("bs.validator.errors");g.length&&(g=a("<ul/>").addClass("list-unstyled").append(a.map(g,function(b){return a("<li/>")[c](b)})),void 0===e.data("bs.validator.originalContent")&&e.data("bs.validator.originalContent",e.html()),e.empty().append(g),d.addClass("has-error"),f.length&&f.removeClass("glyphicon-ok")&&f.addClass("glyphicon-warning-sign")&&d.removeClass("has-success"))})},d.prototype.clearErrors=function(a){var b=a.closest(".form-group"),c=b.find(".help-block.with-errors"),d=b.find(".form-control-feedback");c.html(c.data("bs.validator.originalContent")),b.removeClass("has-error"),d.length&&d.removeClass("glyphicon-warning-sign")&&d.addClass("glyphicon-ok")&&b.addClass("has-success")},d.prototype.hasErrors=function(){function b(){return!!(a(this).data("bs.validator.errors")||[]).length}return!!this.$element.find(c).filter(b).length},d.prototype.isIncomplete=function(){function b(){return"checkbox"===this.type?!this.checked:"radio"===this.type?!a('[name="'+this.name+'"]:checked').length:""===a.trim(this.value)}return!!this.$element.find(c).filter("[required]").filter(b).length},d.prototype.onSubmit=function(a){this.validate(),(this.isIncomplete()||this.hasErrors())&&a.preventDefault()},d.prototype.toggleSubmit=function(){if(this.options.disable){var b=a('button[type="submit"], input[type="submit"]').filter('[form="'+this.$element.attr("id")+'"]').add(this.$element.find('input[type="submit"], button[type="submit"]'));b.toggleClass("disabled",this.isIncomplete()||this.hasErrors()).css({"pointer-events":"all",cursor:"pointer"})}},d.prototype.defer=function(a,b){return this.options.delay?(window.clearTimeout(a.data("bs.validator.timeout")),void a.data("bs.validator.timeout",window.setTimeout(b,this.options.delay))):b()},d.prototype.destroy=function(){return this.$element.removeAttr("novalidate").removeData("bs.validator").off(".bs.validator"),this.$element.find(c).off(".bs.validator").removeData(["bs.validator.errors","bs.validator.deferred"]).each(function(){var b=a(this),c=b.data("bs.validator.timeout");window.clearTimeout(c)&&b.removeData("bs.validator.timeout")}),this.$element.find(".help-block.with-errors").each(function(){var b=a(this),c=b.data("bs.validator.originalContent");b.removeData("bs.validator.originalContent").html(c)}),this.$element.find('input[type="submit"], button[type="submit"]').removeClass("disabled"),this.$element.find(".has-error").removeClass("has-error"),this};var e=a.fn.validator;a.fn.validator=b,a.fn.validator.Constructor=d,a.fn.validator.noConflict=function(){return a.fn.validator=e,this},a(window).on("load",function(){a('form[data-toggle="validator"]').each(function(){var c=a(this);b.call(c,c.data())})})}(jQuery);
+/*! iCheck v1.0.2 by Damir Sultanov, http://git.io/arlzeA, MIT Licensed */
+(function(f){function A(a,b,d){var c=a[0],g=/er/.test(d)?_indeterminate:/bl/.test(d)?n:k,e=d==_update?{checked:c[k],disabled:c[n],indeterminate:"true"==a.attr(_indeterminate)||"false"==a.attr(_determinate)}:c[g];if(/^(ch|di|in)/.test(d)&&!e)x(a,g);else if(/^(un|en|de)/.test(d)&&e)q(a,g);else if(d==_update)for(var f in e)e[f]?x(a,f,!0):q(a,f,!0);else if(!b||"toggle"==d){if(!b)a[_callback]("ifClicked");e?c[_type]!==r&&q(a,g):x(a,g)}}function x(a,b,d){var c=a[0],g=a.parent(),e=b==k,u=b==_indeterminate,
+v=b==n,s=u?_determinate:e?y:"enabled",F=l(a,s+t(c[_type])),B=l(a,b+t(c[_type]));if(!0!==c[b]){if(!d&&b==k&&c[_type]==r&&c.name){var w=a.closest("form"),p='input[name="'+c.name+'"]',p=w.length?w.find(p):f(p);p.each(function(){this!==c&&f(this).data(m)&&q(f(this),b)})}u?(c[b]=!0,c[k]&&q(a,k,"force")):(d||(c[b]=!0),e&&c[_indeterminate]&&q(a,_indeterminate,!1));D(a,e,b,d)}c[n]&&l(a,_cursor,!0)&&g.find("."+C).css(_cursor,"default");g[_add](B||l(a,b)||"");g.attr("role")&&!u&&g.attr("aria-"+(v?n:k),"true");
+g[_remove](F||l(a,s)||"")}function q(a,b,d){var c=a[0],g=a.parent(),e=b==k,f=b==_indeterminate,m=b==n,s=f?_determinate:e?y:"enabled",q=l(a,s+t(c[_type])),r=l(a,b+t(c[_type]));if(!1!==c[b]){if(f||!d||"force"==d)c[b]=!1;D(a,e,s,d)}!c[n]&&l(a,_cursor,!0)&&g.find("."+C).css(_cursor,"pointer");g[_remove](r||l(a,b)||"");g.attr("role")&&!f&&g.attr("aria-"+(m?n:k),"false");g[_add](q||l(a,s)||"")}function E(a,b){if(a.data(m)){a.parent().html(a.attr("style",a.data(m).s||""));if(b)a[_callback](b);a.off(".i").unwrap();
+f(_label+'[for="'+a[0].id+'"]').add(a.closest(_label)).off(".i")}}function l(a,b,f){if(a.data(m))return a.data(m).o[b+(f?"":"Class")]}function t(a){return a.charAt(0).toUpperCase()+a.slice(1)}function D(a,b,f,c){if(!c){if(b)a[_callback]("ifToggled");a[_callback]("ifChanged")[_callback]("if"+t(f))}}var m="iCheck",C=m+"-helper",r="radio",k="checked",y="un"+k,n="disabled";_determinate="determinate";_indeterminate="in"+_determinate;_update="update";_type="type";_click="click";_touch="touchbegin.i touchend.i";
+_add="addClass";_remove="removeClass";_callback="trigger";_label="label";_cursor="cursor";_mobile=/ipad|iphone|ipod|android|blackberry|windows phone|opera mini|silk/i.test(navigator.userAgent);f.fn[m]=function(a,b){var d='input[type="checkbox"], input[type="'+r+'"]',c=f(),g=function(a){a.each(function(){var a=f(this);c=a.is(d)?c.add(a):c.add(a.find(d))})};if(/^(check|uncheck|toggle|indeterminate|determinate|disable|enable|update|destroy)$/i.test(a))return a=a.toLowerCase(),g(this),c.each(function(){var c=
+f(this);"destroy"==a?E(c,"ifDestroyed"):A(c,!0,a);f.isFunction(b)&&b()});if("object"!=typeof a&&a)return this;var e=f.extend({checkedClass:k,disabledClass:n,indeterminateClass:_indeterminate,labelHover:!0},a),l=e.handle,v=e.hoverClass||"hover",s=e.focusClass||"focus",t=e.activeClass||"active",B=!!e.labelHover,w=e.labelHoverClass||"hover",p=(""+e.increaseArea).replace("%","")|0;if("checkbox"==l||l==r)d='input[type="'+l+'"]';-50>p&&(p=-50);g(this);return c.each(function(){var a=f(this);E(a);var c=this,
+b=c.id,g=-p+"%",d=100+2*p+"%",d={position:"absolute",top:g,left:g,display:"block",width:d,height:d,margin:0,padding:0,background:"#fff",border:0,opacity:0},g=_mobile?{position:"absolute",visibility:"hidden"}:p?d:{position:"absolute",opacity:0},l="checkbox"==c[_type]?e.checkboxClass||"icheckbox":e.radioClass||"i"+r,z=f(_label+'[for="'+b+'"]').add(a.closest(_label)),u=!!e.aria,y=m+"-"+Math.random().toString(36).substr(2,6),h='<div class="'+l+'" '+(u?'role="'+c[_type]+'" ':"");u&&z.each(function(){h+=
+'aria-labelledby="';this.id?h+=this.id:(this.id=y,h+=y);h+='"'});h=a.wrap(h+"/>")[_callback]("ifCreated").parent().append(e.insert);d=f('<ins class="'+C+'"/>').css(d).appendTo(h);a.data(m,{o:e,s:a.attr("style")}).css(g);e.inheritClass&&h[_add](c.className||"");e.inheritID&&b&&h.attr("id",m+"-"+b);"static"==h.css("position")&&h.css("position","relative");A(a,!0,_update);if(z.length)z.on(_click+".i mouseover.i mouseout.i "+_touch,function(b){var d=b[_type],e=f(this);if(!c[n]){if(d==_click){if(f(b.target).is("a"))return;
+A(a,!1,!0)}else B&&(/ut|nd/.test(d)?(h[_remove](v),e[_remove](w)):(h[_add](v),e[_add](w)));if(_mobile)b.stopPropagation();else return!1}});a.on(_click+".i focus.i blur.i keyup.i keydown.i keypress.i",function(b){var d=b[_type];b=b.keyCode;if(d==_click)return!1;if("keydown"==d&&32==b)return c[_type]==r&&c[k]||(c[k]?q(a,k):x(a,k)),!1;if("keyup"==d&&c[_type]==r)!c[k]&&x(a,k);else if(/us|ur/.test(d))h["blur"==d?_remove:_add](s)});d.on(_click+" mousedown mouseup mouseover mouseout "+_touch,function(b){var d=
+b[_type],e=/wn|up/.test(d)?t:v;if(!c[n]){if(d==_click)A(a,!1,!0);else{if(/wn|er|in/.test(d))h[_add](e);else h[_remove](e+" "+t);if(z.length&&B&&e==v)z[/ut|nd/.test(d)?_remove:_add](w)}if(_mobile)b.stopPropagation();else return!1}})})}})(window.jQuery||window.Zepto);
+
 /*!
  * jQuery Cookie Plugin v1.4.1
  * https://github.com/carhartl/jquery-cookie
@@ -11629,6 +15087,2285 @@ if (typeof jQuery === 'undefined') {
 
 }));
 
+/* ========================================================
+ * easyWizard v1.1.1
+ * http://st3ph.github.com/jquery.easyWizard
+ * ========================================================
+ * Copyright 2012 - 214 Stéphane Litou
+ * http://stephane-litou.com
+ *
+ * Dual licensed under the MIT or GPL Version 2 licenses.
+ * http://www.opensource.org/licenses/mit-license.php
+ * http://www.opensource.org/licenses/GPL-2.0
+ * ======================================================== */
+(function( $ ) {
+    var arrSettings = [];
+    var easyWizardMethods = {
+        init : function(options) {
+            var settings = $.extend( {
+                'stepClassName' : 'step',
+                'showSteps' : true,
+                'stepsText' : '{n}. {t}',
+                'showButtons' : true,
+                'buttonsClass' : '',
+                'prevButton' : '< Back',
+                'nextButton' : 'Next >',
+                'debug' : false,
+                'submitButton': true,
+                'submitButtonText': 'Submit',
+                'submitButtonClass': '',
+                before: function(wizardObj, currentStepObj, nextStepObj) {},
+                after: function(wizardObj, prevStepObj, currentStepObj) {},
+                beforeSubmit: function(wizardObj) {
+                    wizardObj.find('input, textarea').each(function() {
+                        if(!this.checkValidity()) {
+                            this.focus();
+                            step = $(this).parents('.'+thisSettings.stepClassName).attr('data-step');
+                            easyWizardMethods.goToStep.call(wizardObj, step);
+
+                            return false;
+                        }
+                    });
+                }
+            }, options);
+
+            arrSettings[this.index()] = settings;
+
+            return this.each(function() {
+                thisSettings = settings;
+
+                $this = $(this); // Wizard Obj
+                $this.addClass('easyWizardElement');
+                $steps = $this.find('.'+thisSettings.stepClassName);
+                thisSettings.steps = $steps.length;
+                thisSettings.width = $(this).width();
+
+                if(thisSettings.steps > 1) {
+                    // Create UI
+                    $this.wrapInner('<div class="easyWizardWrapper" />');
+                    $this.find('.easyWizardWrapper').width(thisSettings.width * thisSettings.steps);
+                    $this.css({
+                        'position': 'relative',
+                        'overflow': 'hidden'
+                    }).addClass('easyPager');
+
+                    $stepsHtml = $('<ul class="easyWizardSteps">');
+
+                    $steps.each(function(index) {
+                        step = index + 1;
+                        $(this).css({
+                            'float': 'left',
+                            'width': thisSettings.width,
+                            'height': '1px'
+                        }).attr('data-step', step);
+
+                        if(!index) {
+                            $(this).addClass('active').css('height', '');
+                        }else {
+                            $(this).find('input, textarea, select, button').attr('tabindex', '-1');
+                        }
+
+                        stepText = thisSettings.stepsText.replace('{n}', '<span>'+step+'</span>');
+                        stepText = stepText.replace('{t}', $(this).attr('data-step-title'));
+                        $stepsHtml.append('<li'+(!index?' class="current"':'')+' data-step="'+step+'">'+stepText+'</li>');
+                    });
+
+                    if(thisSettings.showSteps) {
+                        $this.prepend($stepsHtml);
+                    }
+
+                    if(thisSettings.showButtons) {
+                        paginationHtml = '<div class="easyWizardButtons">';
+                            paginationHtml += '<button class="prev '+thisSettings.buttonsClass+'">'+thisSettings.prevButton+'</button>';
+                            paginationHtml += '<button class="next '+thisSettings.buttonsClass+'">'+thisSettings.nextButton+'</button>';
+                            paginationHtml += thisSettings.submitButton?'<button type="submit" class="submit '+thisSettings.submitButtonClass+'">'+thisSettings.submitButtonText+'</button>':'';
+                        paginationHtml  += '</div>';
+                        $paginationBloc = $(paginationHtml);
+                        $paginationBloc.css('clear', 'both');
+                        $paginationBloc.find('.prev, .submit').hide();
+                        $paginationBloc.find('.prev').bind('click.easyWizard', function(e) {
+                            e.preventDefault();
+
+                            $wizard = $(this).parents('.easyWizardElement');
+                            easyWizardMethods.prevStep.apply($wizard);
+                        });
+
+                        $paginationBloc.find('.next').bind('click.easyWizard', function(e) {
+                            e.preventDefault();
+
+                            $wizard = $(this).parents('.easyWizardElement');
+                            easyWizardMethods.nextStep.apply($wizard);
+                        });
+                        $this.append($paginationBloc);
+                    }
+
+                    $formObj = $this.is('form')?$this:$(this).find('form');
+
+                    // beforeSubmit Callback
+                    $this.find('[type="submit"]').bind('click.easyWizard', function(e) {
+                        $wizard = $(this).parents('.easyWizardElement');
+                        var beforeSubmitValue = thisSettings.beforeSubmit($wizard);
+                        if(beforeSubmitValue === false) {
+                            return false;
+                        }
+                        return true;
+                    });
+                }else if(thisSettings.debug) {
+                    console.log('Can\'t make a wizard with only one step oO');
+                }
+            });
+        },
+        prevStep : function( ) {
+            thisSettings = arrSettings[this.index()];
+            $activeStep = this.find('.'+ thisSettings.stepClassName +'.active');
+            if($activeStep.prev('.'+thisSettings.stepClassName).length) {               
+                prevStep = parseInt($activeStep.prev().attr('data-step'));
+                easyWizardMethods.goToStep.call(this, prevStep);
+            }
+        },
+        nextStep : function( ) {
+            thisSettings = arrSettings[this.index()];           
+            $activeStep = this.find('.'+ thisSettings.stepClassName +'.active');
+            if($activeStep.next('.'+thisSettings.stepClassName).length) {
+                nextStep = parseInt($activeStep.next().attr('data-step'));
+                easyWizardMethods.goToStep.call(this, nextStep);
+            }
+        },
+        goToStep : function(step) {
+            thisSettings = arrSettings[this.index()];
+            $activeStep = this.find('.'+ thisSettings.stepClassName +'.active');
+            $nextStep = this.find('.'+thisSettings.stepClassName+'[data-step="'+step+'"]');
+            currentStep = $activeStep.attr('data-step');
+
+            // Prevent sliding same step
+            if (currentStep == step) return;
+
+            // Before callBack
+            var beforeValue = thisSettings.before(this, $activeStep, $nextStep);
+            if(beforeValue === false) {
+                return false;
+            }
+
+            // Define direction for sliding
+            if(currentStep < step) { // forward
+                leftValue = thisSettings.width * -1;
+            }else { // backward
+                leftValue = thisSettings.width;
+            }
+
+            // Slide !
+            $activeStep.removeClass('active');
+            $activeStep.find('input, textarea, select, button').attr('tabindex', '-1');
+
+            $nextStep.css('height', '').addClass('active');
+            $nextStep.find('input, textarea, select, button').removeAttr('tabindex');
+
+            this.find('.easyWizardWrapper').stop(true, true).animate({
+                'margin-left': thisSettings.width * (step - 1) * -1
+            }, function () {
+                $activeStep.css({ height: '1px' });
+            });
+
+            // Defines steps
+            this.find('.easyWizardSteps .current').removeClass('current');
+            this.find('.easyWizardSteps li[data-step="'+step+'"]').addClass('current');
+
+            // Define buttons
+            $paginationBloc = this.find('.easyWizardButtons');
+            if($paginationBloc.length) {
+                if(step == 1) {
+                    $paginationBloc.find('.prev, .submit').hide();
+                    $paginationBloc.find('.next').show();
+                }else if(step < thisSettings.steps) {
+                    $paginationBloc.find('.submit').hide();
+                    $paginationBloc.find('.prev, .next').show();
+                }else {
+                    if($nextStep.prev('.'+thisSettings.stepClassName).length) { // If there is a previous step, must be always the case but... you know =)
+                        $paginationBloc.find('.prev').show();
+                    }
+                    $paginationBloc.find('.next').hide();
+                    $paginationBloc.find('.submit').show();
+                }
+            }
+
+            // After callBack
+            thisSettings.after(this, $activeStep, $nextStep);
+        }
+    };
+
+    $.fn.easyWizard = function(method) {
+        if ( easyWizardMethods[method] ) {
+            return easyWizardMethods[ method ].apply( this, Array.prototype.slice.call( arguments, 1 ));
+        } else if ( typeof method === 'object' || ! method ) {
+            return easyWizardMethods.init.apply( this, arguments );
+        } else {
+            $.error( 'Method ' +  method + ' does not exist on jQuery.easyWizard' );
+        }
+    };
+})(jQuery);
+
+/*! Magnific Popup - v1.0.0 - 2014-12-12
+* http://dimsemenov.com/plugins/magnific-popup/
+* Copyright (c) 2014 Dmitry Semenov; */
+;(function (factory) { 
+if (typeof define === 'function' && define.amd) { 
+ // AMD. Register as an anonymous module. 
+ define(['jquery'], factory); 
+ } else if (typeof exports === 'object') { 
+ // Node/CommonJS 
+ factory(require('jquery')); 
+ } else { 
+ // Browser globals 
+ factory(window.jQuery || window.Zepto); 
+ } 
+ }(function($) { 
+
+/*>>core*/
+/**
+ * 
+ * Magnific Popup Core JS file
+ * 
+ */
+
+
+/**
+ * Private static constants
+ */
+var CLOSE_EVENT = 'Close',
+	BEFORE_CLOSE_EVENT = 'BeforeClose',
+	AFTER_CLOSE_EVENT = 'AfterClose',
+	BEFORE_APPEND_EVENT = 'BeforeAppend',
+	MARKUP_PARSE_EVENT = 'MarkupParse',
+	OPEN_EVENT = 'Open',
+	CHANGE_EVENT = 'Change',
+	NS = 'mfp',
+	EVENT_NS = '.' + NS,
+	READY_CLASS = 'mfp-ready',
+	REMOVING_CLASS = 'mfp-removing',
+	PREVENT_CLOSE_CLASS = 'mfp-prevent-close';
+
+
+/**
+ * Private vars 
+ */
+var mfp, // As we have only one instance of MagnificPopup object, we define it locally to not to use 'this'
+	MagnificPopup = function(){},
+	_isJQ = !!(window.jQuery),
+	_prevStatus,
+	_window = $(window),
+	_body,
+	_document,
+	_prevContentType,
+	_wrapClasses,
+	_currPopupType;
+
+
+/**
+ * Private functions
+ */
+var _mfpOn = function(name, f) {
+		mfp.ev.on(NS + name + EVENT_NS, f);
+	},
+	_getEl = function(className, appendTo, html, raw) {
+		var el = document.createElement('div');
+		el.className = 'mfp-'+className;
+		if(html) {
+			el.innerHTML = html;
+		}
+		if(!raw) {
+			el = $(el);
+			if(appendTo) {
+				el.appendTo(appendTo);
+			}
+		} else if(appendTo) {
+			appendTo.appendChild(el);
+		}
+		return el;
+	},
+	_mfpTrigger = function(e, data) {
+		mfp.ev.triggerHandler(NS + e, data);
+
+		if(mfp.st.callbacks) {
+			// converts "mfpEventName" to "eventName" callback and triggers it if it's present
+			e = e.charAt(0).toLowerCase() + e.slice(1);
+			if(mfp.st.callbacks[e]) {
+				mfp.st.callbacks[e].apply(mfp, $.isArray(data) ? data : [data]);
+			}
+		}
+	},
+	_getCloseBtn = function(type) {
+		if(type !== _currPopupType || !mfp.currTemplate.closeBtn) {
+			mfp.currTemplate.closeBtn = $( mfp.st.closeMarkup.replace('%title%', mfp.st.tClose ) );
+			_currPopupType = type;
+		}
+		return mfp.currTemplate.closeBtn;
+	},
+	// Initialize Magnific Popup only when called at least once
+	_checkInstance = function() {
+		if(!$.magnificPopup.instance) {
+			mfp = new MagnificPopup();
+			mfp.init();
+			$.magnificPopup.instance = mfp;
+		}
+	},
+	// CSS transition detection, http://stackoverflow.com/questions/7264899/detect-css-transitions-using-javascript-and-without-modernizr
+	supportsTransitions = function() {
+		var s = document.createElement('p').style, // 's' for style. better to create an element if body yet to exist
+			v = ['ms','O','Moz','Webkit']; // 'v' for vendor
+
+		if( s['transition'] !== undefined ) {
+			return true; 
+		}
+			
+		while( v.length ) {
+			if( v.pop() + 'Transition' in s ) {
+				return true;
+			}
+		}
+				
+		return false;
+	};
+
+
+
+/**
+ * Public functions
+ */
+MagnificPopup.prototype = {
+
+	constructor: MagnificPopup,
+
+	/**
+	 * Initializes Magnific Popup plugin. 
+	 * This function is triggered only once when $.fn.magnificPopup or $.magnificPopup is executed
+	 */
+	init: function() {
+		var appVersion = navigator.appVersion;
+		mfp.isIE7 = appVersion.indexOf("MSIE 7.") !== -1; 
+		mfp.isIE8 = appVersion.indexOf("MSIE 8.") !== -1;
+		mfp.isLowIE = mfp.isIE7 || mfp.isIE8;
+		mfp.isAndroid = (/android/gi).test(appVersion);
+		mfp.isIOS = (/iphone|ipad|ipod/gi).test(appVersion);
+		mfp.supportsTransition = supportsTransitions();
+
+		// We disable fixed positioned lightbox on devices that don't handle it nicely.
+		// If you know a better way of detecting this - let me know.
+		mfp.probablyMobile = (mfp.isAndroid || mfp.isIOS || /(Opera Mini)|Kindle|webOS|BlackBerry|(Opera Mobi)|(Windows Phone)|IEMobile/i.test(navigator.userAgent) );
+		_document = $(document);
+
+		mfp.popupsCache = {};
+	},
+
+	/**
+	 * Opens popup
+	 * @param  data [description]
+	 */
+	open: function(data) {
+
+		if(!_body) {
+			_body = $(document.body);
+		}
+
+		var i;
+
+		if(data.isObj === false) { 
+			// convert jQuery collection to array to avoid conflicts later
+			mfp.items = data.items.toArray();
+
+			mfp.index = 0;
+			var items = data.items,
+				item;
+			for(i = 0; i < items.length; i++) {
+				item = items[i];
+				if(item.parsed) {
+					item = item.el[0];
+				}
+				if(item === data.el[0]) {
+					mfp.index = i;
+					break;
+				}
+			}
+		} else {
+			mfp.items = $.isArray(data.items) ? data.items : [data.items];
+			mfp.index = data.index || 0;
+		}
+
+		// if popup is already opened - we just update the content
+		if(mfp.isOpen) {
+			mfp.updateItemHTML();
+			return;
+		}
+		
+		mfp.types = []; 
+		_wrapClasses = '';
+		if(data.mainEl && data.mainEl.length) {
+			mfp.ev = data.mainEl.eq(0);
+		} else {
+			mfp.ev = _document;
+		}
+
+		if(data.key) {
+			if(!mfp.popupsCache[data.key]) {
+				mfp.popupsCache[data.key] = {};
+			}
+			mfp.currTemplate = mfp.popupsCache[data.key];
+		} else {
+			mfp.currTemplate = {};
+		}
+
+
+
+		mfp.st = $.extend(true, {}, $.magnificPopup.defaults, data ); 
+		mfp.fixedContentPos = mfp.st.fixedContentPos === 'auto' ? !mfp.probablyMobile : mfp.st.fixedContentPos;
+
+		if(mfp.st.modal) {
+			mfp.st.closeOnContentClick = false;
+			mfp.st.closeOnBgClick = false;
+			mfp.st.showCloseBtn = false;
+			mfp.st.enableEscapeKey = false;
+		}
+		
+
+		// Building markup
+		// main containers are created only once
+		if(!mfp.bgOverlay) {
+
+			// Dark overlay
+			mfp.bgOverlay = _getEl('bg').on('click'+EVENT_NS, function() {
+				mfp.close();
+			});
+
+			mfp.wrap = _getEl('wrap').attr('tabindex', -1).on('click'+EVENT_NS, function(e) {
+				if(mfp._checkIfClose(e.target)) {
+					mfp.close();
+				}
+			});
+
+			mfp.container = _getEl('container', mfp.wrap);
+		}
+
+		mfp.contentContainer = _getEl('content');
+		if(mfp.st.preloader) {
+			mfp.preloader = _getEl('preloader', mfp.container, mfp.st.tLoading);
+		}
+
+
+		// Initializing modules
+		var modules = $.magnificPopup.modules;
+		for(i = 0; i < modules.length; i++) {
+			var n = modules[i];
+			n = n.charAt(0).toUpperCase() + n.slice(1);
+			mfp['init'+n].call(mfp);
+		}
+		_mfpTrigger('BeforeOpen');
+
+
+		if(mfp.st.showCloseBtn) {
+			// Close button
+			if(!mfp.st.closeBtnInside) {
+				mfp.wrap.append( _getCloseBtn() );
+			} else {
+				_mfpOn(MARKUP_PARSE_EVENT, function(e, template, values, item) {
+					values.close_replaceWith = _getCloseBtn(item.type);
+				});
+				_wrapClasses += ' mfp-close-btn-in';
+			}
+		}
+
+		if(mfp.st.alignTop) {
+			_wrapClasses += ' mfp-align-top';
+		}
+
+	
+
+		if(mfp.fixedContentPos) {
+			mfp.wrap.css({
+				overflow: mfp.st.overflowY,
+				overflowX: 'hidden',
+				overflowY: mfp.st.overflowY
+			});
+		} else {
+			mfp.wrap.css({ 
+				top: _window.scrollTop(),
+				position: 'absolute'
+			});
+		}
+		if( mfp.st.fixedBgPos === false || (mfp.st.fixedBgPos === 'auto' && !mfp.fixedContentPos) ) {
+			mfp.bgOverlay.css({
+				height: _document.height(),
+				position: 'absolute'
+			});
+		}
+
+		
+
+		if(mfp.st.enableEscapeKey) {
+			// Close on ESC key
+			_document.on('keyup' + EVENT_NS, function(e) {
+				if(e.keyCode === 27) {
+					mfp.close();
+				}
+			});
+		}
+
+		_window.on('resize' + EVENT_NS, function() {
+			mfp.updateSize();
+		});
+
+
+		if(!mfp.st.closeOnContentClick) {
+			_wrapClasses += ' mfp-auto-cursor';
+		}
+		
+		if(_wrapClasses)
+			mfp.wrap.addClass(_wrapClasses);
+
+
+		// this triggers recalculation of layout, so we get it once to not to trigger twice
+		var windowHeight = mfp.wH = _window.height();
+
+		
+		var windowStyles = {};
+
+		if( mfp.fixedContentPos ) {
+            if(mfp._hasScrollBar(windowHeight)){
+                var s = mfp._getScrollbarSize();
+                if(s) {
+                    windowStyles.marginRight = s;
+                }
+            }
+        }
+
+		if(mfp.fixedContentPos) {
+			if(!mfp.isIE7) {
+				windowStyles.overflow = 'hidden';
+			} else {
+				// ie7 double-scroll bug
+				$('body, html').css('overflow', 'hidden');
+			}
+		}
+
+		
+		
+		var classesToadd = mfp.st.mainClass;
+		if(mfp.isIE7) {
+			classesToadd += ' mfp-ie7';
+		}
+		if(classesToadd) {
+			mfp._addClassToMFP( classesToadd );
+		}
+
+		// add content
+		mfp.updateItemHTML();
+
+		_mfpTrigger('BuildControls');
+
+		// remove scrollbar, add margin e.t.c
+		$('html').css(windowStyles);
+		
+		// add everything to DOM
+		mfp.bgOverlay.add(mfp.wrap).prependTo( mfp.st.prependTo || _body );
+
+		// Save last focused element
+		mfp._lastFocusedEl = document.activeElement;
+		
+		// Wait for next cycle to allow CSS transition
+		setTimeout(function() {
+			
+			if(mfp.content) {
+				mfp._addClassToMFP(READY_CLASS);
+				mfp._setFocus();
+			} else {
+				// if content is not defined (not loaded e.t.c) we add class only for BG
+				mfp.bgOverlay.addClass(READY_CLASS);
+			}
+			
+			// Trap the focus in popup
+			_document.on('focusin' + EVENT_NS, mfp._onFocusIn);
+
+		}, 16);
+
+		mfp.isOpen = true;
+		mfp.updateSize(windowHeight);
+		_mfpTrigger(OPEN_EVENT);
+
+		return data;
+	},
+
+	/**
+	 * Closes the popup
+	 */
+	close: function() {
+		if(!mfp.isOpen) return;
+		_mfpTrigger(BEFORE_CLOSE_EVENT);
+
+		mfp.isOpen = false;
+		// for CSS3 animation
+		if(mfp.st.removalDelay && !mfp.isLowIE && mfp.supportsTransition )  {
+			mfp._addClassToMFP(REMOVING_CLASS);
+			setTimeout(function() {
+				mfp._close();
+			}, mfp.st.removalDelay);
+		} else {
+			mfp._close();
+		}
+	},
+
+	/**
+	 * Helper for close() function
+	 */
+	_close: function() {
+		_mfpTrigger(CLOSE_EVENT);
+
+		var classesToRemove = REMOVING_CLASS + ' ' + READY_CLASS + ' ';
+
+		mfp.bgOverlay.detach();
+		mfp.wrap.detach();
+		mfp.container.empty();
+
+		if(mfp.st.mainClass) {
+			classesToRemove += mfp.st.mainClass + ' ';
+		}
+
+		mfp._removeClassFromMFP(classesToRemove);
+
+		if(mfp.fixedContentPos) {
+			var windowStyles = {marginRight: ''};
+			if(mfp.isIE7) {
+				$('body, html').css('overflow', '');
+			} else {
+				windowStyles.overflow = '';
+			}
+			$('html').css(windowStyles);
+		}
+		
+		_document.off('keyup' + EVENT_NS + ' focusin' + EVENT_NS);
+		mfp.ev.off(EVENT_NS);
+
+		// clean up DOM elements that aren't removed
+		mfp.wrap.attr('class', 'mfp-wrap').removeAttr('style');
+		mfp.bgOverlay.attr('class', 'mfp-bg');
+		mfp.container.attr('class', 'mfp-container');
+
+		// remove close button from target element
+		if(mfp.st.showCloseBtn &&
+		(!mfp.st.closeBtnInside || mfp.currTemplate[mfp.currItem.type] === true)) {
+			if(mfp.currTemplate.closeBtn)
+				mfp.currTemplate.closeBtn.detach();
+		}
+
+
+		if(mfp._lastFocusedEl) {
+			$(mfp._lastFocusedEl).focus(); // put tab focus back
+		}
+		mfp.currItem = null;	
+		mfp.content = null;
+		mfp.currTemplate = null;
+		mfp.prevHeight = 0;
+
+		_mfpTrigger(AFTER_CLOSE_EVENT);
+	},
+	
+	updateSize: function(winHeight) {
+
+		if(mfp.isIOS) {
+			// fixes iOS nav bars https://github.com/dimsemenov/Magnific-Popup/issues/2
+			var zoomLevel = document.documentElement.clientWidth / window.innerWidth;
+			var height = window.innerHeight * zoomLevel;
+			mfp.wrap.css('height', height);
+			mfp.wH = height;
+		} else {
+			mfp.wH = winHeight || _window.height();
+		}
+		// Fixes #84: popup incorrectly positioned with position:relative on body
+		if(!mfp.fixedContentPos) {
+			mfp.wrap.css('height', mfp.wH);
+		}
+
+		_mfpTrigger('Resize');
+
+	},
+
+	/**
+	 * Set content of popup based on current index
+	 */
+	updateItemHTML: function() {
+		var item = mfp.items[mfp.index];
+
+		// Detach and perform modifications
+		mfp.contentContainer.detach();
+
+		if(mfp.content)
+			mfp.content.detach();
+
+		if(!item.parsed) {
+			item = mfp.parseEl( mfp.index );
+		}
+
+		var type = item.type;	
+
+		_mfpTrigger('BeforeChange', [mfp.currItem ? mfp.currItem.type : '', type]);
+		// BeforeChange event works like so:
+		// _mfpOn('BeforeChange', function(e, prevType, newType) { });
+		
+		mfp.currItem = item;
+
+		
+
+		
+
+		if(!mfp.currTemplate[type]) {
+			var markup = mfp.st[type] ? mfp.st[type].markup : false;
+
+			// allows to modify markup
+			_mfpTrigger('FirstMarkupParse', markup);
+
+			if(markup) {
+				mfp.currTemplate[type] = $(markup);
+			} else {
+				// if there is no markup found we just define that template is parsed
+				mfp.currTemplate[type] = true;
+			}
+		}
+
+		if(_prevContentType && _prevContentType !== item.type) {
+			mfp.container.removeClass('mfp-'+_prevContentType+'-holder');
+		}
+		
+		var newContent = mfp['get' + type.charAt(0).toUpperCase() + type.slice(1)](item, mfp.currTemplate[type]);
+		mfp.appendContent(newContent, type);
+
+		item.preloaded = true;
+
+		_mfpTrigger(CHANGE_EVENT, item);
+		_prevContentType = item.type;
+		
+		// Append container back after its content changed
+		mfp.container.prepend(mfp.contentContainer);
+
+		_mfpTrigger('AfterChange');
+	},
+
+
+	/**
+	 * Set HTML content of popup
+	 */
+	appendContent: function(newContent, type) {
+		mfp.content = newContent;
+		
+		if(newContent) {
+			if(mfp.st.showCloseBtn && mfp.st.closeBtnInside &&
+				mfp.currTemplate[type] === true) {
+				// if there is no markup, we just append close button element inside
+				if(!mfp.content.find('.mfp-close').length) {
+					mfp.content.append(_getCloseBtn());
+				}
+			} else {
+				mfp.content = newContent;
+			}
+		} else {
+			mfp.content = '';
+		}
+
+		_mfpTrigger(BEFORE_APPEND_EVENT);
+		mfp.container.addClass('mfp-'+type+'-holder');
+
+		mfp.contentContainer.append(mfp.content);
+	},
+
+
+
+	
+	/**
+	 * Creates Magnific Popup data object based on given data
+	 * @param  {int} index Index of item to parse
+	 */
+	parseEl: function(index) {
+		var item = mfp.items[index],
+			type;
+
+		if(item.tagName) {
+			item = { el: $(item) };
+		} else {
+			type = item.type;
+			item = { data: item, src: item.src };
+		}
+
+		if(item.el) {
+			var types = mfp.types;
+
+			// check for 'mfp-TYPE' class
+			for(var i = 0; i < types.length; i++) {
+				if( item.el.hasClass('mfp-'+types[i]) ) {
+					type = types[i];
+					break;
+				}
+			}
+
+			item.src = item.el.attr('data-mfp-src');
+			if(!item.src) {
+				item.src = item.el.attr('href');
+			}
+		}
+
+		item.type = type || mfp.st.type || 'inline';
+		item.index = index;
+		item.parsed = true;
+		mfp.items[index] = item;
+		_mfpTrigger('ElementParse', item);
+
+		return mfp.items[index];
+	},
+
+
+	/**
+	 * Initializes single popup or a group of popups
+	 */
+	addGroup: function(el, options) {
+		var eHandler = function(e) {
+			e.mfpEl = this;
+			mfp._openClick(e, el, options);
+		};
+
+		if(!options) {
+			options = {};
+		} 
+
+		var eName = 'click.magnificPopup';
+		options.mainEl = el;
+		
+		if(options.items) {
+			options.isObj = true;
+			el.off(eName).on(eName, eHandler);
+		} else {
+			options.isObj = false;
+			if(options.delegate) {
+				el.off(eName).on(eName, options.delegate , eHandler);
+			} else {
+				options.items = el;
+				el.off(eName).on(eName, eHandler);
+			}
+		}
+	},
+	_openClick: function(e, el, options) {
+		var midClick = options.midClick !== undefined ? options.midClick : $.magnificPopup.defaults.midClick;
+
+
+		if(!midClick && ( e.which === 2 || e.ctrlKey || e.metaKey ) ) {
+			return;
+		}
+
+		var disableOn = options.disableOn !== undefined ? options.disableOn : $.magnificPopup.defaults.disableOn;
+
+		if(disableOn) {
+			if($.isFunction(disableOn)) {
+				if( !disableOn.call(mfp) ) {
+					return true;
+				}
+			} else { // else it's number
+				if( _window.width() < disableOn ) {
+					return true;
+				}
+			}
+		}
+		
+		if(e.type) {
+			e.preventDefault();
+
+			// This will prevent popup from closing if element is inside and popup is already opened
+			if(mfp.isOpen) {
+				e.stopPropagation();
+			}
+		}
+			
+
+		options.el = $(e.mfpEl);
+		if(options.delegate) {
+			options.items = el.find(options.delegate);
+		}
+		mfp.open(options);
+	},
+
+
+	/**
+	 * Updates text on preloader
+	 */
+	updateStatus: function(status, text) {
+
+		if(mfp.preloader) {
+			if(_prevStatus !== status) {
+				mfp.container.removeClass('mfp-s-'+_prevStatus);
+			}
+
+			if(!text && status === 'loading') {
+				text = mfp.st.tLoading;
+			}
+
+			var data = {
+				status: status,
+				text: text
+			};
+			// allows to modify status
+			_mfpTrigger('UpdateStatus', data);
+
+			status = data.status;
+			text = data.text;
+
+			mfp.preloader.html(text);
+
+			mfp.preloader.find('a').on('click', function(e) {
+				e.stopImmediatePropagation();
+			});
+
+			mfp.container.addClass('mfp-s-'+status);
+			_prevStatus = status;
+		}
+	},
+
+
+	/*
+		"Private" helpers that aren't private at all
+	 */
+	// Check to close popup or not
+	// "target" is an element that was clicked
+	_checkIfClose: function(target) {
+
+		if($(target).hasClass(PREVENT_CLOSE_CLASS)) {
+			return;
+		}
+
+		var closeOnContent = mfp.st.closeOnContentClick;
+		var closeOnBg = mfp.st.closeOnBgClick;
+
+		if(closeOnContent && closeOnBg) {
+			return true;
+		} else {
+
+			// We close the popup if click is on close button or on preloader. Or if there is no content.
+			if(!mfp.content || $(target).hasClass('mfp-close') || (mfp.preloader && target === mfp.preloader[0]) ) {
+				return true;
+			}
+
+			// if click is outside the content
+			if(  (target !== mfp.content[0] && !$.contains(mfp.content[0], target))  ) {
+				if(closeOnBg) {
+					// last check, if the clicked element is in DOM, (in case it's removed onclick)
+					if( $.contains(document, target) ) {
+						return true;
+					}
+				}
+			} else if(closeOnContent) {
+				return true;
+			}
+
+		}
+		return false;
+	},
+	_addClassToMFP: function(cName) {
+		mfp.bgOverlay.addClass(cName);
+		mfp.wrap.addClass(cName);
+	},
+	_removeClassFromMFP: function(cName) {
+		this.bgOverlay.removeClass(cName);
+		mfp.wrap.removeClass(cName);
+	},
+	_hasScrollBar: function(winHeight) {
+		return (  (mfp.isIE7 ? _document.height() : document.body.scrollHeight) > (winHeight || _window.height()) );
+	},
+	_setFocus: function() {
+		(mfp.st.focus ? mfp.content.find(mfp.st.focus).eq(0) : mfp.wrap).focus();
+	},
+	_onFocusIn: function(e) {
+		if( e.target !== mfp.wrap[0] && !$.contains(mfp.wrap[0], e.target) ) {
+			mfp._setFocus();
+			return false;
+		}
+	},
+	_parseMarkup: function(template, values, item) {
+		var arr;
+		if(item.data) {
+			values = $.extend(item.data, values);
+		}
+		_mfpTrigger(MARKUP_PARSE_EVENT, [template, values, item] );
+
+		$.each(values, function(key, value) {
+			if(value === undefined || value === false) {
+				return true;
+			}
+			arr = key.split('_');
+			if(arr.length > 1) {
+				var el = template.find(EVENT_NS + '-'+arr[0]);
+
+				if(el.length > 0) {
+					var attr = arr[1];
+					if(attr === 'replaceWith') {
+						if(el[0] !== value[0]) {
+							el.replaceWith(value);
+						}
+					} else if(attr === 'img') {
+						if(el.is('img')) {
+							el.attr('src', value);
+						} else {
+							el.replaceWith( '<img src="'+value+'" class="' + el.attr('class') + '" />' );
+						}
+					} else {
+						el.attr(arr[1], value);
+					}
+				}
+
+			} else {
+				template.find(EVENT_NS + '-'+key).html(value);
+			}
+		});
+	},
+
+	_getScrollbarSize: function() {
+		// thx David
+		if(mfp.scrollbarSize === undefined) {
+			var scrollDiv = document.createElement("div");
+			scrollDiv.style.cssText = 'width: 99px; height: 99px; overflow: scroll; position: absolute; top: -9999px;';
+			document.body.appendChild(scrollDiv);
+			mfp.scrollbarSize = scrollDiv.offsetWidth - scrollDiv.clientWidth;
+			document.body.removeChild(scrollDiv);
+		}
+		return mfp.scrollbarSize;
+	}
+
+}; /* MagnificPopup core prototype end */
+
+
+
+
+/**
+ * Public static functions
+ */
+$.magnificPopup = {
+	instance: null,
+	proto: MagnificPopup.prototype,
+	modules: [],
+
+	open: function(options, index) {
+		_checkInstance();	
+
+		if(!options) {
+			options = {};
+		} else {
+			options = $.extend(true, {}, options);
+		}
+			
+
+		options.isObj = true;
+		options.index = index || 0;
+		return this.instance.open(options);
+	},
+
+	close: function() {
+		return $.magnificPopup.instance && $.magnificPopup.instance.close();
+	},
+
+	registerModule: function(name, module) {
+		if(module.options) {
+			$.magnificPopup.defaults[name] = module.options;
+		}
+		$.extend(this.proto, module.proto);			
+		this.modules.push(name);
+	},
+
+	defaults: {   
+
+		// Info about options is in docs:
+		// http://dimsemenov.com/plugins/magnific-popup/documentation.html#options
+		
+		disableOn: 0,	
+
+		key: null,
+
+		midClick: false,
+
+		mainClass: '',
+
+		preloader: true,
+
+		focus: '', // CSS selector of input to focus after popup is opened
+		
+		closeOnContentClick: false,
+
+		closeOnBgClick: true,
+
+		closeBtnInside: true, 
+
+		showCloseBtn: true,
+
+		enableEscapeKey: true,
+
+		modal: false,
+
+		alignTop: false,
+	
+		removalDelay: 0,
+
+		prependTo: null,
+		
+		fixedContentPos: 'auto', 
+	
+		fixedBgPos: 'auto',
+
+		overflowY: 'auto',
+
+		closeMarkup: '<button title="%title%" type="button" class="mfp-close">&times;</button>',
+
+		tClose: 'Close (Esc)',
+
+		tLoading: 'Loading...'
+
+	}
+};
+
+
+
+$.fn.magnificPopup = function(options) {
+	_checkInstance();
+
+	var jqEl = $(this);
+
+	// We call some API method of first param is a string
+	if (typeof options === "string" ) {
+
+		if(options === 'open') {
+			var items,
+				itemOpts = _isJQ ? jqEl.data('magnificPopup') : jqEl[0].magnificPopup,
+				index = parseInt(arguments[1], 10) || 0;
+
+			if(itemOpts.items) {
+				items = itemOpts.items[index];
+			} else {
+				items = jqEl;
+				if(itemOpts.delegate) {
+					items = items.find(itemOpts.delegate);
+				}
+				items = items.eq( index );
+			}
+			mfp._openClick({mfpEl:items}, jqEl, itemOpts);
+		} else {
+			if(mfp.isOpen)
+				mfp[options].apply(mfp, Array.prototype.slice.call(arguments, 1));
+		}
+
+	} else {
+		// clone options obj
+		options = $.extend(true, {}, options);
+		
+		/*
+		 * As Zepto doesn't support .data() method for objects 
+		 * and it works only in normal browsers
+		 * we assign "options" object directly to the DOM element. FTW!
+		 */
+		if(_isJQ) {
+			jqEl.data('magnificPopup', options);
+		} else {
+			jqEl[0].magnificPopup = options;
+		}
+
+		mfp.addGroup(jqEl, options);
+
+	}
+	return jqEl;
+};
+
+
+//Quick benchmark
+/*
+var start = performance.now(),
+	i,
+	rounds = 1000;
+
+for(i = 0; i < rounds; i++) {
+
+}
+console.log('Test #1:', performance.now() - start);
+
+start = performance.now();
+for(i = 0; i < rounds; i++) {
+
+}
+console.log('Test #2:', performance.now() - start);
+*/
+
+
+/*>>core*/
+
+/*>>inline*/
+
+var INLINE_NS = 'inline',
+	_hiddenClass,
+	_inlinePlaceholder, 
+	_lastInlineElement,
+	_putInlineElementsBack = function() {
+		if(_lastInlineElement) {
+			_inlinePlaceholder.after( _lastInlineElement.addClass(_hiddenClass) ).detach();
+			_lastInlineElement = null;
+		}
+	};
+
+$.magnificPopup.registerModule(INLINE_NS, {
+	options: {
+		hiddenClass: 'hide', // will be appended with `mfp-` prefix
+		markup: '',
+		tNotFound: 'Content not found'
+	},
+	proto: {
+
+		initInline: function() {
+			mfp.types.push(INLINE_NS);
+
+			_mfpOn(CLOSE_EVENT+'.'+INLINE_NS, function() {
+				_putInlineElementsBack();
+			});
+		},
+
+		getInline: function(item, template) {
+
+			_putInlineElementsBack();
+
+			if(item.src) {
+				var inlineSt = mfp.st.inline,
+					el = $(item.src);
+
+				if(el.length) {
+
+					// If target element has parent - we replace it with placeholder and put it back after popup is closed
+					var parent = el[0].parentNode;
+					if(parent && parent.tagName) {
+						if(!_inlinePlaceholder) {
+							_hiddenClass = inlineSt.hiddenClass;
+							_inlinePlaceholder = _getEl(_hiddenClass);
+							_hiddenClass = 'mfp-'+_hiddenClass;
+						}
+						// replace target inline element with placeholder
+						_lastInlineElement = el.after(_inlinePlaceholder).detach().removeClass(_hiddenClass);
+					}
+
+					mfp.updateStatus('ready');
+				} else {
+					mfp.updateStatus('error', inlineSt.tNotFound);
+					el = $('<div>');
+				}
+
+				item.inlineElement = el;
+				return el;
+			}
+
+			mfp.updateStatus('ready');
+			mfp._parseMarkup(template, {}, item);
+			return template;
+		}
+	}
+});
+
+/*>>inline*/
+
+/*>>ajax*/
+var AJAX_NS = 'ajax',
+	_ajaxCur,
+	_removeAjaxCursor = function() {
+		if(_ajaxCur) {
+			_body.removeClass(_ajaxCur);
+		}
+	},
+	_destroyAjaxRequest = function() {
+		_removeAjaxCursor();
+		if(mfp.req) {
+			mfp.req.abort();
+		}
+	};
+
+$.magnificPopup.registerModule(AJAX_NS, {
+
+	options: {
+		settings: null,
+		cursor: 'mfp-ajax-cur',
+		tError: '<a href="%url%">The content</a> could not be loaded.'
+	},
+
+	proto: {
+		initAjax: function() {
+			mfp.types.push(AJAX_NS);
+			_ajaxCur = mfp.st.ajax.cursor;
+
+			_mfpOn(CLOSE_EVENT+'.'+AJAX_NS, _destroyAjaxRequest);
+			_mfpOn('BeforeChange.' + AJAX_NS, _destroyAjaxRequest);
+		},
+		getAjax: function(item) {
+
+			if(_ajaxCur)
+				_body.addClass(_ajaxCur);
+
+			mfp.updateStatus('loading');
+
+			var opts = $.extend({
+				url: item.src,
+				success: function(data, textStatus, jqXHR) {
+					var temp = {
+						data:data,
+						xhr:jqXHR
+					};
+
+					_mfpTrigger('ParseAjax', temp);
+
+					mfp.appendContent( $(temp.data), AJAX_NS );
+
+					item.finished = true;
+
+					_removeAjaxCursor();
+
+					mfp._setFocus();
+
+					setTimeout(function() {
+						mfp.wrap.addClass(READY_CLASS);
+					}, 16);
+
+					mfp.updateStatus('ready');
+
+					_mfpTrigger('AjaxContentAdded');
+				},
+				error: function() {
+					_removeAjaxCursor();
+					item.finished = item.loadError = true;
+					mfp.updateStatus('error', mfp.st.ajax.tError.replace('%url%', item.src));
+				}
+			}, mfp.st.ajax.settings);
+
+			mfp.req = $.ajax(opts);
+
+			return '';
+		}
+	}
+});
+
+
+
+
+
+	
+
+/*>>ajax*/
+
+/*>>image*/
+var _imgInterval,
+	_getTitle = function(item) {
+		if(item.data && item.data.title !== undefined) 
+			return item.data.title;
+
+		var src = mfp.st.image.titleSrc;
+
+		if(src) {
+			if($.isFunction(src)) {
+				return src.call(mfp, item);
+			} else if(item.el) {
+				return item.el.attr(src) || '';
+			}
+		}
+		return '';
+	};
+
+$.magnificPopup.registerModule('image', {
+
+	options: {
+		markup: '<div class="mfp-figure">'+
+					'<div class="mfp-close"></div>'+
+					'<figure>'+
+						'<div class="mfp-img"></div>'+
+						'<figcaption>'+
+							'<div class="mfp-bottom-bar">'+
+								'<div class="mfp-title"></div>'+
+								'<div class="mfp-counter"></div>'+
+							'</div>'+
+						'</figcaption>'+
+					'</figure>'+
+				'</div>',
+		cursor: 'mfp-zoom-out-cur',
+		titleSrc: 'title', 
+		verticalFit: true,
+		tError: '<a href="%url%">The image</a> could not be loaded.'
+	},
+
+	proto: {
+		initImage: function() {
+			var imgSt = mfp.st.image,
+				ns = '.image';
+
+			mfp.types.push('image');
+
+			_mfpOn(OPEN_EVENT+ns, function() {
+				if(mfp.currItem.type === 'image' && imgSt.cursor) {
+					_body.addClass(imgSt.cursor);
+				}
+			});
+
+			_mfpOn(CLOSE_EVENT+ns, function() {
+				if(imgSt.cursor) {
+					_body.removeClass(imgSt.cursor);
+				}
+				_window.off('resize' + EVENT_NS);
+			});
+
+			_mfpOn('Resize'+ns, mfp.resizeImage);
+			if(mfp.isLowIE) {
+				_mfpOn('AfterChange', mfp.resizeImage);
+			}
+		},
+		resizeImage: function() {
+			var item = mfp.currItem;
+			if(!item || !item.img) return;
+
+			if(mfp.st.image.verticalFit) {
+				var decr = 0;
+				// fix box-sizing in ie7/8
+				if(mfp.isLowIE) {
+					decr = parseInt(item.img.css('padding-top'), 10) + parseInt(item.img.css('padding-bottom'),10);
+				}
+				item.img.css('max-height', mfp.wH-decr);
+			}
+		},
+		_onImageHasSize: function(item) {
+			if(item.img) {
+				
+				item.hasSize = true;
+
+				if(_imgInterval) {
+					clearInterval(_imgInterval);
+				}
+				
+				item.isCheckingImgSize = false;
+
+				_mfpTrigger('ImageHasSize', item);
+
+				if(item.imgHidden) {
+					if(mfp.content)
+						mfp.content.removeClass('mfp-loading');
+					
+					item.imgHidden = false;
+				}
+
+			}
+		},
+
+		/**
+		 * Function that loops until the image has size to display elements that rely on it asap
+		 */
+		findImageSize: function(item) {
+
+			var counter = 0,
+				img = item.img[0],
+				mfpSetInterval = function(delay) {
+
+					if(_imgInterval) {
+						clearInterval(_imgInterval);
+					}
+					// decelerating interval that checks for size of an image
+					_imgInterval = setInterval(function() {
+						if(img.naturalWidth > 0) {
+							mfp._onImageHasSize(item);
+							return;
+						}
+
+						if(counter > 200) {
+							clearInterval(_imgInterval);
+						}
+
+						counter++;
+						if(counter === 3) {
+							mfpSetInterval(10);
+						} else if(counter === 40) {
+							mfpSetInterval(50);
+						} else if(counter === 100) {
+							mfpSetInterval(500);
+						}
+					}, delay);
+				};
+
+			mfpSetInterval(1);
+		},
+
+		getImage: function(item, template) {
+
+			var guard = 0,
+
+				// image load complete handler
+				onLoadComplete = function() {
+					if(item) {
+						if (item.img[0].complete) {
+							item.img.off('.mfploader');
+							
+							if(item === mfp.currItem){
+								mfp._onImageHasSize(item);
+
+								mfp.updateStatus('ready');
+							}
+
+							item.hasSize = true;
+							item.loaded = true;
+
+							_mfpTrigger('ImageLoadComplete');
+							
+						}
+						else {
+							// if image complete check fails 200 times (20 sec), we assume that there was an error.
+							guard++;
+							if(guard < 200) {
+								setTimeout(onLoadComplete,100);
+							} else {
+								onLoadError();
+							}
+						}
+					}
+				},
+
+				// image error handler
+				onLoadError = function() {
+					if(item) {
+						item.img.off('.mfploader');
+						if(item === mfp.currItem){
+							mfp._onImageHasSize(item);
+							mfp.updateStatus('error', imgSt.tError.replace('%url%', item.src) );
+						}
+
+						item.hasSize = true;
+						item.loaded = true;
+						item.loadError = true;
+					}
+				},
+				imgSt = mfp.st.image;
+
+
+			var el = template.find('.mfp-img');
+			if(el.length) {
+				var img = document.createElement('img');
+				img.className = 'mfp-img';
+				if(item.el && item.el.find('img').length) {
+					img.alt = item.el.find('img').attr('alt');
+				}
+				item.img = $(img).on('load.mfploader', onLoadComplete).on('error.mfploader', onLoadError);
+				img.src = item.src;
+
+				// without clone() "error" event is not firing when IMG is replaced by new IMG
+				// TODO: find a way to avoid such cloning
+				if(el.is('img')) {
+					item.img = item.img.clone();
+				}
+
+				img = item.img[0];
+				if(img.naturalWidth > 0) {
+					item.hasSize = true;
+				} else if(!img.width) {										
+					item.hasSize = false;
+				}
+			}
+
+			mfp._parseMarkup(template, {
+				title: _getTitle(item),
+				img_replaceWith: item.img
+			}, item);
+
+			mfp.resizeImage();
+
+			if(item.hasSize) {
+				if(_imgInterval) clearInterval(_imgInterval);
+
+				if(item.loadError) {
+					template.addClass('mfp-loading');
+					mfp.updateStatus('error', imgSt.tError.replace('%url%', item.src) );
+				} else {
+					template.removeClass('mfp-loading');
+					mfp.updateStatus('ready');
+				}
+				return template;
+			}
+
+			mfp.updateStatus('loading');
+			item.loading = true;
+
+			if(!item.hasSize) {
+				item.imgHidden = true;
+				template.addClass('mfp-loading');
+				mfp.findImageSize(item);
+			} 
+
+			return template;
+		}
+	}
+});
+
+
+
+/*>>image*/
+
+/*>>zoom*/
+var hasMozTransform,
+	getHasMozTransform = function() {
+		if(hasMozTransform === undefined) {
+			hasMozTransform = document.createElement('p').style.MozTransform !== undefined;
+		}
+		return hasMozTransform;		
+	};
+
+$.magnificPopup.registerModule('zoom', {
+
+	options: {
+		enabled: false,
+		easing: 'ease-in-out',
+		duration: 300,
+		opener: function(element) {
+			return element.is('img') ? element : element.find('img');
+		}
+	},
+
+	proto: {
+
+		initZoom: function() {
+			var zoomSt = mfp.st.zoom,
+				ns = '.zoom',
+				image;
+				
+			if(!zoomSt.enabled || !mfp.supportsTransition) {
+				return;
+			}
+
+			var duration = zoomSt.duration,
+				getElToAnimate = function(image) {
+					var newImg = image.clone().removeAttr('style').removeAttr('class').addClass('mfp-animated-image'),
+						transition = 'all '+(zoomSt.duration/1000)+'s ' + zoomSt.easing,
+						cssObj = {
+							position: 'fixed',
+							zIndex: 9999,
+							left: 0,
+							top: 0,
+							'-webkit-backface-visibility': 'hidden'
+						},
+						t = 'transition';
+
+					cssObj['-webkit-'+t] = cssObj['-moz-'+t] = cssObj['-o-'+t] = cssObj[t] = transition;
+
+					newImg.css(cssObj);
+					return newImg;
+				},
+				showMainContent = function() {
+					mfp.content.css('visibility', 'visible');
+				},
+				openTimeout,
+				animatedImg;
+
+			_mfpOn('BuildControls'+ns, function() {
+				if(mfp._allowZoom()) {
+
+					clearTimeout(openTimeout);
+					mfp.content.css('visibility', 'hidden');
+
+					// Basically, all code below does is clones existing image, puts in on top of the current one and animated it
+					
+					image = mfp._getItemToZoom();
+
+					if(!image) {
+						showMainContent();
+						return;
+					}
+
+					animatedImg = getElToAnimate(image); 
+					
+					animatedImg.css( mfp._getOffset() );
+
+					mfp.wrap.append(animatedImg);
+
+					openTimeout = setTimeout(function() {
+						animatedImg.css( mfp._getOffset( true ) );
+						openTimeout = setTimeout(function() {
+
+							showMainContent();
+
+							setTimeout(function() {
+								animatedImg.remove();
+								image = animatedImg = null;
+								_mfpTrigger('ZoomAnimationEnded');
+							}, 16); // avoid blink when switching images 
+
+						}, duration); // this timeout equals animation duration
+
+					}, 16); // by adding this timeout we avoid short glitch at the beginning of animation
+
+
+					// Lots of timeouts...
+				}
+			});
+			_mfpOn(BEFORE_CLOSE_EVENT+ns, function() {
+				if(mfp._allowZoom()) {
+
+					clearTimeout(openTimeout);
+
+					mfp.st.removalDelay = duration;
+
+					if(!image) {
+						image = mfp._getItemToZoom();
+						if(!image) {
+							return;
+						}
+						animatedImg = getElToAnimate(image);
+					}
+					
+					
+					animatedImg.css( mfp._getOffset(true) );
+					mfp.wrap.append(animatedImg);
+					mfp.content.css('visibility', 'hidden');
+					
+					setTimeout(function() {
+						animatedImg.css( mfp._getOffset() );
+					}, 16);
+				}
+
+			});
+
+			_mfpOn(CLOSE_EVENT+ns, function() {
+				if(mfp._allowZoom()) {
+					showMainContent();
+					if(animatedImg) {
+						animatedImg.remove();
+					}
+					image = null;
+				}	
+			});
+		},
+
+		_allowZoom: function() {
+			return mfp.currItem.type === 'image';
+		},
+
+		_getItemToZoom: function() {
+			if(mfp.currItem.hasSize) {
+				return mfp.currItem.img;
+			} else {
+				return false;
+			}
+		},
+
+		// Get element postion relative to viewport
+		_getOffset: function(isLarge) {
+			var el;
+			if(isLarge) {
+				el = mfp.currItem.img;
+			} else {
+				el = mfp.st.zoom.opener(mfp.currItem.el || mfp.currItem);
+			}
+
+			var offset = el.offset();
+			var paddingTop = parseInt(el.css('padding-top'),10);
+			var paddingBottom = parseInt(el.css('padding-bottom'),10);
+			offset.top -= ( $(window).scrollTop() - paddingTop );
+
+
+			/*
+			
+			Animating left + top + width/height looks glitchy in Firefox, but perfect in Chrome. And vice-versa.
+
+			 */
+			var obj = {
+				width: el.width(),
+				// fix Zepto height+padding issue
+				height: (_isJQ ? el.innerHeight() : el[0].offsetHeight) - paddingBottom - paddingTop
+			};
+
+			// I hate to do this, but there is no another option
+			if( getHasMozTransform() ) {
+				obj['-moz-transform'] = obj['transform'] = 'translate(' + offset.left + 'px,' + offset.top + 'px)';
+			} else {
+				obj.left = offset.left;
+				obj.top = offset.top;
+			}
+			return obj;
+		}
+
+	}
+});
+
+
+
+/*>>zoom*/
+
+/*>>iframe*/
+
+var IFRAME_NS = 'iframe',
+	_emptyPage = '//about:blank',
+	
+	_fixIframeBugs = function(isShowing) {
+		if(mfp.currTemplate[IFRAME_NS]) {
+			var el = mfp.currTemplate[IFRAME_NS].find('iframe');
+			if(el.length) { 
+				// reset src after the popup is closed to avoid "video keeps playing after popup is closed" bug
+				if(!isShowing) {
+					el[0].src = _emptyPage;
+				}
+
+				// IE8 black screen bug fix
+				if(mfp.isIE8) {
+					el.css('display', isShowing ? 'block' : 'none');
+				}
+			}
+		}
+	};
+
+$.magnificPopup.registerModule(IFRAME_NS, {
+
+	options: {
+		markup: '<div class="mfp-iframe-scaler">'+
+					'<div class="mfp-close"></div>'+
+					'<iframe class="mfp-iframe" src="//about:blank" frameborder="0" allowfullscreen></iframe>'+
+				'</div>',
+
+		srcAction: 'iframe_src',
+
+		// we don't care and support only one default type of URL by default
+		patterns: {
+			youtube: {
+				index: 'youtube.com', 
+				id: 'v=', 
+				src: '//www.youtube.com/embed/%id%?autoplay=1'
+			},
+			vimeo: {
+				index: 'vimeo.com/',
+				id: '/',
+				src: '//player.vimeo.com/video/%id%?autoplay=1'
+			},
+			gmaps: {
+				index: '//maps.google.',
+				src: '%id%&output=embed'
+			}
+		}
+	},
+
+	proto: {
+		initIframe: function() {
+			mfp.types.push(IFRAME_NS);
+
+			_mfpOn('BeforeChange', function(e, prevType, newType) {
+				if(prevType !== newType) {
+					if(prevType === IFRAME_NS) {
+						_fixIframeBugs(); // iframe if removed
+					} else if(newType === IFRAME_NS) {
+						_fixIframeBugs(true); // iframe is showing
+					} 
+				}// else {
+					// iframe source is switched, don't do anything
+				//}
+			});
+
+			_mfpOn(CLOSE_EVENT + '.' + IFRAME_NS, function() {
+				_fixIframeBugs();
+			});
+		},
+
+		getIframe: function(item, template) {
+			var embedSrc = item.src;
+			var iframeSt = mfp.st.iframe;
+				
+			$.each(iframeSt.patterns, function() {
+				if(embedSrc.indexOf( this.index ) > -1) {
+					if(this.id) {
+						if(typeof this.id === 'string') {
+							embedSrc = embedSrc.substr(embedSrc.lastIndexOf(this.id)+this.id.length, embedSrc.length);
+						} else {
+							embedSrc = this.id.call( this, embedSrc );
+						}
+					}
+					embedSrc = this.src.replace('%id%', embedSrc );
+					return false; // break;
+				}
+			});
+			
+			var dataObj = {};
+			if(iframeSt.srcAction) {
+				dataObj[iframeSt.srcAction] = embedSrc;
+			}
+			mfp._parseMarkup(template, dataObj, item);
+
+			mfp.updateStatus('ready');
+
+			return template;
+		}
+	}
+});
+
+
+
+/*>>iframe*/
+
+/*>>gallery*/
+/**
+ * Get looped index depending on number of slides
+ */
+var _getLoopedId = function(index) {
+		var numSlides = mfp.items.length;
+		if(index > numSlides - 1) {
+			return index - numSlides;
+		} else  if(index < 0) {
+			return numSlides + index;
+		}
+		return index;
+	},
+	_replaceCurrTotal = function(text, curr, total) {
+		return text.replace(/%curr%/gi, curr + 1).replace(/%total%/gi, total);
+	};
+
+$.magnificPopup.registerModule('gallery', {
+
+	options: {
+		enabled: false,
+		arrowMarkup: '<button title="%title%" type="button" class="mfp-arrow mfp-arrow-%dir%"></button>',
+		preload: [0,2],
+		navigateByImgClick: true,
+		arrows: true,
+
+		tPrev: 'Previous (Left arrow key)',
+		tNext: 'Next (Right arrow key)',
+		tCounter: '%curr% of %total%'
+	},
+
+	proto: {
+		initGallery: function() {
+
+			var gSt = mfp.st.gallery,
+				ns = '.mfp-gallery',
+				supportsFastClick = Boolean($.fn.mfpFastClick);
+
+			mfp.direction = true; // true - next, false - prev
+			
+			if(!gSt || !gSt.enabled ) return false;
+
+			_wrapClasses += ' mfp-gallery';
+
+			_mfpOn(OPEN_EVENT+ns, function() {
+
+				if(gSt.navigateByImgClick) {
+					mfp.wrap.on('click'+ns, '.mfp-img', function() {
+						if(mfp.items.length > 1) {
+							mfp.next();
+							return false;
+						}
+					});
+				}
+
+				_document.on('keydown'+ns, function(e) {
+					if (e.keyCode === 37) {
+						mfp.prev();
+					} else if (e.keyCode === 39) {
+						mfp.next();
+					}
+				});
+			});
+
+			_mfpOn('UpdateStatus'+ns, function(e, data) {
+				if(data.text) {
+					data.text = _replaceCurrTotal(data.text, mfp.currItem.index, mfp.items.length);
+				}
+			});
+
+			_mfpOn(MARKUP_PARSE_EVENT+ns, function(e, element, values, item) {
+				var l = mfp.items.length;
+				values.counter = l > 1 ? _replaceCurrTotal(gSt.tCounter, item.index, l) : '';
+			});
+
+			_mfpOn('BuildControls' + ns, function() {
+				if(mfp.items.length > 1 && gSt.arrows && !mfp.arrowLeft) {
+					var markup = gSt.arrowMarkup,
+						arrowLeft = mfp.arrowLeft = $( markup.replace(/%title%/gi, gSt.tPrev).replace(/%dir%/gi, 'left') ).addClass(PREVENT_CLOSE_CLASS),			
+						arrowRight = mfp.arrowRight = $( markup.replace(/%title%/gi, gSt.tNext).replace(/%dir%/gi, 'right') ).addClass(PREVENT_CLOSE_CLASS);
+
+					var eName = supportsFastClick ? 'mfpFastClick' : 'click';
+					arrowLeft[eName](function() {
+						mfp.prev();
+					});			
+					arrowRight[eName](function() {
+						mfp.next();
+					});	
+
+					// Polyfill for :before and :after (adds elements with classes mfp-a and mfp-b)
+					if(mfp.isIE7) {
+						_getEl('b', arrowLeft[0], false, true);
+						_getEl('a', arrowLeft[0], false, true);
+						_getEl('b', arrowRight[0], false, true);
+						_getEl('a', arrowRight[0], false, true);
+					}
+
+					mfp.container.append(arrowLeft.add(arrowRight));
+				}
+			});
+
+			_mfpOn(CHANGE_EVENT+ns, function() {
+				if(mfp._preloadTimeout) clearTimeout(mfp._preloadTimeout);
+
+				mfp._preloadTimeout = setTimeout(function() {
+					mfp.preloadNearbyImages();
+					mfp._preloadTimeout = null;
+				}, 16);		
+			});
+
+
+			_mfpOn(CLOSE_EVENT+ns, function() {
+				_document.off(ns);
+				mfp.wrap.off('click'+ns);
+			
+				if(mfp.arrowLeft && supportsFastClick) {
+					mfp.arrowLeft.add(mfp.arrowRight).destroyMfpFastClick();
+				}
+				mfp.arrowRight = mfp.arrowLeft = null;
+			});
+
+		}, 
+		next: function() {
+			mfp.direction = true;
+			mfp.index = _getLoopedId(mfp.index + 1);
+			mfp.updateItemHTML();
+		},
+		prev: function() {
+			mfp.direction = false;
+			mfp.index = _getLoopedId(mfp.index - 1);
+			mfp.updateItemHTML();
+		},
+		goTo: function(newIndex) {
+			mfp.direction = (newIndex >= mfp.index);
+			mfp.index = newIndex;
+			mfp.updateItemHTML();
+		},
+		preloadNearbyImages: function() {
+			var p = mfp.st.gallery.preload,
+				preloadBefore = Math.min(p[0], mfp.items.length),
+				preloadAfter = Math.min(p[1], mfp.items.length),
+				i;
+
+			for(i = 1; i <= (mfp.direction ? preloadAfter : preloadBefore); i++) {
+				mfp._preloadItem(mfp.index+i);
+			}
+			for(i = 1; i <= (mfp.direction ? preloadBefore : preloadAfter); i++) {
+				mfp._preloadItem(mfp.index-i);
+			}
+		},
+		_preloadItem: function(index) {
+			index = _getLoopedId(index);
+
+			if(mfp.items[index].preloaded) {
+				return;
+			}
+
+			var item = mfp.items[index];
+			if(!item.parsed) {
+				item = mfp.parseEl( index );
+			}
+
+			_mfpTrigger('LazyLoad', item);
+
+			if(item.type === 'image') {
+				item.img = $('<img class="mfp-img" />').on('load.mfploader', function() {
+					item.hasSize = true;
+				}).on('error.mfploader', function() {
+					item.hasSize = true;
+					item.loadError = true;
+					_mfpTrigger('LazyLoadError', item);
+				}).attr('src', item.src);
+			}
+
+
+			item.preloaded = true;
+		}
+	}
+});
+
+/*
+Touch Support that might be implemented some day
+
+addSwipeGesture: function() {
+	var startX,
+		moved,
+		multipleTouches;
+
+		return;
+
+	var namespace = '.mfp',
+		addEventNames = function(pref, down, move, up, cancel) {
+			mfp._tStart = pref + down + namespace;
+			mfp._tMove = pref + move + namespace;
+			mfp._tEnd = pref + up + namespace;
+			mfp._tCancel = pref + cancel + namespace;
+		};
+
+	if(window.navigator.msPointerEnabled) {
+		addEventNames('MSPointer', 'Down', 'Move', 'Up', 'Cancel');
+	} else if('ontouchstart' in window) {
+		addEventNames('touch', 'start', 'move', 'end', 'cancel');
+	} else {
+		return;
+	}
+	_window.on(mfp._tStart, function(e) {
+		var oE = e.originalEvent;
+		multipleTouches = moved = false;
+		startX = oE.pageX || oE.changedTouches[0].pageX;
+	}).on(mfp._tMove, function(e) {
+		if(e.originalEvent.touches.length > 1) {
+			multipleTouches = e.originalEvent.touches.length;
+		} else {
+			//e.preventDefault();
+			moved = true;
+		}
+	}).on(mfp._tEnd + ' ' + mfp._tCancel, function(e) {
+		if(moved && !multipleTouches) {
+			var oE = e.originalEvent,
+				diff = startX - (oE.pageX || oE.changedTouches[0].pageX);
+
+			if(diff > 20) {
+				mfp.next();
+			} else if(diff < -20) {
+				mfp.prev();
+			}
+		}
+	});
+},
+*/
+
+
+/*>>gallery*/
+
+/*>>retina*/
+
+var RETINA_NS = 'retina';
+
+$.magnificPopup.registerModule(RETINA_NS, {
+	options: {
+		replaceSrc: function(item) {
+			return item.src.replace(/\.\w+$/, function(m) { return '@2x' + m; });
+		},
+		ratio: 1 // Function or number.  Set to 1 to disable.
+	},
+	proto: {
+		initRetina: function() {
+			if(window.devicePixelRatio > 1) {
+
+				var st = mfp.st.retina,
+					ratio = st.ratio;
+
+				ratio = !isNaN(ratio) ? ratio : ratio();
+
+				if(ratio > 1) {
+					_mfpOn('ImageHasSize' + '.' + RETINA_NS, function(e, item) {
+						item.img.css({
+							'max-width': item.img[0].naturalWidth / ratio,
+							'width': '100%'
+						});
+					});
+					_mfpOn('ElementParse' + '.' + RETINA_NS, function(e, item) {
+						item.src = st.replaceSrc(item, ratio);
+					});
+				}
+			}
+
+		}
+	}
+});
+
+/*>>retina*/
+
+/*>>fastclick*/
+/**
+ * FastClick event implementation. (removes 300ms delay on touch devices)
+ * Based on https://developers.google.com/mobile/articles/fast_buttons
+ *
+ * You may use it outside the Magnific Popup by calling just:
+ *
+ * $('.your-el').mfpFastClick(function() {
+ *     console.log('Clicked!');
+ * });
+ *
+ * To unbind:
+ * $('.your-el').destroyMfpFastClick();
+ * 
+ * 
+ * Note that it's a very basic and simple implementation, it blocks ghost click on the same element where it was bound.
+ * If you need something more advanced, use plugin by FT Labs https://github.com/ftlabs/fastclick
+ * 
+ */
+
+(function() {
+	var ghostClickDelay = 1000,
+		supportsTouch = 'ontouchstart' in window,
+		unbindTouchMove = function() {
+			_window.off('touchmove'+ns+' touchend'+ns);
+		},
+		eName = 'mfpFastClick',
+		ns = '.'+eName;
+
+
+	// As Zepto.js doesn't have an easy way to add custom events (like jQuery), so we implement it in this way
+	$.fn.mfpFastClick = function(callback) {
+
+		return $(this).each(function() {
+
+			var elem = $(this),
+				lock;
+
+			if( supportsTouch ) {
+
+				var timeout,
+					startX,
+					startY,
+					pointerMoved,
+					point,
+					numPointers;
+
+				elem.on('touchstart' + ns, function(e) {
+					pointerMoved = false;
+					numPointers = 1;
+
+					point = e.originalEvent ? e.originalEvent.touches[0] : e.touches[0];
+					startX = point.clientX;
+					startY = point.clientY;
+
+					_window.on('touchmove'+ns, function(e) {
+						point = e.originalEvent ? e.originalEvent.touches : e.touches;
+						numPointers = point.length;
+						point = point[0];
+						if (Math.abs(point.clientX - startX) > 10 ||
+							Math.abs(point.clientY - startY) > 10) {
+							pointerMoved = true;
+							unbindTouchMove();
+						}
+					}).on('touchend'+ns, function(e) {
+						unbindTouchMove();
+						if(pointerMoved || numPointers > 1) {
+							return;
+						}
+						lock = true;
+						e.preventDefault();
+						clearTimeout(timeout);
+						timeout = setTimeout(function() {
+							lock = false;
+						}, ghostClickDelay);
+						callback();
+					});
+				});
+
+			}
+
+			elem.on('click' + ns, function() {
+				if(!lock) {
+					callback();
+				}
+			});
+		});
+	};
+
+	$.fn.destroyMfpFastClick = function() {
+		$(this).off('touchstart' + ns + ' click' + ns);
+		if(supportsTouch) _window.off('touchmove'+ns+' touchend'+ns);
+	};
+})();
+
+/*>>fastclick*/
+ _checkInstance(); }));
 //! moment.js
 //! version : 2.9.0
 //! authors : Tim Wood, Iskren Chernev, Moment.js contributors
@@ -14774,6 +20511,15951 @@ if (typeof jQuery === 'undefined') {
     });
 }));
 
+;(function(){
+
+// CommonJS require()
+
+function require(p){
+    var path = require.resolve(p)
+      , mod = require.modules[path];
+    if (!mod) throw new Error('failed to require "' + p + '"');
+    if (!mod.exports) {
+      mod.exports = {};
+      mod.call(mod.exports, mod, mod.exports, require.relative(path));
+    }
+    return mod.exports;
+  }
+
+require.modules = {};
+
+require.resolve = function (path){
+    var orig = path
+      , reg = path + '.js'
+      , index = path + '/index.js';
+    return require.modules[reg] && reg
+      || require.modules[index] && index
+      || orig;
+  };
+
+require.register = function (path, fn){
+    require.modules[path] = fn;
+  };
+
+require.relative = function (parent) {
+    return function(p){
+      if ('.' != p.charAt(0)) return require(p);
+
+      var path = parent.split('/')
+        , segs = p.split('/');
+      path.pop();
+
+      for (var i = 0; i < segs.length; i++) {
+        var seg = segs[i];
+        if ('..' == seg) path.pop();
+        else if ('.' != seg) path.push(seg);
+      }
+
+      return require(path.join('/'));
+    };
+  };
+
+
+require.register("browser/debug.js", function(module, exports, require){
+
+module.exports = function(type){
+  return function(){
+  }
+};
+
+}); // module: browser/debug.js
+
+require.register("browser/diff.js", function(module, exports, require){
+/* See LICENSE file for terms of use */
+
+/*
+ * Text diff implementation.
+ *
+ * This library supports the following APIS:
+ * JsDiff.diffChars: Character by character diff
+ * JsDiff.diffWords: Word (as defined by \b regex) diff which ignores whitespace
+ * JsDiff.diffLines: Line based diff
+ *
+ * JsDiff.diffCss: Diff targeted at CSS content
+ *
+ * These methods are based on the implementation proposed in
+ * "An O(ND) Difference Algorithm and its Variations" (Myers, 1986).
+ * http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.4.6927
+ */
+var JsDiff = (function() {
+  /*jshint maxparams: 5*/
+  function clonePath(path) {
+    return { newPos: path.newPos, components: path.components.slice(0) };
+  }
+  function removeEmpty(array) {
+    var ret = [];
+    for (var i = 0; i < array.length; i++) {
+      if (array[i]) {
+        ret.push(array[i]);
+      }
+    }
+    return ret;
+  }
+  function escapeHTML(s) {
+    var n = s;
+    n = n.replace(/&/g, '&amp;');
+    n = n.replace(/</g, '&lt;');
+    n = n.replace(/>/g, '&gt;');
+    n = n.replace(/"/g, '&quot;');
+
+    return n;
+  }
+
+  var Diff = function(ignoreWhitespace) {
+    this.ignoreWhitespace = ignoreWhitespace;
+  };
+  Diff.prototype = {
+      diff: function(oldString, newString) {
+        // Handle the identity case (this is due to unrolling editLength == 0
+        if (newString === oldString) {
+          return [{ value: newString }];
+        }
+        if (!newString) {
+          return [{ value: oldString, removed: true }];
+        }
+        if (!oldString) {
+          return [{ value: newString, added: true }];
+        }
+
+        newString = this.tokenize(newString);
+        oldString = this.tokenize(oldString);
+
+        var newLen = newString.length, oldLen = oldString.length;
+        var maxEditLength = newLen + oldLen;
+        var bestPath = [{ newPos: -1, components: [] }];
+
+        // Seed editLength = 0
+        var oldPos = this.extractCommon(bestPath[0], newString, oldString, 0);
+        if (bestPath[0].newPos+1 >= newLen && oldPos+1 >= oldLen) {
+          return bestPath[0].components;
+        }
+
+        for (var editLength = 1; editLength <= maxEditLength; editLength++) {
+          for (var diagonalPath = -1*editLength; diagonalPath <= editLength; diagonalPath+=2) {
+            var basePath;
+            var addPath = bestPath[diagonalPath-1],
+                removePath = bestPath[diagonalPath+1];
+            oldPos = (removePath ? removePath.newPos : 0) - diagonalPath;
+            if (addPath) {
+              // No one else is going to attempt to use this value, clear it
+              bestPath[diagonalPath-1] = undefined;
+            }
+
+            var canAdd = addPath && addPath.newPos+1 < newLen;
+            var canRemove = removePath && 0 <= oldPos && oldPos < oldLen;
+            if (!canAdd && !canRemove) {
+              bestPath[diagonalPath] = undefined;
+              continue;
+            }
+
+            // Select the diagonal that we want to branch from. We select the prior
+            // path whose position in the new string is the farthest from the origin
+            // and does not pass the bounds of the diff graph
+            if (!canAdd || (canRemove && addPath.newPos < removePath.newPos)) {
+              basePath = clonePath(removePath);
+              this.pushComponent(basePath.components, oldString[oldPos], undefined, true);
+            } else {
+              basePath = clonePath(addPath);
+              basePath.newPos++;
+              this.pushComponent(basePath.components, newString[basePath.newPos], true, undefined);
+            }
+
+            var oldPos = this.extractCommon(basePath, newString, oldString, diagonalPath);
+
+            if (basePath.newPos+1 >= newLen && oldPos+1 >= oldLen) {
+              return basePath.components;
+            } else {
+              bestPath[diagonalPath] = basePath;
+            }
+          }
+        }
+      },
+
+      pushComponent: function(components, value, added, removed) {
+        var last = components[components.length-1];
+        if (last && last.added === added && last.removed === removed) {
+          // We need to clone here as the component clone operation is just
+          // as shallow array clone
+          components[components.length-1] =
+            {value: this.join(last.value, value), added: added, removed: removed };
+        } else {
+          components.push({value: value, added: added, removed: removed });
+        }
+      },
+      extractCommon: function(basePath, newString, oldString, diagonalPath) {
+        var newLen = newString.length,
+            oldLen = oldString.length,
+            newPos = basePath.newPos,
+            oldPos = newPos - diagonalPath;
+        while (newPos+1 < newLen && oldPos+1 < oldLen && this.equals(newString[newPos+1], oldString[oldPos+1])) {
+          newPos++;
+          oldPos++;
+
+          this.pushComponent(basePath.components, newString[newPos], undefined, undefined);
+        }
+        basePath.newPos = newPos;
+        return oldPos;
+      },
+
+      equals: function(left, right) {
+        var reWhitespace = /\S/;
+        if (this.ignoreWhitespace && !reWhitespace.test(left) && !reWhitespace.test(right)) {
+          return true;
+        } else {
+          return left === right;
+        }
+      },
+      join: function(left, right) {
+        return left + right;
+      },
+      tokenize: function(value) {
+        return value;
+      }
+  };
+
+  var CharDiff = new Diff();
+
+  var WordDiff = new Diff(true);
+  var WordWithSpaceDiff = new Diff();
+  WordDiff.tokenize = WordWithSpaceDiff.tokenize = function(value) {
+    return removeEmpty(value.split(/(\s+|\b)/));
+  };
+
+  var CssDiff = new Diff(true);
+  CssDiff.tokenize = function(value) {
+    return removeEmpty(value.split(/([{}:;,]|\s+)/));
+  };
+
+  var LineDiff = new Diff();
+  LineDiff.tokenize = function(value) {
+    return value.split(/^/m);
+  };
+
+  return {
+    Diff: Diff,
+
+    diffChars: function(oldStr, newStr) { return CharDiff.diff(oldStr, newStr); },
+    diffWords: function(oldStr, newStr) { return WordDiff.diff(oldStr, newStr); },
+    diffWordsWithSpace: function(oldStr, newStr) { return WordWithSpaceDiff.diff(oldStr, newStr); },
+    diffLines: function(oldStr, newStr) { return LineDiff.diff(oldStr, newStr); },
+
+    diffCss: function(oldStr, newStr) { return CssDiff.diff(oldStr, newStr); },
+
+    createPatch: function(fileName, oldStr, newStr, oldHeader, newHeader) {
+      var ret = [];
+
+      ret.push('Index: ' + fileName);
+      ret.push('===================================================================');
+      ret.push('--- ' + fileName + (typeof oldHeader === 'undefined' ? '' : '\t' + oldHeader));
+      ret.push('+++ ' + fileName + (typeof newHeader === 'undefined' ? '' : '\t' + newHeader));
+
+      var diff = LineDiff.diff(oldStr, newStr);
+      if (!diff[diff.length-1].value) {
+        diff.pop();   // Remove trailing newline add
+      }
+      diff.push({value: '', lines: []});   // Append an empty value to make cleanup easier
+
+      function contextLines(lines) {
+        return lines.map(function(entry) { return ' ' + entry; });
+      }
+      function eofNL(curRange, i, current) {
+        var last = diff[diff.length-2],
+            isLast = i === diff.length-2,
+            isLastOfType = i === diff.length-3 && (current.added !== last.added || current.removed !== last.removed);
+
+        // Figure out if this is the last line for the given file and missing NL
+        if (!/\n$/.test(current.value) && (isLast || isLastOfType)) {
+          curRange.push('\\ No newline at end of file');
+        }
+      }
+
+      var oldRangeStart = 0, newRangeStart = 0, curRange = [],
+          oldLine = 1, newLine = 1;
+      for (var i = 0; i < diff.length; i++) {
+        var current = diff[i],
+            lines = current.lines || current.value.replace(/\n$/, '').split('\n');
+        current.lines = lines;
+
+        if (current.added || current.removed) {
+          if (!oldRangeStart) {
+            var prev = diff[i-1];
+            oldRangeStart = oldLine;
+            newRangeStart = newLine;
+
+            if (prev) {
+              curRange = contextLines(prev.lines.slice(-4));
+              oldRangeStart -= curRange.length;
+              newRangeStart -= curRange.length;
+            }
+          }
+          curRange.push.apply(curRange, lines.map(function(entry) { return (current.added?'+':'-') + entry; }));
+          eofNL(curRange, i, current);
+
+          if (current.added) {
+            newLine += lines.length;
+          } else {
+            oldLine += lines.length;
+          }
+        } else {
+          if (oldRangeStart) {
+            // Close out any changes that have been output (or join overlapping)
+            if (lines.length <= 8 && i < diff.length-2) {
+              // Overlapping
+              curRange.push.apply(curRange, contextLines(lines));
+            } else {
+              // end the range and output
+              var contextSize = Math.min(lines.length, 4);
+              ret.push(
+                  '@@ -' + oldRangeStart + ',' + (oldLine-oldRangeStart+contextSize)
+                  + ' +' + newRangeStart + ',' + (newLine-newRangeStart+contextSize)
+                  + ' @@');
+              ret.push.apply(ret, curRange);
+              ret.push.apply(ret, contextLines(lines.slice(0, contextSize)));
+              if (lines.length <= 4) {
+                eofNL(ret, i, current);
+              }
+
+              oldRangeStart = 0;  newRangeStart = 0; curRange = [];
+            }
+          }
+          oldLine += lines.length;
+          newLine += lines.length;
+        }
+      }
+
+      return ret.join('\n') + '\n';
+    },
+
+    applyPatch: function(oldStr, uniDiff) {
+      var diffstr = uniDiff.split('\n');
+      var diff = [];
+      var remEOFNL = false,
+          addEOFNL = false;
+
+      for (var i = (diffstr[0][0]==='I'?4:0); i < diffstr.length; i++) {
+        if(diffstr[i][0] === '@') {
+          var meh = diffstr[i].split(/@@ -(\d+),(\d+) \+(\d+),(\d+) @@/);
+          diff.unshift({
+            start:meh[3],
+            oldlength:meh[2],
+            oldlines:[],
+            newlength:meh[4],
+            newlines:[]
+          });
+        } else if(diffstr[i][0] === '+') {
+          diff[0].newlines.push(diffstr[i].substr(1));
+        } else if(diffstr[i][0] === '-') {
+          diff[0].oldlines.push(diffstr[i].substr(1));
+        } else if(diffstr[i][0] === ' ') {
+          diff[0].newlines.push(diffstr[i].substr(1));
+          diff[0].oldlines.push(diffstr[i].substr(1));
+        } else if(diffstr[i][0] === '\\') {
+          if (diffstr[i-1][0] === '+') {
+            remEOFNL = true;
+          } else if(diffstr[i-1][0] === '-') {
+            addEOFNL = true;
+          }
+        }
+      }
+
+      var str = oldStr.split('\n');
+      for (var i = diff.length - 1; i >= 0; i--) {
+        var d = diff[i];
+        for (var j = 0; j < d.oldlength; j++) {
+          if(str[d.start-1+j] !== d.oldlines[j]) {
+            return false;
+          }
+        }
+        Array.prototype.splice.apply(str,[d.start-1,+d.oldlength].concat(d.newlines));
+      }
+
+      if (remEOFNL) {
+        while (!str[str.length-1]) {
+          str.pop();
+        }
+      } else if (addEOFNL) {
+        str.push('');
+      }
+      return str.join('\n');
+    },
+
+    convertChangesToXML: function(changes){
+      var ret = [];
+      for ( var i = 0; i < changes.length; i++) {
+        var change = changes[i];
+        if (change.added) {
+          ret.push('<ins>');
+        } else if (change.removed) {
+          ret.push('<del>');
+        }
+
+        ret.push(escapeHTML(change.value));
+
+        if (change.added) {
+          ret.push('</ins>');
+        } else if (change.removed) {
+          ret.push('</del>');
+        }
+      }
+      return ret.join('');
+    },
+
+    // See: http://code.google.com/p/google-diff-match-patch/wiki/API
+    convertChangesToDMP: function(changes){
+      var ret = [], change;
+      for ( var i = 0; i < changes.length; i++) {
+        change = changes[i];
+        ret.push([(change.added ? 1 : change.removed ? -1 : 0), change.value]);
+      }
+      return ret;
+    }
+  };
+})();
+
+if (typeof module !== 'undefined') {
+    module.exports = JsDiff;
+}
+
+}); // module: browser/diff.js
+
+require.register("browser/events.js", function(module, exports, require){
+
+/**
+ * Module exports.
+ */
+
+exports.EventEmitter = EventEmitter;
+
+/**
+ * Check if `obj` is an array.
+ */
+
+function isArray(obj) {
+  return '[object Array]' == {}.toString.call(obj);
+}
+
+/**
+ * Event emitter constructor.
+ *
+ * @api public
+ */
+
+function EventEmitter(){};
+
+/**
+ * Adds a listener.
+ *
+ * @api public
+ */
+
+EventEmitter.prototype.on = function (name, fn) {
+  if (!this.$events) {
+    this.$events = {};
+  }
+
+  if (!this.$events[name]) {
+    this.$events[name] = fn;
+  } else if (isArray(this.$events[name])) {
+    this.$events[name].push(fn);
+  } else {
+    this.$events[name] = [this.$events[name], fn];
+  }
+
+  return this;
+};
+
+EventEmitter.prototype.addListener = EventEmitter.prototype.on;
+
+/**
+ * Adds a volatile listener.
+ *
+ * @api public
+ */
+
+EventEmitter.prototype.once = function (name, fn) {
+  var self = this;
+
+  function on () {
+    self.removeListener(name, on);
+    fn.apply(this, arguments);
+  };
+
+  on.listener = fn;
+  this.on(name, on);
+
+  return this;
+};
+
+/**
+ * Removes a listener.
+ *
+ * @api public
+ */
+
+EventEmitter.prototype.removeListener = function (name, fn) {
+  if (this.$events && this.$events[name]) {
+    var list = this.$events[name];
+
+    if (isArray(list)) {
+      var pos = -1;
+
+      for (var i = 0, l = list.length; i < l; i++) {
+        if (list[i] === fn || (list[i].listener && list[i].listener === fn)) {
+          pos = i;
+          break;
+        }
+      }
+
+      if (pos < 0) {
+        return this;
+      }
+
+      list.splice(pos, 1);
+
+      if (!list.length) {
+        delete this.$events[name];
+      }
+    } else if (list === fn || (list.listener && list.listener === fn)) {
+      delete this.$events[name];
+    }
+  }
+
+  return this;
+};
+
+/**
+ * Removes all listeners for an event.
+ *
+ * @api public
+ */
+
+EventEmitter.prototype.removeAllListeners = function (name) {
+  if (name === undefined) {
+    this.$events = {};
+    return this;
+  }
+
+  if (this.$events && this.$events[name]) {
+    this.$events[name] = null;
+  }
+
+  return this;
+};
+
+/**
+ * Gets all listeners for a certain event.
+ *
+ * @api public
+ */
+
+EventEmitter.prototype.listeners = function (name) {
+  if (!this.$events) {
+    this.$events = {};
+  }
+
+  if (!this.$events[name]) {
+    this.$events[name] = [];
+  }
+
+  if (!isArray(this.$events[name])) {
+    this.$events[name] = [this.$events[name]];
+  }
+
+  return this.$events[name];
+};
+
+/**
+ * Emits an event.
+ *
+ * @api public
+ */
+
+EventEmitter.prototype.emit = function (name) {
+  if (!this.$events) {
+    return false;
+  }
+
+  var handler = this.$events[name];
+
+  if (!handler) {
+    return false;
+  }
+
+  var args = [].slice.call(arguments, 1);
+
+  if ('function' == typeof handler) {
+    handler.apply(this, args);
+  } else if (isArray(handler)) {
+    var listeners = handler.slice();
+
+    for (var i = 0, l = listeners.length; i < l; i++) {
+      listeners[i].apply(this, args);
+    }
+  } else {
+    return false;
+  }
+
+  return true;
+};
+}); // module: browser/events.js
+
+require.register("browser/fs.js", function(module, exports, require){
+
+}); // module: browser/fs.js
+
+require.register("browser/path.js", function(module, exports, require){
+
+}); // module: browser/path.js
+
+require.register("browser/progress.js", function(module, exports, require){
+/**
+ * Expose `Progress`.
+ */
+
+module.exports = Progress;
+
+/**
+ * Initialize a new `Progress` indicator.
+ */
+
+function Progress() {
+  this.percent = 0;
+  this.size(0);
+  this.fontSize(11);
+  this.font('helvetica, arial, sans-serif');
+}
+
+/**
+ * Set progress size to `n`.
+ *
+ * @param {Number} n
+ * @return {Progress} for chaining
+ * @api public
+ */
+
+Progress.prototype.size = function(n){
+  this._size = n;
+  return this;
+};
+
+/**
+ * Set text to `str`.
+ *
+ * @param {String} str
+ * @return {Progress} for chaining
+ * @api public
+ */
+
+Progress.prototype.text = function(str){
+  this._text = str;
+  return this;
+};
+
+/**
+ * Set font size to `n`.
+ *
+ * @param {Number} n
+ * @return {Progress} for chaining
+ * @api public
+ */
+
+Progress.prototype.fontSize = function(n){
+  this._fontSize = n;
+  return this;
+};
+
+/**
+ * Set font `family`.
+ *
+ * @param {String} family
+ * @return {Progress} for chaining
+ */
+
+Progress.prototype.font = function(family){
+  this._font = family;
+  return this;
+};
+
+/**
+ * Update percentage to `n`.
+ *
+ * @param {Number} n
+ * @return {Progress} for chaining
+ */
+
+Progress.prototype.update = function(n){
+  this.percent = n;
+  return this;
+};
+
+/**
+ * Draw on `ctx`.
+ *
+ * @param {CanvasRenderingContext2d} ctx
+ * @return {Progress} for chaining
+ */
+
+Progress.prototype.draw = function(ctx){
+  try {
+    var percent = Math.min(this.percent, 100)
+      , size = this._size
+      , half = size / 2
+      , x = half
+      , y = half
+      , rad = half - 1
+      , fontSize = this._fontSize;
+  
+    ctx.font = fontSize + 'px ' + this._font;
+  
+    var angle = Math.PI * 2 * (percent / 100);
+    ctx.clearRect(0, 0, size, size);
+  
+    // outer circle
+    ctx.strokeStyle = '#9f9f9f';
+    ctx.beginPath();
+    ctx.arc(x, y, rad, 0, angle, false);
+    ctx.stroke();
+  
+    // inner circle
+    ctx.strokeStyle = '#eee';
+    ctx.beginPath();
+    ctx.arc(x, y, rad - 1, 0, angle, true);
+    ctx.stroke();
+  
+    // text
+    var text = this._text || (percent | 0) + '%'
+      , w = ctx.measureText(text).width;
+  
+    ctx.fillText(
+        text
+      , x - w / 2 + 1
+      , y + fontSize / 2 - 1);
+  } catch (ex) {} //don't fail if we can't render progress
+  return this;
+};
+
+}); // module: browser/progress.js
+
+require.register("browser/tty.js", function(module, exports, require){
+
+exports.isatty = function(){
+  return true;
+};
+
+exports.getWindowSize = function(){
+  if ('innerHeight' in global) {
+    return [global.innerHeight, global.innerWidth];
+  } else {
+    // In a Web Worker, the DOM Window is not available.
+    return [640, 480];
+  }
+};
+
+}); // module: browser/tty.js
+
+require.register("context.js", function(module, exports, require){
+
+/**
+ * Expose `Context`.
+ */
+
+module.exports = Context;
+
+/**
+ * Initialize a new `Context`.
+ *
+ * @api private
+ */
+
+function Context(){}
+
+/**
+ * Set or get the context `Runnable` to `runnable`.
+ *
+ * @param {Runnable} runnable
+ * @return {Context}
+ * @api private
+ */
+
+Context.prototype.runnable = function(runnable){
+  if (0 == arguments.length) return this._runnable;
+  this.test = this._runnable = runnable;
+  return this;
+};
+
+/**
+ * Set test timeout `ms`.
+ *
+ * @param {Number} ms
+ * @return {Context} self
+ * @api private
+ */
+
+Context.prototype.timeout = function(ms){
+  this.runnable().timeout(ms);
+  return this;
+};
+
+/**
+ * Set test slowness threshold `ms`.
+ *
+ * @param {Number} ms
+ * @return {Context} self
+ * @api private
+ */
+
+Context.prototype.slow = function(ms){
+  this.runnable().slow(ms);
+  return this;
+};
+
+/**
+ * Inspect the context void of `._runnable`.
+ *
+ * @return {String}
+ * @api private
+ */
+
+Context.prototype.inspect = function(){
+  return JSON.stringify(this, function(key, val){
+    if ('_runnable' == key) return;
+    if ('test' == key) return;
+    return val;
+  }, 2);
+};
+
+}); // module: context.js
+
+require.register("hook.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Runnable = require('./runnable');
+
+/**
+ * Expose `Hook`.
+ */
+
+module.exports = Hook;
+
+/**
+ * Initialize a new `Hook` with the given `title` and callback `fn`.
+ *
+ * @param {String} title
+ * @param {Function} fn
+ * @api private
+ */
+
+function Hook(title, fn) {
+  Runnable.call(this, title, fn);
+  this.type = 'hook';
+}
+
+/**
+ * Inherit from `Runnable.prototype`.
+ */
+
+function F(){};
+F.prototype = Runnable.prototype;
+Hook.prototype = new F;
+Hook.prototype.constructor = Hook;
+
+
+/**
+ * Get or set the test `err`.
+ *
+ * @param {Error} err
+ * @return {Error}
+ * @api public
+ */
+
+Hook.prototype.error = function(err){
+  if (0 == arguments.length) {
+    var err = this._error;
+    this._error = null;
+    return err;
+  }
+
+  this._error = err;
+};
+
+}); // module: hook.js
+
+require.register("interfaces/bdd.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Suite = require('../suite')
+  , Test = require('../test')
+  , utils = require('../utils');
+
+/**
+ * BDD-style interface:
+ *
+ *      describe('Array', function(){
+ *        describe('#indexOf()', function(){
+ *          it('should return -1 when not present', function(){
+ *
+ *          });
+ *
+ *          it('should return the index when present', function(){
+ *
+ *          });
+ *        });
+ *      });
+ *
+ */
+
+module.exports = function(suite){
+  var suites = [suite];
+
+  suite.on('pre-require', function(context, file, mocha){
+
+    /**
+     * Execute before running tests.
+     */
+
+    context.before = function(fn){
+      suites[0].beforeAll(fn);
+    };
+
+    /**
+     * Execute after running tests.
+     */
+
+    context.after = function(fn){
+      suites[0].afterAll(fn);
+    };
+
+    /**
+     * Execute before each test case.
+     */
+
+    context.beforeEach = function(fn){
+      suites[0].beforeEach(fn);
+    };
+
+    /**
+     * Execute after each test case.
+     */
+
+    context.afterEach = function(fn){
+      suites[0].afterEach(fn);
+    };
+
+    /**
+     * Describe a "suite" with the given `title`
+     * and callback `fn` containing nested suites
+     * and/or tests.
+     */
+
+    context.describe = context.context = function(title, fn){
+      var suite = Suite.create(suites[0], title);
+      suites.unshift(suite);
+      fn.call(suite);
+      suites.shift();
+      return suite;
+    };
+
+    /**
+     * Pending describe.
+     */
+
+    context.xdescribe =
+    context.xcontext =
+    context.describe.skip = function(title, fn){
+      var suite = Suite.create(suites[0], title);
+      suite.pending = true;
+      suites.unshift(suite);
+      fn.call(suite);
+      suites.shift();
+    };
+
+    /**
+     * Exclusive suite.
+     */
+
+    context.describe.only = function(title, fn){
+      var suite = context.describe(title, fn);
+      mocha.grep(suite.fullTitle());
+      return suite;
+    };
+
+    /**
+     * Describe a specification or test-case
+     * with the given `title` and callback `fn`
+     * acting as a thunk.
+     */
+
+    context.it = context.specify = function(title, fn){
+      var suite = suites[0];
+      if (suite.pending) var fn = null;
+      var test = new Test(title, fn);
+      suite.addTest(test);
+      return test;
+    };
+
+    /**
+     * Exclusive test-case.
+     */
+
+    context.it.only = function(title, fn){
+      var test = context.it(title, fn);
+      var reString = '^' + utils.escapeRegexp(test.fullTitle()) + '$';
+      mocha.grep(new RegExp(reString));
+      return test;
+    };
+
+    /**
+     * Pending test case.
+     */
+
+    context.xit =
+    context.xspecify =
+    context.it.skip = function(title){
+      context.it(title);
+    };
+  });
+};
+
+}); // module: interfaces/bdd.js
+
+require.register("interfaces/exports.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Suite = require('../suite')
+  , Test = require('../test');
+
+/**
+ * TDD-style interface:
+ *
+ *     exports.Array = {
+ *       '#indexOf()': {
+ *         'should return -1 when the value is not present': function(){
+ *
+ *         },
+ *
+ *         'should return the correct index when the value is present': function(){
+ *
+ *         }
+ *       }
+ *     };
+ *
+ */
+
+module.exports = function(suite){
+  var suites = [suite];
+
+  suite.on('require', visit);
+
+  function visit(obj) {
+    var suite;
+    for (var key in obj) {
+      if ('function' == typeof obj[key]) {
+        var fn = obj[key];
+        switch (key) {
+          case 'before':
+            suites[0].beforeAll(fn);
+            break;
+          case 'after':
+            suites[0].afterAll(fn);
+            break;
+          case 'beforeEach':
+            suites[0].beforeEach(fn);
+            break;
+          case 'afterEach':
+            suites[0].afterEach(fn);
+            break;
+          default:
+            suites[0].addTest(new Test(key, fn));
+        }
+      } else {
+        var suite = Suite.create(suites[0], key);
+        suites.unshift(suite);
+        visit(obj[key]);
+        suites.shift();
+      }
+    }
+  }
+};
+
+}); // module: interfaces/exports.js
+
+require.register("interfaces/index.js", function(module, exports, require){
+
+exports.bdd = require('./bdd');
+exports.tdd = require('./tdd');
+exports.qunit = require('./qunit');
+exports.exports = require('./exports');
+
+}); // module: interfaces/index.js
+
+require.register("interfaces/qunit.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Suite = require('../suite')
+  , Test = require('../test')
+  , utils = require('../utils');
+
+/**
+ * QUnit-style interface:
+ *
+ *     suite('Array');
+ *
+ *     test('#length', function(){
+ *       var arr = [1,2,3];
+ *       ok(arr.length == 3);
+ *     });
+ *
+ *     test('#indexOf()', function(){
+ *       var arr = [1,2,3];
+ *       ok(arr.indexOf(1) == 0);
+ *       ok(arr.indexOf(2) == 1);
+ *       ok(arr.indexOf(3) == 2);
+ *     });
+ *
+ *     suite('String');
+ *
+ *     test('#length', function(){
+ *       ok('foo'.length == 3);
+ *     });
+ *
+ */
+
+module.exports = function(suite){
+  var suites = [suite];
+
+  suite.on('pre-require', function(context, file, mocha){
+
+    /**
+     * Execute before running tests.
+     */
+
+    context.before = function(fn){
+      suites[0].beforeAll(fn);
+    };
+
+    /**
+     * Execute after running tests.
+     */
+
+    context.after = function(fn){
+      suites[0].afterAll(fn);
+    };
+
+    /**
+     * Execute before each test case.
+     */
+
+    context.beforeEach = function(fn){
+      suites[0].beforeEach(fn);
+    };
+
+    /**
+     * Execute after each test case.
+     */
+
+    context.afterEach = function(fn){
+      suites[0].afterEach(fn);
+    };
+
+    /**
+     * Describe a "suite" with the given `title`.
+     */
+
+    context.suite = function(title){
+      if (suites.length > 1) suites.shift();
+      var suite = Suite.create(suites[0], title);
+      suites.unshift(suite);
+      return suite;
+    };
+
+    /**
+     * Exclusive test-case.
+     */
+
+    context.suite.only = function(title, fn){
+      var suite = context.suite(title, fn);
+      mocha.grep(suite.fullTitle());
+    };
+
+    /**
+     * Describe a specification or test-case
+     * with the given `title` and callback `fn`
+     * acting as a thunk.
+     */
+
+    context.test = function(title, fn){
+      var test = new Test(title, fn);
+      suites[0].addTest(test);
+      return test;
+    };
+
+    /**
+     * Exclusive test-case.
+     */
+
+    context.test.only = function(title, fn){
+      var test = context.test(title, fn);
+      var reString = '^' + utils.escapeRegexp(test.fullTitle()) + '$';
+      mocha.grep(new RegExp(reString));
+    };
+
+    /**
+     * Pending test case.
+     */
+
+    context.test.skip = function(title){
+      context.test(title);
+    };
+  });
+};
+
+}); // module: interfaces/qunit.js
+
+require.register("interfaces/tdd.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Suite = require('../suite')
+  , Test = require('../test')
+  , utils = require('../utils');;
+
+/**
+ * TDD-style interface:
+ *
+ *      suite('Array', function(){
+ *        suite('#indexOf()', function(){
+ *          suiteSetup(function(){
+ *
+ *          });
+ *
+ *          test('should return -1 when not present', function(){
+ *
+ *          });
+ *
+ *          test('should return the index when present', function(){
+ *
+ *          });
+ *
+ *          suiteTeardown(function(){
+ *
+ *          });
+ *        });
+ *      });
+ *
+ */
+
+module.exports = function(suite){
+  var suites = [suite];
+
+  suite.on('pre-require', function(context, file, mocha){
+
+    /**
+     * Execute before each test case.
+     */
+
+    context.setup = function(fn){
+      suites[0].beforeEach(fn);
+    };
+
+    /**
+     * Execute after each test case.
+     */
+
+    context.teardown = function(fn){
+      suites[0].afterEach(fn);
+    };
+
+    /**
+     * Execute before the suite.
+     */
+
+    context.suiteSetup = function(fn){
+      suites[0].beforeAll(fn);
+    };
+
+    /**
+     * Execute after the suite.
+     */
+
+    context.suiteTeardown = function(fn){
+      suites[0].afterAll(fn);
+    };
+
+    /**
+     * Describe a "suite" with the given `title`
+     * and callback `fn` containing nested suites
+     * and/or tests.
+     */
+
+    context.suite = function(title, fn){
+      var suite = Suite.create(suites[0], title);
+      suites.unshift(suite);
+      fn.call(suite);
+      suites.shift();
+      return suite;
+    };
+
+    /**
+     * Pending suite.
+     */
+    context.suite.skip = function(title, fn) {
+      var suite = Suite.create(suites[0], title);
+      suite.pending = true;
+      suites.unshift(suite);
+      fn.call(suite);
+      suites.shift();
+    };
+
+    /**
+     * Exclusive test-case.
+     */
+
+    context.suite.only = function(title, fn){
+      var suite = context.suite(title, fn);
+      mocha.grep(suite.fullTitle());
+    };
+
+    /**
+     * Describe a specification or test-case
+     * with the given `title` and callback `fn`
+     * acting as a thunk.
+     */
+
+    context.test = function(title, fn){
+      var suite = suites[0];
+      if (suite.pending) var fn = null;
+      var test = new Test(title, fn);
+      suite.addTest(test);
+      return test;
+    };
+
+    /**
+     * Exclusive test-case.
+     */
+
+    context.test.only = function(title, fn){
+      var test = context.test(title, fn);
+      var reString = '^' + utils.escapeRegexp(test.fullTitle()) + '$';
+      mocha.grep(new RegExp(reString));
+    };
+
+    /**
+     * Pending test case.
+     */
+
+    context.test.skip = function(title){
+      context.test(title);
+    };
+  });
+};
+
+}); // module: interfaces/tdd.js
+
+require.register("mocha.js", function(module, exports, require){
+/*!
+ * mocha
+ * Copyright(c) 2011 TJ Holowaychuk <tj@vision-media.ca>
+ * MIT Licensed
+ */
+
+/**
+ * Module dependencies.
+ */
+
+var path = require('browser/path')
+  , utils = require('./utils');
+
+/**
+ * Expose `Mocha`.
+ */
+
+exports = module.exports = Mocha;
+
+/**
+ * Expose internals.
+ */
+
+exports.utils = utils;
+exports.interfaces = require('./interfaces');
+exports.reporters = require('./reporters');
+exports.Runnable = require('./runnable');
+exports.Context = require('./context');
+exports.Runner = require('./runner');
+exports.Suite = require('./suite');
+exports.Hook = require('./hook');
+exports.Test = require('./test');
+
+/**
+ * Return image `name` path.
+ *
+ * @param {String} name
+ * @return {String}
+ * @api private
+ */
+
+function image(name) {
+  return __dirname + '/../images/' + name + '.png';
+}
+
+/**
+ * Setup mocha with `options`.
+ *
+ * Options:
+ *
+ *   - `ui` name "bdd", "tdd", "exports" etc
+ *   - `reporter` reporter instance, defaults to `mocha.reporters.Dot`
+ *   - `globals` array of accepted globals
+ *   - `timeout` timeout in milliseconds
+ *   - `bail` bail on the first test failure
+ *   - `slow` milliseconds to wait before considering a test slow
+ *   - `ignoreLeaks` ignore global leaks
+ *   - `grep` string or regexp to filter tests with
+ *
+ * @param {Object} options
+ * @api public
+ */
+
+function Mocha(options) {
+  options = options || {};
+  this.files = [];
+  this.options = options;
+  this.grep(options.grep);
+  this.suite = new exports.Suite('', new exports.Context);
+  this.ui(options.ui);
+  this.bail(options.bail);
+  this.reporter(options.reporter);
+  if (null != options.timeout) this.timeout(options.timeout);
+  this.useColors(options.useColors)
+  if (options.slow) this.slow(options.slow);
+
+  this.suite.on('pre-require', function (context) {
+    exports.afterEach = context.afterEach || context.teardown;
+    exports.after = context.after || context.suiteTeardown;
+    exports.beforeEach = context.beforeEach || context.setup;
+    exports.before = context.before || context.suiteSetup;
+    exports.describe = context.describe || context.suite;
+    exports.it = context.it || context.test;
+    exports.setup = context.setup || context.beforeEach;
+    exports.suiteSetup = context.suiteSetup || context.before;
+    exports.suiteTeardown = context.suiteTeardown || context.after;
+    exports.suite = context.suite || context.describe;
+    exports.teardown = context.teardown || context.afterEach;
+    exports.test = context.test || context.it;
+  });
+}
+
+/**
+ * Enable or disable bailing on the first failure.
+ *
+ * @param {Boolean} [bail]
+ * @api public
+ */
+
+Mocha.prototype.bail = function(bail){
+  if (0 == arguments.length) bail = true;
+  this.suite.bail(bail);
+  return this;
+};
+
+/**
+ * Add test `file`.
+ *
+ * @param {String} file
+ * @api public
+ */
+
+Mocha.prototype.addFile = function(file){
+  this.files.push(file);
+  return this;
+};
+
+/**
+ * Set reporter to `reporter`, defaults to "dot".
+ *
+ * @param {String|Function} reporter name or constructor
+ * @api public
+ */
+
+Mocha.prototype.reporter = function(reporter){
+  if ('function' == typeof reporter) {
+    this._reporter = reporter;
+  } else {
+    reporter = reporter || 'dot';
+    var _reporter;
+    try { _reporter = require('./reporters/' + reporter); } catch (err) {};
+    if (!_reporter) try { _reporter = require(reporter); } catch (err) {};
+    if (!_reporter && reporter === 'teamcity')
+      console.warn('The Teamcity reporter was moved to a package named ' +
+        'mocha-teamcity-reporter ' +
+        '(https://npmjs.org/package/mocha-teamcity-reporter).');
+    if (!_reporter) throw new Error('invalid reporter "' + reporter + '"');
+    this._reporter = _reporter;
+  }
+  return this;
+};
+
+/**
+ * Set test UI `name`, defaults to "bdd".
+ *
+ * @param {String} bdd
+ * @api public
+ */
+
+Mocha.prototype.ui = function(name){
+  name = name || 'bdd';
+  this._ui = exports.interfaces[name];
+  if (!this._ui) try { this._ui = require(name); } catch (err) {};
+  if (!this._ui) throw new Error('invalid interface "' + name + '"');
+  this._ui = this._ui(this.suite);
+  return this;
+};
+
+/**
+ * Load registered files.
+ *
+ * @api private
+ */
+
+Mocha.prototype.loadFiles = function(fn){
+  var self = this;
+  var suite = this.suite;
+  var pending = this.files.length;
+  this.files.forEach(function(file){
+    file = path.resolve(file);
+    suite.emit('pre-require', global, file, self);
+    suite.emit('require', require(file), file, self);
+    suite.emit('post-require', global, file, self);
+    --pending || (fn && fn());
+  });
+};
+
+/**
+ * Enable growl support.
+ *
+ * @api private
+ */
+
+Mocha.prototype._growl = function(runner, reporter) {
+  var notify = require('growl');
+
+  runner.on('end', function(){
+    var stats = reporter.stats;
+    if (stats.failures) {
+      var msg = stats.failures + ' of ' + runner.total + ' tests failed';
+      notify(msg, { name: 'mocha', title: 'Failed', image: image('error') });
+    } else {
+      notify(stats.passes + ' tests passed in ' + stats.duration + 'ms', {
+          name: 'mocha'
+        , title: 'Passed'
+        , image: image('ok')
+      });
+    }
+  });
+};
+
+/**
+ * Add regexp to grep, if `re` is a string it is escaped.
+ *
+ * @param {RegExp|String} re
+ * @return {Mocha}
+ * @api public
+ */
+
+Mocha.prototype.grep = function(re){
+  this.options.grep = 'string' == typeof re
+    ? new RegExp(utils.escapeRegexp(re))
+    : re;
+  return this;
+};
+
+/**
+ * Invert `.grep()` matches.
+ *
+ * @return {Mocha}
+ * @api public
+ */
+
+Mocha.prototype.invert = function(){
+  this.options.invert = true;
+  return this;
+};
+
+/**
+ * Ignore global leaks.
+ *
+ * @param {Boolean} ignore
+ * @return {Mocha}
+ * @api public
+ */
+
+Mocha.prototype.ignoreLeaks = function(ignore){
+  this.options.ignoreLeaks = !!ignore;
+  return this;
+};
+
+/**
+ * Enable global leak checking.
+ *
+ * @return {Mocha}
+ * @api public
+ */
+
+Mocha.prototype.checkLeaks = function(){
+  this.options.ignoreLeaks = false;
+  return this;
+};
+
+/**
+ * Enable growl support.
+ *
+ * @return {Mocha}
+ * @api public
+ */
+
+Mocha.prototype.growl = function(){
+  this.options.growl = true;
+  return this;
+};
+
+/**
+ * Ignore `globals` array or string.
+ *
+ * @param {Array|String} globals
+ * @return {Mocha}
+ * @api public
+ */
+
+Mocha.prototype.globals = function(globals){
+  this.options.globals = (this.options.globals || []).concat(globals);
+  return this;
+};
+
+/**
+ * Emit color output.
+ *
+ * @param {Boolean} colors
+ * @return {Mocha}
+ * @api public
+ */
+
+Mocha.prototype.useColors = function(colors){
+  this.options.useColors = arguments.length && colors != undefined
+    ? colors
+    : true;
+  return this;
+};
+
+/**
+ * Use inline diffs rather than +/-.
+ *
+ * @param {Boolean} inlineDiffs
+ * @return {Mocha}
+ * @api public
+ */
+
+Mocha.prototype.useInlineDiffs = function(inlineDiffs) {
+  this.options.useInlineDiffs = arguments.length && inlineDiffs != undefined
+  ? inlineDiffs
+  : false;
+  return this;
+};
+
+/**
+ * Set the timeout in milliseconds.
+ *
+ * @param {Number} timeout
+ * @return {Mocha}
+ * @api public
+ */
+
+Mocha.prototype.timeout = function(timeout){
+  this.suite.timeout(timeout);
+  return this;
+};
+
+/**
+ * Set slowness threshold in milliseconds.
+ *
+ * @param {Number} slow
+ * @return {Mocha}
+ * @api public
+ */
+
+Mocha.prototype.slow = function(slow){
+  this.suite.slow(slow);
+  return this;
+};
+
+/**
+ * Makes all tests async (accepting a callback)
+ *
+ * @return {Mocha}
+ * @api public
+ */
+
+Mocha.prototype.asyncOnly = function(){
+  this.options.asyncOnly = true;
+  return this;
+};
+
+/**
+ * Run tests and invoke `fn()` when complete.
+ *
+ * @param {Function} fn
+ * @return {Runner}
+ * @api public
+ */
+
+Mocha.prototype.run = function(fn){
+  if (this.files.length) this.loadFiles();
+  var suite = this.suite;
+  var options = this.options;
+  var runner = new exports.Runner(suite);
+  var reporter = new this._reporter(runner);
+  runner.ignoreLeaks = false !== options.ignoreLeaks;
+  runner.asyncOnly = options.asyncOnly;
+  if (options.grep) runner.grep(options.grep, options.invert);
+  if (options.globals) runner.globals(options.globals);
+  if (options.growl) this._growl(runner, reporter);
+  exports.reporters.Base.useColors = options.useColors;
+  exports.reporters.Base.inlineDiffs = options.useInlineDiffs;
+  return runner.run(fn);
+};
+
+}); // module: mocha.js
+
+require.register("ms.js", function(module, exports, require){
+/**
+ * Helpers.
+ */
+
+var s = 1000;
+var m = s * 60;
+var h = m * 60;
+var d = h * 24;
+var y = d * 365.25;
+
+/**
+ * Parse or format the given `val`.
+ *
+ * Options:
+ *
+ *  - `long` verbose formatting [false]
+ *
+ * @param {String|Number} val
+ * @param {Object} options
+ * @return {String|Number}
+ * @api public
+ */
+
+module.exports = function(val, options){
+  options = options || {};
+  if ('string' == typeof val) return parse(val);
+  return options.long ? longFormat(val) : shortFormat(val);
+};
+
+/**
+ * Parse the given `str` and return milliseconds.
+ *
+ * @param {String} str
+ * @return {Number}
+ * @api private
+ */
+
+function parse(str) {
+  var match = /^((?:\d+)?\.?\d+) *(ms|seconds?|s|minutes?|m|hours?|h|days?|d|years?|y)?$/i.exec(str);
+  if (!match) return;
+  var n = parseFloat(match[1]);
+  var type = (match[2] || 'ms').toLowerCase();
+  switch (type) {
+    case 'years':
+    case 'year':
+    case 'y':
+      return n * y;
+    case 'days':
+    case 'day':
+    case 'd':
+      return n * d;
+    case 'hours':
+    case 'hour':
+    case 'h':
+      return n * h;
+    case 'minutes':
+    case 'minute':
+    case 'm':
+      return n * m;
+    case 'seconds':
+    case 'second':
+    case 's':
+      return n * s;
+    case 'ms':
+      return n;
+  }
+}
+
+/**
+ * Short format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function shortFormat(ms) {
+  if (ms >= d) return Math.round(ms / d) + 'd';
+  if (ms >= h) return Math.round(ms / h) + 'h';
+  if (ms >= m) return Math.round(ms / m) + 'm';
+  if (ms >= s) return Math.round(ms / s) + 's';
+  return ms + 'ms';
+}
+
+/**
+ * Long format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function longFormat(ms) {
+  return plural(ms, d, 'day')
+    || plural(ms, h, 'hour')
+    || plural(ms, m, 'minute')
+    || plural(ms, s, 'second')
+    || ms + ' ms';
+}
+
+/**
+ * Pluralization helper.
+ */
+
+function plural(ms, n, name) {
+  if (ms < n) return;
+  if (ms < n * 1.5) return Math.floor(ms / n) + ' ' + name;
+  return Math.ceil(ms / n) + ' ' + name + 's';
+}
+
+}); // module: ms.js
+
+require.register("reporters/base.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var tty = require('browser/tty')
+  , diff = require('browser/diff')
+  , ms = require('../ms')
+  , utils = require('../utils');
+
+/**
+ * Save timer references to avoid Sinon interfering (see GH-237).
+ */
+
+var Date = global.Date
+  , setTimeout = global.setTimeout
+  , setInterval = global.setInterval
+  , clearTimeout = global.clearTimeout
+  , clearInterval = global.clearInterval;
+
+/**
+ * Check if both stdio streams are associated with a tty.
+ */
+
+var isatty = tty.isatty(1) && tty.isatty(2);
+
+/**
+ * Expose `Base`.
+ */
+
+exports = module.exports = Base;
+
+/**
+ * Enable coloring by default.
+ */
+
+exports.useColors = isatty || (process.env.MOCHA_COLORS !== undefined);
+
+/**
+ * Inline diffs instead of +/-
+ */
+
+exports.inlineDiffs = false;
+
+/**
+ * Default color map.
+ */
+
+exports.colors = {
+    'pass': 90
+  , 'fail': 31
+  , 'bright pass': 92
+  , 'bright fail': 91
+  , 'bright yellow': 93
+  , 'pending': 36
+  , 'suite': 0
+  , 'error title': 0
+  , 'error message': 31
+  , 'error stack': 90
+  , 'checkmark': 32
+  , 'fast': 90
+  , 'medium': 33
+  , 'slow': 31
+  , 'green': 32
+  , 'light': 90
+  , 'diff gutter': 90
+  , 'diff added': 42
+  , 'diff removed': 41
+};
+
+/**
+ * Default symbol map.
+ */
+
+exports.symbols = {
+  ok: '✓',
+  err: '✖',
+  dot: '․'
+};
+
+// With node.js on Windows: use symbols available in terminal default fonts
+if ('win32' == process.platform) {
+  exports.symbols.ok = '\u221A';
+  exports.symbols.err = '\u00D7';
+  exports.symbols.dot = '.';
+}
+
+/**
+ * Color `str` with the given `type`,
+ * allowing colors to be disabled,
+ * as well as user-defined color
+ * schemes.
+ *
+ * @param {String} type
+ * @param {String} str
+ * @return {String}
+ * @api private
+ */
+
+var color = exports.color = function(type, str) {
+  if (!exports.useColors) return str;
+  return '\u001b[' + exports.colors[type] + 'm' + str + '\u001b[0m';
+};
+
+/**
+ * Expose term window size, with some
+ * defaults for when stderr is not a tty.
+ */
+
+exports.window = {
+  width: isatty
+    ? process.stdout.getWindowSize
+      ? process.stdout.getWindowSize(1)[0]
+      : tty.getWindowSize()[1]
+    : 75
+};
+
+/**
+ * Expose some basic cursor interactions
+ * that are common among reporters.
+ */
+
+exports.cursor = {
+  hide: function(){
+    isatty && process.stdout.write('\u001b[?25l');
+  },
+
+  show: function(){
+    isatty && process.stdout.write('\u001b[?25h');
+  },
+
+  deleteLine: function(){
+    isatty && process.stdout.write('\u001b[2K');
+  },
+
+  beginningOfLine: function(){
+    isatty && process.stdout.write('\u001b[0G');
+  },
+
+  CR: function(){
+    if (isatty) {
+      exports.cursor.deleteLine();
+      exports.cursor.beginningOfLine();
+    } else {
+      process.stdout.write('\r');
+    }
+  }
+};
+
+/**
+ * Outut the given `failures` as a list.
+ *
+ * @param {Array} failures
+ * @api public
+ */
+
+exports.list = function(failures){
+  console.error();
+  failures.forEach(function(test, i){
+    // format
+    var fmt = color('error title', '  %s) %s:\n')
+      + color('error message', '     %s')
+      + color('error stack', '\n%s\n');
+
+    // msg
+    var err = test.err
+      , message = err.message || ''
+      , stack = err.stack || message
+      , index = stack.indexOf(message) + message.length
+      , msg = stack.slice(0, index)
+      , actual = err.actual
+      , expected = err.expected
+      , escape = true;
+
+    // uncaught
+    if (err.uncaught) {
+      msg = 'Uncaught ' + msg;
+    }
+
+    // explicitly show diff
+    if (err.showDiff && sameType(actual, expected)) {
+      escape = false;
+      err.actual = actual = stringify(canonicalize(actual));
+      err.expected = expected = stringify(canonicalize(expected));
+    }
+
+    // actual / expected diff
+    if ('string' == typeof actual && 'string' == typeof expected) {
+      fmt = color('error title', '  %s) %s:\n%s') + color('error stack', '\n%s\n');
+      var match = message.match(/^([^:]+): expected/);
+      msg = '\n      ' + color('error message', match ? match[1] : msg);
+
+      if (exports.inlineDiffs) {
+        msg += inlineDiff(err, escape);
+      } else {
+        msg += unifiedDiff(err, escape);
+      }
+    }
+
+    // indent stack trace without msg
+    stack = stack.slice(index ? index + 1 : index)
+      .replace(/^/gm, '  ');
+
+    console.error(fmt, (i + 1), test.fullTitle(), msg, stack);
+  });
+};
+
+/**
+ * Initialize a new `Base` reporter.
+ *
+ * All other reporters generally
+ * inherit from this reporter, providing
+ * stats such as test duration, number
+ * of tests passed / failed etc.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function Base(runner) {
+  var self = this
+    , stats = this.stats = { suites: 0, tests: 0, passes: 0, pending: 0, failures: 0 }
+    , failures = this.failures = [];
+
+  if (!runner) return;
+  this.runner = runner;
+
+  runner.stats = stats;
+
+  runner.on('start', function(){
+    stats.start = new Date;
+  });
+
+  runner.on('suite', function(suite){
+    stats.suites = stats.suites || 0;
+    suite.root || stats.suites++;
+  });
+
+  runner.on('test end', function(test){
+    stats.tests = stats.tests || 0;
+    stats.tests++;
+  });
+
+  runner.on('pass', function(test){
+    stats.passes = stats.passes || 0;
+
+    var medium = test.slow() / 2;
+    test.speed = test.duration > test.slow()
+      ? 'slow'
+      : test.duration > medium
+        ? 'medium'
+        : 'fast';
+
+    stats.passes++;
+  });
+
+  runner.on('fail', function(test, err){
+    stats.failures = stats.failures || 0;
+    stats.failures++;
+    test.err = err;
+    failures.push(test);
+  });
+
+  runner.on('end', function(){
+    stats.end = new Date;
+    stats.duration = new Date - stats.start;
+  });
+
+  runner.on('pending', function(){
+    stats.pending++;
+  });
+}
+
+/**
+ * Output common epilogue used by many of
+ * the bundled reporters.
+ *
+ * @api public
+ */
+
+Base.prototype.epilogue = function(){
+  var stats = this.stats;
+  var tests;
+  var fmt;
+
+  console.log();
+
+  // passes
+  fmt = color('bright pass', ' ')
+    + color('green', ' %d passing')
+    + color('light', ' (%s)');
+
+  console.log(fmt,
+    stats.passes || 0,
+    ms(stats.duration));
+
+  // pending
+  if (stats.pending) {
+    fmt = color('pending', ' ')
+      + color('pending', ' %d pending');
+
+    console.log(fmt, stats.pending);
+  }
+
+  // failures
+  if (stats.failures) {
+    fmt = color('fail', '  %d failing');
+
+    console.error(fmt,
+      stats.failures);
+
+    Base.list(this.failures);
+    console.error();
+  }
+
+  console.log();
+};
+
+/**
+ * Pad the given `str` to `len`.
+ *
+ * @param {String} str
+ * @param {String} len
+ * @return {String}
+ * @api private
+ */
+
+function pad(str, len) {
+  str = String(str);
+  return Array(len - str.length + 1).join(' ') + str;
+}
+
+
+/**
+ * Returns an inline diff between 2 strings with coloured ANSI output
+ *
+ * @param {Error} Error with actual/expected
+ * @return {String} Diff
+ * @api private
+ */
+
+function inlineDiff(err, escape) {
+  var msg = errorDiff(err, 'WordsWithSpace', escape);
+
+  // linenos
+  var lines = msg.split('\n');
+  if (lines.length > 4) {
+    var width = String(lines.length).length;
+    msg = lines.map(function(str, i){
+      return pad(++i, width) + ' |' + ' ' + str;
+    }).join('\n');
+  }
+
+  // legend
+  msg = '\n'
+    + color('diff removed', 'actual')
+    + ' '
+    + color('diff added', 'expected')
+    + '\n\n'
+    + msg
+    + '\n';
+
+  // indent
+  msg = msg.replace(/^/gm, '      ');
+  return msg;
+}
+
+/**
+ * Returns a unified diff between 2 strings
+ *
+ * @param {Error} Error with actual/expected
+ * @return {String} Diff
+ * @api private
+ */
+
+function unifiedDiff(err, escape) {
+  var indent = '      ';
+  function cleanUp(line) {
+    if (escape) {
+      line = escapeInvisibles(line);
+    }
+    if (line[0] === '+') return indent + colorLines('diff added', line);
+    if (line[0] === '-') return indent + colorLines('diff removed', line);
+    if (line.match(/\@\@/)) return null;
+    if (line.match(/\\ No newline/)) return null;
+    else return indent + line;
+  }
+  function notBlank(line) {
+    return line != null;
+  }
+  msg = diff.createPatch('string', err.actual, err.expected);
+  var lines = msg.split('\n').splice(4);
+  return '\n      '
+         + colorLines('diff added',   '+ expected') + ' '
+         + colorLines('diff removed', '- actual')
+         + '\n\n'
+         + lines.map(cleanUp).filter(notBlank).join('\n');
+}
+
+/**
+ * Return a character diff for `err`.
+ *
+ * @param {Error} err
+ * @return {String}
+ * @api private
+ */
+
+function errorDiff(err, type, escape) {
+  var actual   = escape ? escapeInvisibles(err.actual)   : err.actual;
+  var expected = escape ? escapeInvisibles(err.expected) : err.expected;
+  return diff['diff' + type](actual, expected).map(function(str){
+    if (str.added) return colorLines('diff added', str.value);
+    if (str.removed) return colorLines('diff removed', str.value);
+    return str.value;
+  }).join('');
+}
+
+/**
+ * Returns a string with all invisible characters in plain text
+ *
+ * @param {String} line
+ * @return {String}
+ * @api private
+ */
+function escapeInvisibles(line) {
+    return line.replace(/\t/g, '<tab>')
+               .replace(/\r/g, '<CR>')
+               .replace(/\n/g, '<LF>\n');
+}
+
+/**
+ * Color lines for `str`, using the color `name`.
+ *
+ * @param {String} name
+ * @param {String} str
+ * @return {String}
+ * @api private
+ */
+
+function colorLines(name, str) {
+  return str.split('\n').map(function(str){
+    return color(name, str);
+  }).join('\n');
+}
+
+/**
+ * Stringify `obj`.
+ *
+ * @param {Object} obj
+ * @return {String}
+ * @api private
+ */
+
+function stringify(obj) {
+  if (obj instanceof RegExp) return obj.toString();
+  return JSON.stringify(obj, null, 2);
+}
+
+/**
+ * Return a new object that has the keys in sorted order.
+ * @param {Object} obj
+ * @return {Object}
+ * @api private
+ */
+
+ function canonicalize(obj, stack) {
+   stack = stack || [];
+
+   if (utils.indexOf(stack, obj) !== -1) return obj;
+
+   var canonicalizedObj;
+
+   if ('[object Array]' == {}.toString.call(obj)) {
+     stack.push(obj);
+     canonicalizedObj = utils.map(obj, function(item) {
+       return canonicalize(item, stack);
+     });
+     stack.pop();
+   } else if (typeof obj === 'object' && obj !== null) {
+     stack.push(obj);
+     canonicalizedObj = {};
+     utils.forEach(utils.keys(obj).sort(), function(key) {
+       canonicalizedObj[key] = canonicalize(obj[key], stack);
+     });
+     stack.pop();
+   } else {
+     canonicalizedObj = obj;
+   }
+
+   return canonicalizedObj;
+ }
+
+/**
+ * Check that a / b have the same type.
+ *
+ * @param {Object} a
+ * @param {Object} b
+ * @return {Boolean}
+ * @api private
+ */
+
+function sameType(a, b) {
+  a = Object.prototype.toString.call(a);
+  b = Object.prototype.toString.call(b);
+  return a == b;
+}
+
+
+}); // module: reporters/base.js
+
+require.register("reporters/doc.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , utils = require('../utils');
+
+/**
+ * Expose `Doc`.
+ */
+
+exports = module.exports = Doc;
+
+/**
+ * Initialize a new `Doc` reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function Doc(runner) {
+  Base.call(this, runner);
+
+  var self = this
+    , stats = this.stats
+    , total = runner.total
+    , indents = 2;
+
+  function indent() {
+    return Array(indents).join('  ');
+  }
+
+  runner.on('suite', function(suite){
+    if (suite.root) return;
+    ++indents;
+    console.log('%s<section class="suite">', indent());
+    ++indents;
+    console.log('%s<h1>%s</h1>', indent(), utils.escape(suite.title));
+    console.log('%s<dl>', indent());
+  });
+
+  runner.on('suite end', function(suite){
+    if (suite.root) return;
+    console.log('%s</dl>', indent());
+    --indents;
+    console.log('%s</section>', indent());
+    --indents;
+  });
+
+  runner.on('pass', function(test){
+    console.log('%s  <dt>%s</dt>', indent(), utils.escape(test.title));
+    var code = utils.escape(utils.clean(test.fn.toString()));
+    console.log('%s  <dd><pre><code>%s</code></pre></dd>', indent(), code);
+  });
+}
+
+}); // module: reporters/doc.js
+
+require.register("reporters/dot.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , color = Base.color;
+
+/**
+ * Expose `Dot`.
+ */
+
+exports = module.exports = Dot;
+
+/**
+ * Initialize a new `Dot` matrix test reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function Dot(runner) {
+  Base.call(this, runner);
+
+  var self = this
+    , stats = this.stats
+    , width = Base.window.width * .75 | 0
+    , n = 0;
+
+  runner.on('start', function(){
+    process.stdout.write('\n  ');
+  });
+
+  runner.on('pending', function(test){
+    process.stdout.write(color('pending', Base.symbols.dot));
+  });
+
+  runner.on('pass', function(test){
+    if (++n % width == 0) process.stdout.write('\n  ');
+    if ('slow' == test.speed) {
+      process.stdout.write(color('bright yellow', Base.symbols.dot));
+    } else {
+      process.stdout.write(color(test.speed, Base.symbols.dot));
+    }
+  });
+
+  runner.on('fail', function(test, err){
+    if (++n % width == 0) process.stdout.write('\n  ');
+    process.stdout.write(color('fail', Base.symbols.dot));
+  });
+
+  runner.on('end', function(){
+    console.log();
+    self.epilogue();
+  });
+}
+
+/**
+ * Inherit from `Base.prototype`.
+ */
+
+function F(){};
+F.prototype = Base.prototype;
+Dot.prototype = new F;
+Dot.prototype.constructor = Dot;
+
+}); // module: reporters/dot.js
+
+require.register("reporters/html-cov.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var JSONCov = require('./json-cov')
+  , fs = require('browser/fs');
+
+/**
+ * Expose `HTMLCov`.
+ */
+
+exports = module.exports = HTMLCov;
+
+/**
+ * Initialize a new `JsCoverage` reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function HTMLCov(runner) {
+  var jade = require('jade')
+    , file = __dirname + '/templates/coverage.jade'
+    , str = fs.readFileSync(file, 'utf8')
+    , fn = jade.compile(str, { filename: file })
+    , self = this;
+
+  JSONCov.call(this, runner, false);
+
+  runner.on('end', function(){
+    process.stdout.write(fn({
+        cov: self.cov
+      , coverageClass: coverageClass
+    }));
+  });
+}
+
+/**
+ * Return coverage class for `n`.
+ *
+ * @return {String}
+ * @api private
+ */
+
+function coverageClass(n) {
+  if (n >= 75) return 'high';
+  if (n >= 50) return 'medium';
+  if (n >= 25) return 'low';
+  return 'terrible';
+}
+}); // module: reporters/html-cov.js
+
+require.register("reporters/html.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , utils = require('../utils')
+  , Progress = require('../browser/progress')
+  , escape = utils.escape;
+
+/**
+ * Save timer references to avoid Sinon interfering (see GH-237).
+ */
+
+var Date = global.Date
+  , setTimeout = global.setTimeout
+  , setInterval = global.setInterval
+  , clearTimeout = global.clearTimeout
+  , clearInterval = global.clearInterval;
+
+/**
+ * Expose `HTML`.
+ */
+
+exports = module.exports = HTML;
+
+/**
+ * Stats template.
+ */
+
+var statsTemplate = '<ul id="mocha-stats">'
+  + '<li class="progress"><canvas width="40" height="40"></canvas></li>'
+  + '<li class="passes"><a href="#">passes:</a> <em>0</em></li>'
+  + '<li class="failures"><a href="#">failures:</a> <em>0</em></li>'
+  + '<li class="duration">duration: <em>0</em>s</li>'
+  + '</ul>';
+
+/**
+ * Initialize a new `HTML` reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function HTML(runner, root) {
+  Base.call(this, runner);
+
+  var self = this
+    , stats = this.stats
+    , total = runner.total
+    , stat = fragment(statsTemplate)
+    , items = stat.getElementsByTagName('li')
+    , passes = items[1].getElementsByTagName('em')[0]
+    , passesLink = items[1].getElementsByTagName('a')[0]
+    , failures = items[2].getElementsByTagName('em')[0]
+    , failuresLink = items[2].getElementsByTagName('a')[0]
+    , duration = items[3].getElementsByTagName('em')[0]
+    , canvas = stat.getElementsByTagName('canvas')[0]
+    , report = fragment('<ul id="mocha-report"></ul>')
+    , stack = [report]
+    , progress
+    , ctx
+
+  root = root || document.getElementById('mocha');
+
+  if (canvas.getContext) {
+    var ratio = window.devicePixelRatio || 1;
+    canvas.style.width = canvas.width;
+    canvas.style.height = canvas.height;
+    canvas.width *= ratio;
+    canvas.height *= ratio;
+    ctx = canvas.getContext('2d');
+    ctx.scale(ratio, ratio);
+    progress = new Progress;
+  }
+
+  if (!root) return error('#mocha div missing, add it to your document');
+
+  // pass toggle
+  on(passesLink, 'click', function(){
+    unhide();
+    var name = /pass/.test(report.className) ? '' : ' pass';
+    report.className = report.className.replace(/fail|pass/g, '') + name;
+    if (report.className.trim()) hideSuitesWithout('test pass');
+  });
+
+  // failure toggle
+  on(failuresLink, 'click', function(){
+    unhide();
+    var name = /fail/.test(report.className) ? '' : ' fail';
+    report.className = report.className.replace(/fail|pass/g, '') + name;
+    if (report.className.trim()) hideSuitesWithout('test fail');
+  });
+
+  root.appendChild(stat);
+  root.appendChild(report);
+
+  if (progress) progress.size(40);
+
+  runner.on('suite', function(suite){
+    if (suite.root) return;
+
+    // suite
+    var url = self.suiteURL(suite);
+    var el = fragment('<li class="suite"><h1><a href="%s">%s</a></h1></li>', url, escape(suite.title));
+
+    // container
+    stack[0].appendChild(el);
+    stack.unshift(document.createElement('ul'));
+    el.appendChild(stack[0]);
+  });
+
+  runner.on('suite end', function(suite){
+    if (suite.root) return;
+    stack.shift();
+  });
+
+  runner.on('fail', function(test, err){
+    if ('hook' == test.type) runner.emit('test end', test);
+  });
+
+  runner.on('test end', function(test){
+    // TODO: add to stats
+    var percent = stats.tests / this.total * 100 | 0;
+    if (progress) progress.update(percent).draw(ctx);
+
+    // update stats
+    var ms = new Date - stats.start;
+    text(passes, stats.passes);
+    text(failures, stats.failures);
+    text(duration, (ms / 1000).toFixed(2));
+
+    // test
+    if ('passed' == test.state) {
+      var url = self.testURL(test);
+      var el = fragment('<li class="test pass %e"><h2>%e<span class="duration">%ems</span> <a href="%s" class="replay">‣</a></h2></li>', test.speed, test.title, test.duration, url);
+    } else if (test.pending) {
+      var el = fragment('<li class="test pass pending"><h2>%e</h2></li>', test.title);
+    } else {
+      var el = fragment('<li class="test fail"><h2>%e <a href="?grep=%e" class="replay">‣</a></h2></li>', test.title, encodeURIComponent(test.fullTitle()));
+      var str = test.err.stack || test.err.toString();
+
+      // FF / Opera do not add the message
+      if (!~str.indexOf(test.err.message)) {
+        str = test.err.message + '\n' + str;
+      }
+
+      // <=IE7 stringifies to [Object Error]. Since it can be overloaded, we
+      // check for the result of the stringifying.
+      if ('[object Error]' == str) str = test.err.message;
+
+      // Safari doesn't give you a stack. Let's at least provide a source line.
+      if (!test.err.stack && test.err.sourceURL && test.err.line !== undefined) {
+        str += "\n(" + test.err.sourceURL + ":" + test.err.line + ")";
+      }
+
+      el.appendChild(fragment('<pre class="error">%e</pre>', str));
+    }
+
+    // toggle code
+    // TODO: defer
+    if (!test.pending) {
+      var h2 = el.getElementsByTagName('h2')[0];
+
+      on(h2, 'click', function(){
+        pre.style.display = 'none' == pre.style.display
+          ? 'block'
+          : 'none';
+      });
+
+      var pre = fragment('<pre><code>%e</code></pre>', utils.clean(test.fn.toString()));
+      el.appendChild(pre);
+      pre.style.display = 'none';
+    }
+
+    // Don't call .appendChild if #mocha-report was already .shift()'ed off the stack.
+    if (stack[0]) stack[0].appendChild(el);
+  });
+}
+
+/**
+ * Provide suite URL
+ *
+ * @param {Object} [suite]
+ */
+
+HTML.prototype.suiteURL = function(suite){
+  return '?grep=' + encodeURIComponent(suite.fullTitle());
+};
+
+/**
+ * Provide test URL
+ *
+ * @param {Object} [test]
+ */
+
+HTML.prototype.testURL = function(test){
+  return '?grep=' + encodeURIComponent(test.fullTitle());
+};
+
+/**
+ * Display error `msg`.
+ */
+
+function error(msg) {
+  document.body.appendChild(fragment('<div id="mocha-error">%s</div>', msg));
+}
+
+/**
+ * Return a DOM fragment from `html`.
+ */
+
+function fragment(html) {
+  var args = arguments
+    , div = document.createElement('div')
+    , i = 1;
+
+  div.innerHTML = html.replace(/%([se])/g, function(_, type){
+    switch (type) {
+      case 's': return String(args[i++]);
+      case 'e': return escape(args[i++]);
+    }
+  });
+
+  return div.firstChild;
+}
+
+/**
+ * Check for suites that do not have elements
+ * with `classname`, and hide them.
+ */
+
+function hideSuitesWithout(classname) {
+  var suites = document.getElementsByClassName('suite');
+  for (var i = 0; i < suites.length; i++) {
+    var els = suites[i].getElementsByClassName(classname);
+    if (0 == els.length) suites[i].className += ' hidden';
+  }
+}
+
+/**
+ * Unhide .hidden suites.
+ */
+
+function unhide() {
+  var els = document.getElementsByClassName('suite hidden');
+  for (var i = 0; i < els.length; ++i) {
+    els[i].className = els[i].className.replace('suite hidden', 'suite');
+  }
+}
+
+/**
+ * Set `el` text to `str`.
+ */
+
+function text(el, str) {
+  if (el.textContent) {
+    el.textContent = str;
+  } else {
+    el.innerText = str;
+  }
+}
+
+/**
+ * Listen on `event` with callback `fn`.
+ */
+
+function on(el, event, fn) {
+  if (el.addEventListener) {
+    el.addEventListener(event, fn, false);
+  } else {
+    el.attachEvent('on' + event, fn);
+  }
+}
+
+}); // module: reporters/html.js
+
+require.register("reporters/index.js", function(module, exports, require){
+
+exports.Base = require('./base');
+exports.Dot = require('./dot');
+exports.Doc = require('./doc');
+exports.TAP = require('./tap');
+exports.JSON = require('./json');
+exports.HTML = require('./html');
+exports.List = require('./list');
+exports.Min = require('./min');
+exports.Spec = require('./spec');
+exports.Nyan = require('./nyan');
+exports.XUnit = require('./xunit');
+exports.Markdown = require('./markdown');
+exports.Progress = require('./progress');
+exports.Landing = require('./landing');
+exports.JSONCov = require('./json-cov');
+exports.HTMLCov = require('./html-cov');
+exports.JSONStream = require('./json-stream');
+
+}); // module: reporters/index.js
+
+require.register("reporters/json-cov.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base');
+
+/**
+ * Expose `JSONCov`.
+ */
+
+exports = module.exports = JSONCov;
+
+/**
+ * Initialize a new `JsCoverage` reporter.
+ *
+ * @param {Runner} runner
+ * @param {Boolean} output
+ * @api public
+ */
+
+function JSONCov(runner, output) {
+  var self = this
+    , output = 1 == arguments.length ? true : output;
+
+  Base.call(this, runner);
+
+  var tests = []
+    , failures = []
+    , passes = [];
+
+  runner.on('test end', function(test){
+    tests.push(test);
+  });
+
+  runner.on('pass', function(test){
+    passes.push(test);
+  });
+
+  runner.on('fail', function(test){
+    failures.push(test);
+  });
+
+  runner.on('end', function(){
+    var cov = global._$jscoverage || {};
+    var result = self.cov = map(cov);
+    result.stats = self.stats;
+    result.tests = tests.map(clean);
+    result.failures = failures.map(clean);
+    result.passes = passes.map(clean);
+    if (!output) return;
+    process.stdout.write(JSON.stringify(result, null, 2 ));
+  });
+}
+
+/**
+ * Map jscoverage data to a JSON structure
+ * suitable for reporting.
+ *
+ * @param {Object} cov
+ * @return {Object}
+ * @api private
+ */
+
+function map(cov) {
+  var ret = {
+      instrumentation: 'node-jscoverage'
+    , sloc: 0
+    , hits: 0
+    , misses: 0
+    , coverage: 0
+    , files: []
+  };
+
+  for (var filename in cov) {
+    var data = coverage(filename, cov[filename]);
+    ret.files.push(data);
+    ret.hits += data.hits;
+    ret.misses += data.misses;
+    ret.sloc += data.sloc;
+  }
+
+  ret.files.sort(function(a, b) {
+    return a.filename.localeCompare(b.filename);
+  });
+
+  if (ret.sloc > 0) {
+    ret.coverage = (ret.hits / ret.sloc) * 100;
+  }
+
+  return ret;
+};
+
+/**
+ * Map jscoverage data for a single source file
+ * to a JSON structure suitable for reporting.
+ *
+ * @param {String} filename name of the source file
+ * @param {Object} data jscoverage coverage data
+ * @return {Object}
+ * @api private
+ */
+
+function coverage(filename, data) {
+  var ret = {
+    filename: filename,
+    coverage: 0,
+    hits: 0,
+    misses: 0,
+    sloc: 0,
+    source: {}
+  };
+
+  data.source.forEach(function(line, num){
+    num++;
+
+    if (data[num] === 0) {
+      ret.misses++;
+      ret.sloc++;
+    } else if (data[num] !== undefined) {
+      ret.hits++;
+      ret.sloc++;
+    }
+
+    ret.source[num] = {
+        source: line
+      , coverage: data[num] === undefined
+        ? ''
+        : data[num]
+    };
+  });
+
+  ret.coverage = ret.hits / ret.sloc * 100;
+
+  return ret;
+}
+
+/**
+ * Return a plain-object representation of `test`
+ * free of cyclic properties etc.
+ *
+ * @param {Object} test
+ * @return {Object}
+ * @api private
+ */
+
+function clean(test) {
+  return {
+      title: test.title
+    , fullTitle: test.fullTitle()
+    , duration: test.duration
+  }
+}
+
+}); // module: reporters/json-cov.js
+
+require.register("reporters/json-stream.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , color = Base.color;
+
+/**
+ * Expose `List`.
+ */
+
+exports = module.exports = List;
+
+/**
+ * Initialize a new `List` test reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function List(runner) {
+  Base.call(this, runner);
+
+  var self = this
+    , stats = this.stats
+    , total = runner.total;
+
+  runner.on('start', function(){
+    console.log(JSON.stringify(['start', { total: total }]));
+  });
+
+  runner.on('pass', function(test){
+    console.log(JSON.stringify(['pass', clean(test)]));
+  });
+
+  runner.on('fail', function(test, err){
+    console.log(JSON.stringify(['fail', clean(test)]));
+  });
+
+  runner.on('end', function(){
+    process.stdout.write(JSON.stringify(['end', self.stats]));
+  });
+}
+
+/**
+ * Return a plain-object representation of `test`
+ * free of cyclic properties etc.
+ *
+ * @param {Object} test
+ * @return {Object}
+ * @api private
+ */
+
+function clean(test) {
+  return {
+      title: test.title
+    , fullTitle: test.fullTitle()
+    , duration: test.duration
+  }
+}
+}); // module: reporters/json-stream.js
+
+require.register("reporters/json.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , cursor = Base.cursor
+  , color = Base.color;
+
+/**
+ * Expose `JSON`.
+ */
+
+exports = module.exports = JSONReporter;
+
+/**
+ * Initialize a new `JSON` reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function JSONReporter(runner) {
+  var self = this;
+  Base.call(this, runner);
+
+  var tests = []
+    , failures = []
+    , passes = [];
+
+  runner.on('test end', function(test){
+    tests.push(test);
+  });
+
+  runner.on('pass', function(test){
+    passes.push(test);
+  });
+
+  runner.on('fail', function(test){
+    failures.push(test);
+  });
+
+  runner.on('end', function(){
+    var obj = {
+        stats: self.stats
+      , tests: tests.map(clean)
+      , failures: failures.map(clean)
+      , passes: passes.map(clean)
+    };
+
+    process.stdout.write(JSON.stringify(obj, null, 2));
+  });
+}
+
+/**
+ * Return a plain-object representation of `test`
+ * free of cyclic properties etc.
+ *
+ * @param {Object} test
+ * @return {Object}
+ * @api private
+ */
+
+function clean(test) {
+  return {
+      title: test.title
+    , fullTitle: test.fullTitle()
+    , duration: test.duration
+  }
+}
+}); // module: reporters/json.js
+
+require.register("reporters/landing.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , cursor = Base.cursor
+  , color = Base.color;
+
+/**
+ * Expose `Landing`.
+ */
+
+exports = module.exports = Landing;
+
+/**
+ * Airplane color.
+ */
+
+Base.colors.plane = 0;
+
+/**
+ * Airplane crash color.
+ */
+
+Base.colors['plane crash'] = 31;
+
+/**
+ * Runway color.
+ */
+
+Base.colors.runway = 90;
+
+/**
+ * Initialize a new `Landing` reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function Landing(runner) {
+  Base.call(this, runner);
+
+  var self = this
+    , stats = this.stats
+    , width = Base.window.width * .75 | 0
+    , total = runner.total
+    , stream = process.stdout
+    , plane = color('plane', '✈')
+    , crashed = -1
+    , n = 0;
+
+  function runway() {
+    var buf = Array(width).join('-');
+    return '  ' + color('runway', buf);
+  }
+
+  runner.on('start', function(){
+    stream.write('\n  ');
+    cursor.hide();
+  });
+
+  runner.on('test end', function(test){
+    // check if the plane crashed
+    var col = -1 == crashed
+      ? width * ++n / total | 0
+      : crashed;
+
+    // show the crash
+    if ('failed' == test.state) {
+      plane = color('plane crash', '✈');
+      crashed = col;
+    }
+
+    // render landing strip
+    stream.write('\u001b[4F\n\n');
+    stream.write(runway());
+    stream.write('\n  ');
+    stream.write(color('runway', Array(col).join('⋅')));
+    stream.write(plane)
+    stream.write(color('runway', Array(width - col).join('⋅') + '\n'));
+    stream.write(runway());
+    stream.write('\u001b[0m');
+  });
+
+  runner.on('end', function(){
+    cursor.show();
+    console.log();
+    self.epilogue();
+  });
+}
+
+/**
+ * Inherit from `Base.prototype`.
+ */
+
+function F(){};
+F.prototype = Base.prototype;
+Landing.prototype = new F;
+Landing.prototype.constructor = Landing;
+
+}); // module: reporters/landing.js
+
+require.register("reporters/list.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , cursor = Base.cursor
+  , color = Base.color;
+
+/**
+ * Expose `List`.
+ */
+
+exports = module.exports = List;
+
+/**
+ * Initialize a new `List` test reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function List(runner) {
+  Base.call(this, runner);
+
+  var self = this
+    , stats = this.stats
+    , n = 0;
+
+  runner.on('start', function(){
+    console.log();
+  });
+
+  runner.on('test', function(test){
+    process.stdout.write(color('pass', '    ' + test.fullTitle() + ': '));
+  });
+
+  runner.on('pending', function(test){
+    var fmt = color('checkmark', '  -')
+      + color('pending', ' %s');
+    console.log(fmt, test.fullTitle());
+  });
+
+  runner.on('pass', function(test){
+    var fmt = color('checkmark', '  '+Base.symbols.dot)
+      + color('pass', ' %s: ')
+      + color(test.speed, '%dms');
+    cursor.CR();
+    console.log(fmt, test.fullTitle(), test.duration);
+  });
+
+  runner.on('fail', function(test, err){
+    cursor.CR();
+    console.log(color('fail', '  %d) %s'), ++n, test.fullTitle());
+  });
+
+  runner.on('end', self.epilogue.bind(self));
+}
+
+/**
+ * Inherit from `Base.prototype`.
+ */
+
+function F(){};
+F.prototype = Base.prototype;
+List.prototype = new F;
+List.prototype.constructor = List;
+
+
+}); // module: reporters/list.js
+
+require.register("reporters/markdown.js", function(module, exports, require){
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , utils = require('../utils');
+
+/**
+ * Expose `Markdown`.
+ */
+
+exports = module.exports = Markdown;
+
+/**
+ * Initialize a new `Markdown` reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function Markdown(runner) {
+  Base.call(this, runner);
+
+  var self = this
+    , stats = this.stats
+    , level = 0
+    , buf = '';
+
+  function title(str) {
+    return Array(level).join('#') + ' ' + str;
+  }
+
+  function indent() {
+    return Array(level).join('  ');
+  }
+
+  function mapTOC(suite, obj) {
+    var ret = obj;
+    obj = obj[suite.title] = obj[suite.title] || { suite: suite };
+    suite.suites.forEach(function(suite){
+      mapTOC(suite, obj);
+    });
+    return ret;
+  }
+
+  function stringifyTOC(obj, level) {
+    ++level;
+    var buf = '';
+    var link;
+    for (var key in obj) {
+      if ('suite' == key) continue;
+      if (key) link = ' - [' + key + '](#' + utils.slug(obj[key].suite.fullTitle()) + ')\n';
+      if (key) buf += Array(level).join('  ') + link;
+      buf += stringifyTOC(obj[key], level);
+    }
+    --level;
+    return buf;
+  }
+
+  function generateTOC(suite) {
+    var obj = mapTOC(suite, {});
+    return stringifyTOC(obj, 0);
+  }
+
+  generateTOC(runner.suite);
+
+  runner.on('suite', function(suite){
+    ++level;
+    var slug = utils.slug(suite.fullTitle());
+    buf += '<a name="' + slug + '"></a>' + '\n';
+    buf += title(suite.title) + '\n';
+  });
+
+  runner.on('suite end', function(suite){
+    --level;
+  });
+
+  runner.on('pass', function(test){
+    var code = utils.clean(test.fn.toString());
+    buf += test.title + '.\n';
+    buf += '\n```js\n';
+    buf += code + '\n';
+    buf += '```\n\n';
+  });
+
+  runner.on('end', function(){
+    process.stdout.write('# TOC\n');
+    process.stdout.write(generateTOC(runner.suite));
+    process.stdout.write(buf);
+  });
+}
+}); // module: reporters/markdown.js
+
+require.register("reporters/min.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base');
+
+/**
+ * Expose `Min`.
+ */
+
+exports = module.exports = Min;
+
+/**
+ * Initialize a new `Min` minimal test reporter (best used with --watch).
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function Min(runner) {
+  Base.call(this, runner);
+
+  runner.on('start', function(){
+    // clear screen
+    process.stdout.write('\u001b[2J');
+    // set cursor position
+    process.stdout.write('\u001b[1;3H');
+  });
+
+  runner.on('end', this.epilogue.bind(this));
+}
+
+/**
+ * Inherit from `Base.prototype`.
+ */
+
+function F(){};
+F.prototype = Base.prototype;
+Min.prototype = new F;
+Min.prototype.constructor = Min;
+
+
+}); // module: reporters/min.js
+
+require.register("reporters/nyan.js", function(module, exports, require){
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , color = Base.color;
+
+/**
+ * Expose `Dot`.
+ */
+
+exports = module.exports = NyanCat;
+
+/**
+ * Initialize a new `Dot` matrix test reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function NyanCat(runner) {
+  Base.call(this, runner);
+  var self = this
+    , stats = this.stats
+    , width = Base.window.width * .75 | 0
+    , rainbowColors = this.rainbowColors = self.generateColors()
+    , colorIndex = this.colorIndex = 0
+    , numerOfLines = this.numberOfLines = 4
+    , trajectories = this.trajectories = [[], [], [], []]
+    , nyanCatWidth = this.nyanCatWidth = 11
+    , trajectoryWidthMax = this.trajectoryWidthMax = (width - nyanCatWidth)
+    , scoreboardWidth = this.scoreboardWidth = 5
+    , tick = this.tick = 0
+    , n = 0;
+
+  runner.on('start', function(){
+    Base.cursor.hide();
+    self.draw();
+  });
+
+  runner.on('pending', function(test){
+    self.draw();
+  });
+
+  runner.on('pass', function(test){
+    self.draw();
+  });
+
+  runner.on('fail', function(test, err){
+    self.draw();
+  });
+
+  runner.on('end', function(){
+    Base.cursor.show();
+    for (var i = 0; i < self.numberOfLines; i++) write('\n');
+    self.epilogue();
+  });
+}
+
+/**
+ * Draw the nyan cat
+ *
+ * @api private
+ */
+
+NyanCat.prototype.draw = function(){
+  this.appendRainbow();
+  this.drawScoreboard();
+  this.drawRainbow();
+  this.drawNyanCat();
+  this.tick = !this.tick;
+};
+
+/**
+ * Draw the "scoreboard" showing the number
+ * of passes, failures and pending tests.
+ *
+ * @api private
+ */
+
+NyanCat.prototype.drawScoreboard = function(){
+  var stats = this.stats;
+  var colors = Base.colors;
+
+  function draw(color, n) {
+    write(' ');
+    write('\u001b[' + color + 'm' + n + '\u001b[0m');
+    write('\n');
+  }
+
+  draw(colors.green, stats.passes);
+  draw(colors.fail, stats.failures);
+  draw(colors.pending, stats.pending);
+  write('\n');
+
+  this.cursorUp(this.numberOfLines);
+};
+
+/**
+ * Append the rainbow.
+ *
+ * @api private
+ */
+
+NyanCat.prototype.appendRainbow = function(){
+  var segment = this.tick ? '_' : '-';
+  var rainbowified = this.rainbowify(segment);
+
+  for (var index = 0; index < this.numberOfLines; index++) {
+    var trajectory = this.trajectories[index];
+    if (trajectory.length >= this.trajectoryWidthMax) trajectory.shift();
+    trajectory.push(rainbowified);
+  }
+};
+
+/**
+ * Draw the rainbow.
+ *
+ * @api private
+ */
+
+NyanCat.prototype.drawRainbow = function(){
+  var self = this;
+
+  this.trajectories.forEach(function(line, index) {
+    write('\u001b[' + self.scoreboardWidth + 'C');
+    write(line.join(''));
+    write('\n');
+  });
+
+  this.cursorUp(this.numberOfLines);
+};
+
+/**
+ * Draw the nyan cat
+ *
+ * @api private
+ */
+
+NyanCat.prototype.drawNyanCat = function() {
+  var self = this;
+  var startWidth = this.scoreboardWidth + this.trajectories[0].length;
+  var color = '\u001b[' + startWidth + 'C';
+  var padding = '';
+
+  write(color);
+  write('_,------,');
+  write('\n');
+
+  write(color);
+  padding = self.tick ? '  ' : '   ';
+  write('_|' + padding + '/\\_/\\ ');
+  write('\n');
+
+  write(color);
+  padding = self.tick ? '_' : '__';
+  var tail = self.tick ? '~' : '^';
+  var face;
+  write(tail + '|' + padding + this.face() + ' ');
+  write('\n');
+
+  write(color);
+  padding = self.tick ? ' ' : '  ';
+  write(padding + '""  "" ');
+  write('\n');
+
+  this.cursorUp(this.numberOfLines);
+};
+
+/**
+ * Draw nyan cat face.
+ *
+ * @return {String}
+ * @api private
+ */
+
+NyanCat.prototype.face = function() {
+  var stats = this.stats;
+  if (stats.failures) {
+    return '( x .x)';
+  } else if (stats.pending) {
+    return '( o .o)';
+  } else if(stats.passes) {
+    return '( ^ .^)';
+  } else {
+    return '( - .-)';
+  }
+}
+
+/**
+ * Move cursor up `n`.
+ *
+ * @param {Number} n
+ * @api private
+ */
+
+NyanCat.prototype.cursorUp = function(n) {
+  write('\u001b[' + n + 'A');
+};
+
+/**
+ * Move cursor down `n`.
+ *
+ * @param {Number} n
+ * @api private
+ */
+
+NyanCat.prototype.cursorDown = function(n) {
+  write('\u001b[' + n + 'B');
+};
+
+/**
+ * Generate rainbow colors.
+ *
+ * @return {Array}
+ * @api private
+ */
+
+NyanCat.prototype.generateColors = function(){
+  var colors = [];
+
+  for (var i = 0; i < (6 * 7); i++) {
+    var pi3 = Math.floor(Math.PI / 3);
+    var n = (i * (1.0 / 6));
+    var r = Math.floor(3 * Math.sin(n) + 3);
+    var g = Math.floor(3 * Math.sin(n + 2 * pi3) + 3);
+    var b = Math.floor(3 * Math.sin(n + 4 * pi3) + 3);
+    colors.push(36 * r + 6 * g + b + 16);
+  }
+
+  return colors;
+};
+
+/**
+ * Apply rainbow to the given `str`.
+ *
+ * @param {String} str
+ * @return {String}
+ * @api private
+ */
+
+NyanCat.prototype.rainbowify = function(str){
+  var color = this.rainbowColors[this.colorIndex % this.rainbowColors.length];
+  this.colorIndex += 1;
+  return '\u001b[38;5;' + color + 'm' + str + '\u001b[0m';
+};
+
+/**
+ * Stdout helper.
+ */
+
+function write(string) {
+  process.stdout.write(string);
+}
+
+/**
+ * Inherit from `Base.prototype`.
+ */
+
+function F(){};
+F.prototype = Base.prototype;
+NyanCat.prototype = new F;
+NyanCat.prototype.constructor = NyanCat;
+
+
+}); // module: reporters/nyan.js
+
+require.register("reporters/progress.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , cursor = Base.cursor
+  , color = Base.color;
+
+/**
+ * Expose `Progress`.
+ */
+
+exports = module.exports = Progress;
+
+/**
+ * General progress bar color.
+ */
+
+Base.colors.progress = 90;
+
+/**
+ * Initialize a new `Progress` bar test reporter.
+ *
+ * @param {Runner} runner
+ * @param {Object} options
+ * @api public
+ */
+
+function Progress(runner, options) {
+  Base.call(this, runner);
+
+  var self = this
+    , options = options || {}
+    , stats = this.stats
+    , width = Base.window.width * .50 | 0
+    , total = runner.total
+    , complete = 0
+    , max = Math.max;
+
+  // default chars
+  options.open = options.open || '[';
+  options.complete = options.complete || '▬';
+  options.incomplete = options.incomplete || Base.symbols.dot;
+  options.close = options.close || ']';
+  options.verbose = false;
+
+  // tests started
+  runner.on('start', function(){
+    console.log();
+    cursor.hide();
+  });
+
+  // tests complete
+  runner.on('test end', function(){
+    complete++;
+    var incomplete = total - complete
+      , percent = complete / total
+      , n = width * percent | 0
+      , i = width - n;
+
+    cursor.CR();
+    process.stdout.write('\u001b[J');
+    process.stdout.write(color('progress', '  ' + options.open));
+    process.stdout.write(Array(n).join(options.complete));
+    process.stdout.write(Array(i).join(options.incomplete));
+    process.stdout.write(color('progress', options.close));
+    if (options.verbose) {
+      process.stdout.write(color('progress', ' ' + complete + ' of ' + total));
+    }
+  });
+
+  // tests are complete, output some stats
+  // and the failures if any
+  runner.on('end', function(){
+    cursor.show();
+    console.log();
+    self.epilogue();
+  });
+}
+
+/**
+ * Inherit from `Base.prototype`.
+ */
+
+function F(){};
+F.prototype = Base.prototype;
+Progress.prototype = new F;
+Progress.prototype.constructor = Progress;
+
+
+}); // module: reporters/progress.js
+
+require.register("reporters/spec.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , cursor = Base.cursor
+  , color = Base.color;
+
+/**
+ * Expose `Spec`.
+ */
+
+exports = module.exports = Spec;
+
+/**
+ * Initialize a new `Spec` test reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function Spec(runner) {
+  Base.call(this, runner);
+
+  var self = this
+    , stats = this.stats
+    , indents = 0
+    , n = 0;
+
+  function indent() {
+    return Array(indents).join('  ')
+  }
+
+  runner.on('start', function(){
+    console.log();
+  });
+
+  runner.on('suite', function(suite){
+    ++indents;
+    console.log(color('suite', '%s%s'), indent(), suite.title);
+  });
+
+  runner.on('suite end', function(suite){
+    --indents;
+    if (1 == indents) console.log();
+  });
+
+  runner.on('pending', function(test){
+    var fmt = indent() + color('pending', '  - %s');
+    console.log(fmt, test.title);
+  });
+
+  runner.on('pass', function(test){
+    if ('fast' == test.speed) {
+      var fmt = indent()
+        + color('checkmark', '  ' + Base.symbols.ok)
+        + color('pass', ' %s ');
+      cursor.CR();
+      console.log(fmt, test.title);
+    } else {
+      var fmt = indent()
+        + color('checkmark', '  ' + Base.symbols.ok)
+        + color('pass', ' %s ')
+        + color(test.speed, '(%dms)');
+      cursor.CR();
+      console.log(fmt, test.title, test.duration);
+    }
+  });
+
+  runner.on('fail', function(test, err){
+    cursor.CR();
+    console.log(indent() + color('fail', '  %d) %s'), ++n, test.title);
+  });
+
+  runner.on('end', self.epilogue.bind(self));
+}
+
+/**
+ * Inherit from `Base.prototype`.
+ */
+
+function F(){};
+F.prototype = Base.prototype;
+Spec.prototype = new F;
+Spec.prototype.constructor = Spec;
+
+
+}); // module: reporters/spec.js
+
+require.register("reporters/tap.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , cursor = Base.cursor
+  , color = Base.color;
+
+/**
+ * Expose `TAP`.
+ */
+
+exports = module.exports = TAP;
+
+/**
+ * Initialize a new `TAP` reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function TAP(runner) {
+  Base.call(this, runner);
+
+  var self = this
+    , stats = this.stats
+    , n = 1
+    , passes = 0
+    , failures = 0;
+
+  runner.on('start', function(){
+    var total = runner.grepTotal(runner.suite);
+    console.log('%d..%d', 1, total);
+  });
+
+  runner.on('test end', function(){
+    ++n;
+  });
+
+  runner.on('pending', function(test){
+    console.log('ok %d %s # SKIP -', n, title(test));
+  });
+
+  runner.on('pass', function(test){
+    passes++;
+    console.log('ok %d %s', n, title(test));
+  });
+
+  runner.on('fail', function(test, err){
+    failures++;
+    console.log('not ok %d %s', n, title(test));
+    if (err.stack) console.log(err.stack.replace(/^/gm, '  '));
+  });
+
+  runner.on('end', function(){
+    console.log('# tests ' + (passes + failures));
+    console.log('# pass ' + passes);
+    console.log('# fail ' + failures);
+  });
+}
+
+/**
+ * Return a TAP-safe title of `test`
+ *
+ * @param {Object} test
+ * @return {String}
+ * @api private
+ */
+
+function title(test) {
+  return test.fullTitle().replace(/#/g, '');
+}
+
+}); // module: reporters/tap.js
+
+require.register("reporters/xunit.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Base = require('./base')
+  , utils = require('../utils')
+  , escape = utils.escape;
+
+/**
+ * Save timer references to avoid Sinon interfering (see GH-237).
+ */
+
+var Date = global.Date
+  , setTimeout = global.setTimeout
+  , setInterval = global.setInterval
+  , clearTimeout = global.clearTimeout
+  , clearInterval = global.clearInterval;
+
+/**
+ * Expose `XUnit`.
+ */
+
+exports = module.exports = XUnit;
+
+/**
+ * Initialize a new `XUnit` reporter.
+ *
+ * @param {Runner} runner
+ * @api public
+ */
+
+function XUnit(runner) {
+  Base.call(this, runner);
+  var stats = this.stats
+    , tests = []
+    , self = this;
+
+  runner.on('pending', function(test){
+    tests.push(test);
+  });
+
+  runner.on('pass', function(test){
+    tests.push(test);
+  });
+
+  runner.on('fail', function(test){
+    tests.push(test);
+  });
+
+  runner.on('end', function(){
+    console.log(tag('testsuite', {
+        name: 'Mocha Tests'
+      , tests: stats.tests
+      , failures: stats.failures
+      , errors: stats.failures
+      , skipped: stats.tests - stats.failures - stats.passes
+      , timestamp: (new Date).toUTCString()
+      , time: (stats.duration / 1000) || 0
+    }, false));
+
+    tests.forEach(test);
+    console.log('</testsuite>');
+  });
+}
+
+/**
+ * Inherit from `Base.prototype`.
+ */
+
+function F(){};
+F.prototype = Base.prototype;
+XUnit.prototype = new F;
+XUnit.prototype.constructor = XUnit;
+
+
+/**
+ * Output tag for the given `test.`
+ */
+
+function test(test) {
+  var attrs = {
+      classname: test.parent.fullTitle()
+    , name: test.title
+    , time: (test.duration / 1000) || 0
+  };
+
+  if ('failed' == test.state) {
+    var err = test.err;
+    attrs.message = escape(err.message);
+    console.log(tag('testcase', attrs, false, tag('failure', attrs, false, cdata(err.stack))));
+  } else if (test.pending) {
+    console.log(tag('testcase', attrs, false, tag('skipped', {}, true)));
+  } else {
+    console.log(tag('testcase', attrs, true) );
+  }
+}
+
+/**
+ * HTML tag helper.
+ */
+
+function tag(name, attrs, close, content) {
+  var end = close ? '/>' : '>'
+    , pairs = []
+    , tag;
+
+  for (var key in attrs) {
+    pairs.push(key + '="' + escape(attrs[key]) + '"');
+  }
+
+  tag = '<' + name + (pairs.length ? ' ' + pairs.join(' ') : '') + end;
+  if (content) tag += content + '</' + name + end;
+  return tag;
+}
+
+/**
+ * Return cdata escaped CDATA `str`.
+ */
+
+function cdata(str) {
+  return '<![CDATA[' + escape(str) + ']]>';
+}
+
+}); // module: reporters/xunit.js
+
+require.register("runnable.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var EventEmitter = require('browser/events').EventEmitter
+  , debug = require('browser/debug')('mocha:runnable')
+  , milliseconds = require('./ms');
+
+/**
+ * Save timer references to avoid Sinon interfering (see GH-237).
+ */
+
+var Date = global.Date
+  , setTimeout = global.setTimeout
+  , setInterval = global.setInterval
+  , clearTimeout = global.clearTimeout
+  , clearInterval = global.clearInterval;
+
+/**
+ * Object#toString().
+ */
+
+var toString = Object.prototype.toString;
+
+/**
+ * Expose `Runnable`.
+ */
+
+module.exports = Runnable;
+
+/**
+ * Initialize a new `Runnable` with the given `title` and callback `fn`.
+ *
+ * @param {String} title
+ * @param {Function} fn
+ * @api private
+ */
+
+function Runnable(title, fn) {
+  this.title = title;
+  this.fn = fn;
+  this.async = fn && fn.length;
+  this.sync = ! this.async;
+  this._timeout = 2000;
+  this._slow = 75;
+  this.timedOut = false;
+}
+
+/**
+ * Inherit from `EventEmitter.prototype`.
+ */
+
+function F(){};
+F.prototype = EventEmitter.prototype;
+Runnable.prototype = new F;
+Runnable.prototype.constructor = Runnable;
+
+
+/**
+ * Set & get timeout `ms`.
+ *
+ * @param {Number|String} ms
+ * @return {Runnable|Number} ms or self
+ * @api private
+ */
+
+Runnable.prototype.timeout = function(ms){
+  if (0 == arguments.length) return this._timeout;
+  if ('string' == typeof ms) ms = milliseconds(ms);
+  debug('timeout %d', ms);
+  this._timeout = ms;
+  if (this.timer) this.resetTimeout();
+  return this;
+};
+
+/**
+ * Set & get slow `ms`.
+ *
+ * @param {Number|String} ms
+ * @return {Runnable|Number} ms or self
+ * @api private
+ */
+
+Runnable.prototype.slow = function(ms){
+  if (0 === arguments.length) return this._slow;
+  if ('string' == typeof ms) ms = milliseconds(ms);
+  debug('timeout %d', ms);
+  this._slow = ms;
+  return this;
+};
+
+/**
+ * Return the full title generated by recursively
+ * concatenating the parent's full title.
+ *
+ * @return {String}
+ * @api public
+ */
+
+Runnable.prototype.fullTitle = function(){
+  return this.parent.fullTitle() + ' ' + this.title;
+};
+
+/**
+ * Clear the timeout.
+ *
+ * @api private
+ */
+
+Runnable.prototype.clearTimeout = function(){
+  clearTimeout(this.timer);
+};
+
+/**
+ * Inspect the runnable void of private properties.
+ *
+ * @return {String}
+ * @api private
+ */
+
+Runnable.prototype.inspect = function(){
+  return JSON.stringify(this, function(key, val){
+    if ('_' == key[0]) return;
+    if ('parent' == key) return '#<Suite>';
+    if ('ctx' == key) return '#<Context>';
+    return val;
+  }, 2);
+};
+
+/**
+ * Reset the timeout.
+ *
+ * @api private
+ */
+
+Runnable.prototype.resetTimeout = function(){
+  var self = this;
+  var ms = this.timeout() || 1e9;
+
+  this.clearTimeout();
+  this.timer = setTimeout(function(){
+    self.callback(new Error('timeout of ' + ms + 'ms exceeded'));
+    self.timedOut = true;
+  }, ms);
+};
+
+/**
+ * Whitelist these globals for this test run
+ *
+ * @api private
+ */
+Runnable.prototype.globals = function(arr){
+  var self = this;
+  this._allowedGlobals = arr;
+};
+
+/**
+ * Run the test and invoke `fn(err)`.
+ *
+ * @param {Function} fn
+ * @api private
+ */
+
+Runnable.prototype.run = function(fn){
+  var self = this
+    , ms = this.timeout()
+    , start = new Date
+    , ctx = this.ctx
+    , finished
+    , emitted;
+
+  if (ctx) ctx.runnable(this);
+
+  // timeout
+  if (this.async) {
+    if (ms) {
+      this.timer = setTimeout(function(){
+        done(new Error('timeout of ' + ms + 'ms exceeded'));
+        self.timedOut = true;
+      }, ms);
+    }
+  }
+
+  // called multiple times
+  function multiple(err) {
+    if (emitted) return;
+    emitted = true;
+    self.emit('error', err || new Error('done() called multiple times'));
+  }
+
+  // finished
+  function done(err) {
+    if (self.timedOut) return;
+    if (finished) return multiple(err);
+    self.clearTimeout();
+    self.duration = new Date - start;
+    finished = true;
+    fn(err);
+  }
+
+  // for .resetTimeout()
+  this.callback = done;
+
+  // async
+  if (this.async) {
+    try {
+      this.fn.call(ctx, function(err){
+        if (err instanceof Error || toString.call(err) === "[object Error]") return done(err);
+        if (null != err) return done(new Error('done() invoked with non-Error: ' + err));
+        done();
+      });
+    } catch (err) {
+      done(err);
+    }
+    return;
+  }
+
+  if (this.asyncOnly) {
+    return done(new Error('--async-only option in use without declaring `done()`'));
+  }
+
+  // sync
+  try {
+    if (!this.pending) this.fn.call(ctx);
+    this.duration = new Date - start;
+    fn();
+  } catch (err) {
+    fn(err);
+  }
+};
+
+}); // module: runnable.js
+
+require.register("runner.js", function(module, exports, require){
+/**
+ * Module dependencies.
+ */
+
+var EventEmitter = require('browser/events').EventEmitter
+  , debug = require('browser/debug')('mocha:runner')
+  , Test = require('./test')
+  , utils = require('./utils')
+  , filter = utils.filter
+  , keys = utils.keys;
+
+/**
+ * Non-enumerable globals.
+ */
+
+var globals = [
+  'setTimeout',
+  'clearTimeout',
+  'setInterval',
+  'clearInterval',
+  'XMLHttpRequest',
+  'Date'
+];
+
+/**
+ * Expose `Runner`.
+ */
+
+module.exports = Runner;
+
+/**
+ * Initialize a `Runner` for the given `suite`.
+ *
+ * Events:
+ *
+ *   - `start`  execution started
+ *   - `end`  execution complete
+ *   - `suite`  (suite) test suite execution started
+ *   - `suite end`  (suite) all tests (and sub-suites) have finished
+ *   - `test`  (test) test execution started
+ *   - `test end`  (test) test completed
+ *   - `hook`  (hook) hook execution started
+ *   - `hook end`  (hook) hook complete
+ *   - `pass`  (test) test passed
+ *   - `fail`  (test, err) test failed
+ *   - `pending`  (test) test pending
+ *
+ * @api public
+ */
+
+function Runner(suite) {
+  var self = this;
+  this._globals = [];
+  this._abort = false;
+  this.suite = suite;
+  this.total = suite.total();
+  this.failures = 0;
+  this.on('test end', function(test){ self.checkGlobals(test); });
+  this.on('hook end', function(hook){ self.checkGlobals(hook); });
+  this.grep(/.*/);
+  this.globals(this.globalProps().concat(extraGlobals()));
+}
+
+/**
+ * Wrapper for setImmediate, process.nextTick, or browser polyfill.
+ *
+ * @param {Function} fn
+ * @api private
+ */
+
+Runner.immediately = global.setImmediate || process.nextTick;
+
+/**
+ * Inherit from `EventEmitter.prototype`.
+ */
+
+function F(){};
+F.prototype = EventEmitter.prototype;
+Runner.prototype = new F;
+Runner.prototype.constructor = Runner;
+
+
+/**
+ * Run tests with full titles matching `re`. Updates runner.total
+ * with number of tests matched.
+ *
+ * @param {RegExp} re
+ * @param {Boolean} invert
+ * @return {Runner} for chaining
+ * @api public
+ */
+
+Runner.prototype.grep = function(re, invert){
+  debug('grep %s', re);
+  this._grep = re;
+  this._invert = invert;
+  this.total = this.grepTotal(this.suite);
+  return this;
+};
+
+/**
+ * Returns the number of tests matching the grep search for the
+ * given suite.
+ *
+ * @param {Suite} suite
+ * @return {Number}
+ * @api public
+ */
+
+Runner.prototype.grepTotal = function(suite) {
+  var self = this;
+  var total = 0;
+
+  suite.eachTest(function(test){
+    var match = self._grep.test(test.fullTitle());
+    if (self._invert) match = !match;
+    if (match) total++;
+  });
+
+  return total;
+};
+
+/**
+ * Return a list of global properties.
+ *
+ * @return {Array}
+ * @api private
+ */
+
+Runner.prototype.globalProps = function() {
+  var props = utils.keys(global);
+
+  // non-enumerables
+  for (var i = 0; i < globals.length; ++i) {
+    if (~utils.indexOf(props, globals[i])) continue;
+    props.push(globals[i]);
+  }
+
+  return props;
+};
+
+/**
+ * Allow the given `arr` of globals.
+ *
+ * @param {Array} arr
+ * @return {Runner} for chaining
+ * @api public
+ */
+
+Runner.prototype.globals = function(arr){
+  if (0 == arguments.length) return this._globals;
+  debug('globals %j', arr);
+  this._globals = this._globals.concat(arr);
+  return this;
+};
+
+/**
+ * Check for global variable leaks.
+ *
+ * @api private
+ */
+
+Runner.prototype.checkGlobals = function(test){
+  if (this.ignoreLeaks) return;
+  var ok = this._globals;
+
+  var globals = this.globalProps();
+  var isNode = process.kill;
+  var leaks;
+
+  if (test) {
+    ok = ok.concat(test._allowedGlobals || []);
+  }
+
+  if(this.prevGlobalsLength == globals.length) return;
+  this.prevGlobalsLength = globals.length;
+
+  leaks = filterLeaks(ok, globals);
+  this._globals = this._globals.concat(leaks);
+
+  if (leaks.length > 1) {
+    this.fail(test, new Error('global leaks detected: ' + leaks.join(', ') + ''));
+  } else if (leaks.length) {
+    this.fail(test, new Error('global leak detected: ' + leaks[0]));
+  }
+};
+
+/**
+ * Fail the given `test`.
+ *
+ * @param {Test} test
+ * @param {Error} err
+ * @api private
+ */
+
+Runner.prototype.fail = function(test, err){
+  ++this.failures;
+  test.state = 'failed';
+
+  if ('string' == typeof err) {
+    err = new Error('the string "' + err + '" was thrown, throw an Error :)');
+  }
+
+  this.emit('fail', test, err);
+};
+
+/**
+ * Fail the given `hook` with `err`.
+ *
+ * Hook failures work in the following pattern:
+ * - If bail, then exit
+ * - Failed `before` hook skips all tests in a suite and subsuites,
+ *   but jumps to corresponding `after` hook
+ * - Failed `before each` hook skips remaining tests in a
+ *   suite and jumps to corresponding `after each` hook,
+ *   which is run only once
+ * - Failed `after` hook does not alter
+ *   execution order
+ * - Failed `after each` hook skips remaining tests in a
+ *   suite and subsuites, but executes other `after each`
+ *   hooks
+ *
+ * @param {Hook} hook
+ * @param {Error} err
+ * @api private
+ */
+
+Runner.prototype.failHook = function(hook, err){
+  this.fail(hook, err);
+  if (this.suite.bail()) {
+    this.emit('end');
+  }
+};
+
+/**
+ * Run hook `name` callbacks and then invoke `fn()`.
+ *
+ * @param {String} name
+ * @param {Function} function
+ * @api private
+ */
+
+Runner.prototype.hook = function(name, fn){
+  var suite = this.suite
+    , hooks = suite['_' + name]
+    , self = this
+    , timer;
+
+  function next(i) {
+    var hook = hooks[i];
+    if (!hook) return fn();
+    if (self.failures && suite.bail()) return fn();
+    self.currentRunnable = hook;
+
+    hook.ctx.currentTest = self.test;
+
+    self.emit('hook', hook);
+
+    hook.on('error', function(err){
+      self.failHook(hook, err);
+    });
+
+    hook.run(function(err){
+      hook.removeAllListeners('error');
+      var testError = hook.error();
+      if (testError) self.fail(self.test, testError);
+      if (err) {
+        self.failHook(hook, err);
+
+        // stop executing hooks, notify callee of hook err
+        return fn(err);
+      }
+      self.emit('hook end', hook);
+      delete hook.ctx.currentTest;
+      next(++i);
+    });
+  }
+
+  Runner.immediately(function(){
+    next(0);
+  });
+};
+
+/**
+ * Run hook `name` for the given array of `suites`
+ * in order, and callback `fn(err, errSuite)`.
+ *
+ * @param {String} name
+ * @param {Array} suites
+ * @param {Function} fn
+ * @api private
+ */
+
+Runner.prototype.hooks = function(name, suites, fn){
+  var self = this
+    , orig = this.suite;
+
+  function next(suite) {
+    self.suite = suite;
+
+    if (!suite) {
+      self.suite = orig;
+      return fn();
+    }
+
+    self.hook(name, function(err){
+      if (err) {
+        var errSuite = self.suite;
+        self.suite = orig;
+        return fn(err, errSuite);
+      }
+
+      next(suites.pop());
+    });
+  }
+
+  next(suites.pop());
+};
+
+/**
+ * Run hooks from the top level down.
+ *
+ * @param {String} name
+ * @param {Function} fn
+ * @api private
+ */
+
+Runner.prototype.hookUp = function(name, fn){
+  var suites = [this.suite].concat(this.parents()).reverse();
+  this.hooks(name, suites, fn);
+};
+
+/**
+ * Run hooks from the bottom up.
+ *
+ * @param {String} name
+ * @param {Function} fn
+ * @api private
+ */
+
+Runner.prototype.hookDown = function(name, fn){
+  var suites = [this.suite].concat(this.parents());
+  this.hooks(name, suites, fn);
+};
+
+/**
+ * Return an array of parent Suites from
+ * closest to furthest.
+ *
+ * @return {Array}
+ * @api private
+ */
+
+Runner.prototype.parents = function(){
+  var suite = this.suite
+    , suites = [];
+  while (suite = suite.parent) suites.push(suite);
+  return suites;
+};
+
+/**
+ * Run the current test and callback `fn(err)`.
+ *
+ * @param {Function} fn
+ * @api private
+ */
+
+Runner.prototype.runTest = function(fn){
+  var test = this.test
+    , self = this;
+
+  if (this.asyncOnly) test.asyncOnly = true;
+
+  try {
+    test.on('error', function(err){
+      self.fail(test, err);
+    });
+    test.run(fn);
+  } catch (err) {
+    fn(err);
+  }
+};
+
+/**
+ * Run tests in the given `suite` and invoke
+ * the callback `fn()` when complete.
+ *
+ * @param {Suite} suite
+ * @param {Function} fn
+ * @api private
+ */
+
+Runner.prototype.runTests = function(suite, fn){
+  var self = this
+    , tests = suite.tests.slice()
+    , test;
+
+
+  function hookErr(err, errSuite, after) {
+    // before/after Each hook for errSuite failed:
+    var orig = self.suite;
+
+    // for failed 'after each' hook start from errSuite parent,
+    // otherwise start from errSuite itself
+    self.suite = after ? errSuite.parent : errSuite;
+
+    if (self.suite) {
+      // call hookUp afterEach
+      self.hookUp('afterEach', function(err2, errSuite2) {
+        self.suite = orig;
+        // some hooks may fail even now
+        if (err2) return hookErr(err2, errSuite2, true);
+        // report error suite
+        fn(errSuite);
+      });
+    } else {
+      // there is no need calling other 'after each' hooks
+      self.suite = orig;
+      fn(errSuite);
+    }
+  }
+
+  function next(err, errSuite) {
+    // if we bail after first err
+    if (self.failures && suite._bail) return fn();
+
+    if (self._abort) return fn();
+
+    if (err) return hookErr(err, errSuite, true);
+
+    // next test
+    test = tests.shift();
+
+    // all done
+    if (!test) return fn();
+
+    // grep
+    var match = self._grep.test(test.fullTitle());
+    if (self._invert) match = !match;
+    if (!match) return next();
+
+    // pending
+    if (test.pending) {
+      self.emit('pending', test);
+      self.emit('test end', test);
+      return next();
+    }
+
+    // execute test and hook(s)
+    self.emit('test', self.test = test);
+    self.hookDown('beforeEach', function(err, errSuite){
+
+      if (err) return hookErr(err, errSuite, false);
+
+      self.currentRunnable = self.test;
+      self.runTest(function(err){
+        test = self.test;
+
+        if (err) {
+          self.fail(test, err);
+          self.emit('test end', test);
+          return self.hookUp('afterEach', next);
+        }
+
+        test.state = 'passed';
+        self.emit('pass', test);
+        self.emit('test end', test);
+        self.hookUp('afterEach', next);
+      });
+    });
+  }
+
+  this.next = next;
+  next();
+};
+
+/**
+ * Run the given `suite` and invoke the
+ * callback `fn()` when complete.
+ *
+ * @param {Suite} suite
+ * @param {Function} fn
+ * @api private
+ */
+
+Runner.prototype.runSuite = function(suite, fn){
+  var total = this.grepTotal(suite)
+    , self = this
+    , i = 0;
+
+  debug('run suite %s', suite.fullTitle());
+
+  if (!total) return fn();
+
+  this.emit('suite', this.suite = suite);
+
+  function next(errSuite) {
+    if (errSuite) {
+      // current suite failed on a hook from errSuite
+      if (errSuite == suite) {
+        // if errSuite is current suite
+        // continue to the next sibling suite
+        return done();
+      } else {
+        // errSuite is among the parents of current suite
+        // stop execution of errSuite and all sub-suites
+        return done(errSuite);
+      }
+    }
+
+    if (self._abort) return done();
+
+    var curr = suite.suites[i++];
+    if (!curr) return done();
+    self.runSuite(curr, next);
+  }
+
+  function done(errSuite) {
+    self.suite = suite;
+    self.hook('afterAll', function(){
+      self.emit('suite end', suite);
+      fn(errSuite);
+    });
+  }
+
+  this.hook('beforeAll', function(err){
+    if (err) return done();
+    self.runTests(suite, next);
+  });
+};
+
+/**
+ * Handle uncaught exceptions.
+ *
+ * @param {Error} err
+ * @api private
+ */
+
+Runner.prototype.uncaught = function(err){
+  debug('uncaught exception %s', err.message);
+  var runnable = this.currentRunnable;
+  if (!runnable || 'failed' == runnable.state) return;
+  runnable.clearTimeout();
+  err.uncaught = true;
+  this.fail(runnable, err);
+
+  // recover from test
+  if ('test' == runnable.type) {
+    this.emit('test end', runnable);
+    this.hookUp('afterEach', this.next);
+    return;
+  }
+
+  // bail on hooks
+  this.emit('end');
+};
+
+/**
+ * Run the root suite and invoke `fn(failures)`
+ * on completion.
+ *
+ * @param {Function} fn
+ * @return {Runner} for chaining
+ * @api public
+ */
+
+Runner.prototype.run = function(fn){
+  var self = this
+    , fn = fn || function(){};
+
+  function uncaught(err){
+    self.uncaught(err);
+  }
+
+  debug('start');
+
+  // callback
+  this.on('end', function(){
+    debug('end');
+    process.removeListener('uncaughtException', uncaught);
+    fn(self.failures);
+  });
+
+  // run suites
+  this.emit('start');
+  this.runSuite(this.suite, function(){
+    debug('finished running');
+    self.emit('end');
+  });
+
+  // uncaught exception
+  process.on('uncaughtException', uncaught);
+
+  return this;
+};
+
+/**
+ * Cleanly abort execution
+ *
+ * @return {Runner} for chaining
+ * @api public
+ */
+Runner.prototype.abort = function(){
+  debug('aborting');
+  this._abort = true;
+}
+
+/**
+ * Filter leaks with the given globals flagged as `ok`.
+ *
+ * @param {Array} ok
+ * @param {Array} globals
+ * @return {Array}
+ * @api private
+ */
+
+function filterLeaks(ok, globals) {
+  return filter(globals, function(key){
+    // Firefox and Chrome exposes iframes as index inside the window object
+    if (/^d+/.test(key)) return false;
+
+    // in firefox
+    // if runner runs in an iframe, this iframe's window.getInterface method not init at first
+    // it is assigned in some seconds
+    if (global.navigator && /^getInterface/.test(key)) return false;
+
+    // an iframe could be approached by window[iframeIndex]
+    // in ie6,7,8 and opera, iframeIndex is enumerable, this could cause leak
+    if (global.navigator && /^\d+/.test(key)) return false;
+
+    // Opera and IE expose global variables for HTML element IDs (issue #243)
+    if (/^mocha-/.test(key)) return false;
+
+    var matched = filter(ok, function(ok){
+      if (~ok.indexOf('*')) return 0 == key.indexOf(ok.split('*')[0]);
+      return key == ok;
+    });
+    return matched.length == 0 && (!global.navigator || 'onerror' !== key);
+  });
+}
+
+/**
+ * Array of globals dependent on the environment.
+ *
+ * @return {Array}
+ * @api private
+ */
+
+ function extraGlobals() {
+  if (typeof(process) === 'object' &&
+      typeof(process.version) === 'string') {
+
+    var nodeVersion = process.version.split('.').reduce(function(a, v) {
+      return a << 8 | v;
+    });
+
+    // 'errno' was renamed to process._errno in v0.9.11.
+
+    if (nodeVersion < 0x00090B) {
+      return ['errno'];
+    }
+  }
+
+  return [];
+ }
+
+}); // module: runner.js
+
+require.register("suite.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var EventEmitter = require('browser/events').EventEmitter
+  , debug = require('browser/debug')('mocha:suite')
+  , milliseconds = require('./ms')
+  , utils = require('./utils')
+  , Hook = require('./hook');
+
+/**
+ * Expose `Suite`.
+ */
+
+exports = module.exports = Suite;
+
+/**
+ * Create a new `Suite` with the given `title`
+ * and parent `Suite`. When a suite with the
+ * same title is already present, that suite
+ * is returned to provide nicer reporter
+ * and more flexible meta-testing.
+ *
+ * @param {Suite} parent
+ * @param {String} title
+ * @return {Suite}
+ * @api public
+ */
+
+exports.create = function(parent, title){
+  var suite = new Suite(title, parent.ctx);
+  suite.parent = parent;
+  if (parent.pending) suite.pending = true;
+  title = suite.fullTitle();
+  parent.addSuite(suite);
+  return suite;
+};
+
+/**
+ * Initialize a new `Suite` with the given
+ * `title` and `ctx`.
+ *
+ * @param {String} title
+ * @param {Context} ctx
+ * @api private
+ */
+
+function Suite(title, ctx) {
+  this.title = title;
+  this.ctx = ctx;
+  this.suites = [];
+  this.tests = [];
+  this.pending = false;
+  this._beforeEach = [];
+  this._beforeAll = [];
+  this._afterEach = [];
+  this._afterAll = [];
+  this.root = !title;
+  this._timeout = 2000;
+  this._slow = 75;
+  this._bail = false;
+}
+
+/**
+ * Inherit from `EventEmitter.prototype`.
+ */
+
+function F(){};
+F.prototype = EventEmitter.prototype;
+Suite.prototype = new F;
+Suite.prototype.constructor = Suite;
+
+
+/**
+ * Return a clone of this `Suite`.
+ *
+ * @return {Suite}
+ * @api private
+ */
+
+Suite.prototype.clone = function(){
+  var suite = new Suite(this.title);
+  debug('clone');
+  suite.ctx = this.ctx;
+  suite.timeout(this.timeout());
+  suite.slow(this.slow());
+  suite.bail(this.bail());
+  return suite;
+};
+
+/**
+ * Set timeout `ms` or short-hand such as "2s".
+ *
+ * @param {Number|String} ms
+ * @return {Suite|Number} for chaining
+ * @api private
+ */
+
+Suite.prototype.timeout = function(ms){
+  if (0 == arguments.length) return this._timeout;
+  if ('string' == typeof ms) ms = milliseconds(ms);
+  debug('timeout %d', ms);
+  this._timeout = parseInt(ms, 10);
+  return this;
+};
+
+/**
+ * Set slow `ms` or short-hand such as "2s".
+ *
+ * @param {Number|String} ms
+ * @return {Suite|Number} for chaining
+ * @api private
+ */
+
+Suite.prototype.slow = function(ms){
+  if (0 === arguments.length) return this._slow;
+  if ('string' == typeof ms) ms = milliseconds(ms);
+  debug('slow %d', ms);
+  this._slow = ms;
+  return this;
+};
+
+/**
+ * Sets whether to bail after first error.
+ *
+ * @parma {Boolean} bail
+ * @return {Suite|Number} for chaining
+ * @api private
+ */
+
+Suite.prototype.bail = function(bail){
+  if (0 == arguments.length) return this._bail;
+  debug('bail %s', bail);
+  this._bail = bail;
+  return this;
+};
+
+/**
+ * Run `fn(test[, done])` before running tests.
+ *
+ * @param {Function} fn
+ * @return {Suite} for chaining
+ * @api private
+ */
+
+Suite.prototype.beforeAll = function(fn){
+  if (this.pending) return this;
+  var hook = new Hook('"before all" hook', fn);
+  hook.parent = this;
+  hook.timeout(this.timeout());
+  hook.slow(this.slow());
+  hook.ctx = this.ctx;
+  this._beforeAll.push(hook);
+  this.emit('beforeAll', hook);
+  return this;
+};
+
+/**
+ * Run `fn(test[, done])` after running tests.
+ *
+ * @param {Function} fn
+ * @return {Suite} for chaining
+ * @api private
+ */
+
+Suite.prototype.afterAll = function(fn){
+  if (this.pending) return this;
+  var hook = new Hook('"after all" hook', fn);
+  hook.parent = this;
+  hook.timeout(this.timeout());
+  hook.slow(this.slow());
+  hook.ctx = this.ctx;
+  this._afterAll.push(hook);
+  this.emit('afterAll', hook);
+  return this;
+};
+
+/**
+ * Run `fn(test[, done])` before each test case.
+ *
+ * @param {Function} fn
+ * @return {Suite} for chaining
+ * @api private
+ */
+
+Suite.prototype.beforeEach = function(fn){
+  if (this.pending) return this;
+  var hook = new Hook('"before each" hook', fn);
+  hook.parent = this;
+  hook.timeout(this.timeout());
+  hook.slow(this.slow());
+  hook.ctx = this.ctx;
+  this._beforeEach.push(hook);
+  this.emit('beforeEach', hook);
+  return this;
+};
+
+/**
+ * Run `fn(test[, done])` after each test case.
+ *
+ * @param {Function} fn
+ * @return {Suite} for chaining
+ * @api private
+ */
+
+Suite.prototype.afterEach = function(fn){
+  if (this.pending) return this;
+  var hook = new Hook('"after each" hook', fn);
+  hook.parent = this;
+  hook.timeout(this.timeout());
+  hook.slow(this.slow());
+  hook.ctx = this.ctx;
+  this._afterEach.push(hook);
+  this.emit('afterEach', hook);
+  return this;
+};
+
+/**
+ * Add a test `suite`.
+ *
+ * @param {Suite} suite
+ * @return {Suite} for chaining
+ * @api private
+ */
+
+Suite.prototype.addSuite = function(suite){
+  suite.parent = this;
+  suite.timeout(this.timeout());
+  suite.slow(this.slow());
+  suite.bail(this.bail());
+  this.suites.push(suite);
+  this.emit('suite', suite);
+  return this;
+};
+
+/**
+ * Add a `test` to this suite.
+ *
+ * @param {Test} test
+ * @return {Suite} for chaining
+ * @api private
+ */
+
+Suite.prototype.addTest = function(test){
+  test.parent = this;
+  test.timeout(this.timeout());
+  test.slow(this.slow());
+  test.ctx = this.ctx;
+  this.tests.push(test);
+  this.emit('test', test);
+  return this;
+};
+
+/**
+ * Return the full title generated by recursively
+ * concatenating the parent's full title.
+ *
+ * @return {String}
+ * @api public
+ */
+
+Suite.prototype.fullTitle = function(){
+  if (this.parent) {
+    var full = this.parent.fullTitle();
+    if (full) return full + ' ' + this.title;
+  }
+  return this.title;
+};
+
+/**
+ * Return the total number of tests.
+ *
+ * @return {Number}
+ * @api public
+ */
+
+Suite.prototype.total = function(){
+  return utils.reduce(this.suites, function(sum, suite){
+    return sum + suite.total();
+  }, 0) + this.tests.length;
+};
+
+/**
+ * Iterates through each suite recursively to find
+ * all tests. Applies a function in the format
+ * `fn(test)`.
+ *
+ * @param {Function} fn
+ * @return {Suite}
+ * @api private
+ */
+
+Suite.prototype.eachTest = function(fn){
+  utils.forEach(this.tests, fn);
+  utils.forEach(this.suites, function(suite){
+    suite.eachTest(fn);
+  });
+  return this;
+};
+
+}); // module: suite.js
+
+require.register("test.js", function(module, exports, require){
+
+/**
+ * Module dependencies.
+ */
+
+var Runnable = require('./runnable');
+
+/**
+ * Expose `Test`.
+ */
+
+module.exports = Test;
+
+/**
+ * Initialize a new `Test` with the given `title` and callback `fn`.
+ *
+ * @param {String} title
+ * @param {Function} fn
+ * @api private
+ */
+
+function Test(title, fn) {
+  Runnable.call(this, title, fn);
+  this.pending = !fn;
+  this.type = 'test';
+}
+
+/**
+ * Inherit from `Runnable.prototype`.
+ */
+
+function F(){};
+F.prototype = Runnable.prototype;
+Test.prototype = new F;
+Test.prototype.constructor = Test;
+
+
+}); // module: test.js
+
+require.register("utils.js", function(module, exports, require){
+/**
+ * Module dependencies.
+ */
+
+var fs = require('browser/fs')
+  , path = require('browser/path')
+  , join = path.join
+  , debug = require('browser/debug')('mocha:watch');
+
+/**
+ * Ignored directories.
+ */
+
+var ignore = ['node_modules', '.git'];
+
+/**
+ * Escape special characters in the given string of html.
+ *
+ * @param  {String} html
+ * @return {String}
+ * @api private
+ */
+
+exports.escape = function(html){
+  return String(html)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+};
+
+/**
+ * Array#forEach (<=IE8)
+ *
+ * @param {Array} array
+ * @param {Function} fn
+ * @param {Object} scope
+ * @api private
+ */
+
+exports.forEach = function(arr, fn, scope){
+  for (var i = 0, l = arr.length; i < l; i++)
+    fn.call(scope, arr[i], i);
+};
+
+/**
+ * Array#map (<=IE8)
+ *
+ * @param {Array} array
+ * @param {Function} fn
+ * @param {Object} scope
+ * @api private
+ */
+
+exports.map = function(arr, fn, scope){
+  var result = [];
+  for (var i = 0, l = arr.length; i < l; i++)
+    result.push(fn.call(scope, arr[i], i));
+  return result;
+};
+
+/**
+ * Array#indexOf (<=IE8)
+ *
+ * @parma {Array} arr
+ * @param {Object} obj to find index of
+ * @param {Number} start
+ * @api private
+ */
+
+exports.indexOf = function(arr, obj, start){
+  for (var i = start || 0, l = arr.length; i < l; i++) {
+    if (arr[i] === obj)
+      return i;
+  }
+  return -1;
+};
+
+/**
+ * Array#reduce (<=IE8)
+ *
+ * @param {Array} array
+ * @param {Function} fn
+ * @param {Object} initial value
+ * @api private
+ */
+
+exports.reduce = function(arr, fn, val){
+  var rval = val;
+
+  for (var i = 0, l = arr.length; i < l; i++) {
+    rval = fn(rval, arr[i], i, arr);
+  }
+
+  return rval;
+};
+
+/**
+ * Array#filter (<=IE8)
+ *
+ * @param {Array} array
+ * @param {Function} fn
+ * @api private
+ */
+
+exports.filter = function(arr, fn){
+  var ret = [];
+
+  for (var i = 0, l = arr.length; i < l; i++) {
+    var val = arr[i];
+    if (fn(val, i, arr)) ret.push(val);
+  }
+
+  return ret;
+};
+
+/**
+ * Object.keys (<=IE8)
+ *
+ * @param {Object} obj
+ * @return {Array} keys
+ * @api private
+ */
+
+exports.keys = Object.keys || function(obj) {
+  var keys = []
+    , has = Object.prototype.hasOwnProperty // for `window` on <=IE8
+
+  for (var key in obj) {
+    if (has.call(obj, key)) {
+      keys.push(key);
+    }
+  }
+
+  return keys;
+};
+
+/**
+ * Watch the given `files` for changes
+ * and invoke `fn(file)` on modification.
+ *
+ * @param {Array} files
+ * @param {Function} fn
+ * @api private
+ */
+
+exports.watch = function(files, fn){
+  var options = { interval: 100 };
+  files.forEach(function(file){
+    debug('file %s', file);
+    fs.watchFile(file, options, function(curr, prev){
+      if (prev.mtime < curr.mtime) fn(file);
+    });
+  });
+};
+
+/**
+ * Ignored files.
+ */
+
+function ignored(path){
+  return !~ignore.indexOf(path);
+}
+
+/**
+ * Lookup files in the given `dir`.
+ *
+ * @return {Array}
+ * @api private
+ */
+
+exports.files = function(dir, ret){
+  ret = ret || [];
+
+  fs.readdirSync(dir)
+  .filter(ignored)
+  .forEach(function(path){
+    path = join(dir, path);
+    if (fs.statSync(path).isDirectory()) {
+      exports.files(path, ret);
+    } else if (path.match(/\.(js|coffee|litcoffee|coffee.md)$/)) {
+      ret.push(path);
+    }
+  });
+
+  return ret;
+};
+
+/**
+ * Compute a slug from the given `str`.
+ *
+ * @param {String} str
+ * @return {String}
+ * @api private
+ */
+
+exports.slug = function(str){
+  return str
+    .toLowerCase()
+    .replace(/ +/g, '-')
+    .replace(/[^-\w]/g, '');
+};
+
+/**
+ * Strip the function definition from `str`,
+ * and re-indent for pre whitespace.
+ */
+
+exports.clean = function(str) {
+  str = str
+    .replace(/\r\n?|[\n\u2028\u2029]/g, "\n").replace(/^\uFEFF/, '')
+    .replace(/^function *\(.*\) *{/, '')
+    .replace(/\s+\}$/, '');
+
+  var spaces = str.match(/^\n?( *)/)[1].length
+    , tabs = str.match(/^\n?(\t*)/)[1].length
+    , re = new RegExp('^\n?' + (tabs ? '\t' : ' ') + '{' + (tabs ? tabs : spaces) + '}', 'gm');
+
+  str = str.replace(re, '');
+
+  return exports.trim(str);
+};
+
+/**
+ * Escape regular expression characters in `str`.
+ *
+ * @param {String} str
+ * @return {String}
+ * @api private
+ */
+
+exports.escapeRegexp = function(str){
+  return str.replace(/[-\\^$*+?.()|[\]{}]/g, "\\$&");
+};
+
+/**
+ * Trim the given `str`.
+ *
+ * @param {String} str
+ * @return {String}
+ * @api private
+ */
+
+exports.trim = function(str){
+  return str.replace(/^\s+|\s+$/g, '');
+};
+
+/**
+ * Parse the given `qs`.
+ *
+ * @param {String} qs
+ * @return {Object}
+ * @api private
+ */
+
+exports.parseQuery = function(qs){
+  return exports.reduce(qs.replace('?', '').split('&'), function(obj, pair){
+    var i = pair.indexOf('=')
+      , key = pair.slice(0, i)
+      , val = pair.slice(++i);
+
+    obj[key] = decodeURIComponent(val);
+    return obj;
+  }, {});
+};
+
+/**
+ * Highlight the given string of `js`.
+ *
+ * @param {String} js
+ * @return {String}
+ * @api private
+ */
+
+function highlight(js) {
+  return js
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\/\/(.*)/gm, '<span class="comment">//$1</span>')
+    .replace(/('.*?')/gm, '<span class="string">$1</span>')
+    .replace(/(\d+\.\d+)/gm, '<span class="number">$1</span>')
+    .replace(/(\d+)/gm, '<span class="number">$1</span>')
+    .replace(/\bnew *(\w+)/gm, '<span class="keyword">new</span> <span class="init">$1</span>')
+    .replace(/\b(function|new|throw|return|var|if|else)\b/gm, '<span class="keyword">$1</span>')
+}
+
+/**
+ * Highlight the contents of tag `name`.
+ *
+ * @param {String} name
+ * @api private
+ */
+
+exports.highlightTags = function(name) {
+  var code = document.getElementsByTagName(name);
+  for (var i = 0, len = code.length; i < len; ++i) {
+    code[i].innerHTML = highlight(code[i].innerHTML);
+  }
+};
+
+}); // module: utils.js
+// The global object is "self" in Web Workers.
+global = (function() { return this; })();
+
+/**
+ * Save timer references to avoid Sinon interfering (see GH-237).
+ */
+
+var Date = global.Date;
+var setTimeout = global.setTimeout;
+var setInterval = global.setInterval;
+var clearTimeout = global.clearTimeout;
+var clearInterval = global.clearInterval;
+
+/**
+ * Node shims.
+ *
+ * These are meant only to allow
+ * mocha.js to run untouched, not
+ * to allow running node code in
+ * the browser.
+ */
+
+var process = {};
+process.exit = function(status){};
+process.stdout = {};
+
+var uncaughtExceptionHandlers = [];
+
+/**
+ * Remove uncaughtException listener.
+ */
+
+process.removeListener = function(e, fn){
+  if ('uncaughtException' == e) {
+    global.onerror = function() {};
+    var i = Mocha.utils.indexOf(uncaughtExceptionHandlers, fn);
+    if (i != -1) { uncaughtExceptionHandlers.splice(i, 1); }
+  }
+};
+
+/**
+ * Implements uncaughtException listener.
+ */
+
+process.on = function(e, fn){
+  if ('uncaughtException' == e) {
+    global.onerror = function(err, url, line){
+      fn(new Error(err + ' (' + url + ':' + line + ')'));
+      return true;
+    };
+    uncaughtExceptionHandlers.push(fn);
+  }
+};
+
+/**
+ * Expose mocha.
+ */
+
+var Mocha = global.Mocha = require('mocha'),
+    mocha = global.mocha = new Mocha({ reporter: 'html' });
+
+// The BDD UI is registered by default, but no UI will be functional in the
+// browser without an explicit call to the overridden `mocha.ui` (see below).
+// Ensure that this default UI does not expose its methods to the global scope.
+mocha.suite.removeAllListeners('pre-require');
+
+var immediateQueue = []
+  , immediateTimeout;
+
+function timeslice() {
+  var immediateStart = new Date().getTime();
+  while (immediateQueue.length && (new Date().getTime() - immediateStart) < 100) {
+    immediateQueue.shift()();
+  }
+  if (immediateQueue.length) {
+    immediateTimeout = setTimeout(timeslice, 0);
+  } else {
+    immediateTimeout = null;
+  }
+}
+
+/**
+ * High-performance override of Runner.immediately.
+ */
+
+Mocha.Runner.immediately = function(callback) {
+  immediateQueue.push(callback);
+  if (!immediateTimeout) {
+    immediateTimeout = setTimeout(timeslice, 0);
+  }
+};
+
+/**
+ * Function to allow assertion libraries to throw errors directly into mocha.
+ * This is useful when running tests in a browser because window.onerror will
+ * only receive the 'message' attribute of the Error.
+ */
+mocha.throwError = function(err) {
+  Mocha.utils.forEach(uncaughtExceptionHandlers, function (fn) {
+    fn(err);
+  });
+  throw err;
+};
+
+/**
+ * Override ui to ensure that the ui functions are initialized.
+ * Normally this would happen in Mocha.prototype.loadFiles.
+ */
+
+mocha.ui = function(ui){
+  Mocha.prototype.ui.call(this, ui);
+  this.suite.emit('pre-require', global, null, this);
+  return this;
+};
+
+/**
+ * Setup mocha with the given setting options.
+ */
+
+mocha.setup = function(opts){
+  if ('string' == typeof opts) opts = { ui: opts };
+  for (var opt in opts) this[opt](opts[opt]);
+  return this;
+};
+
+/**
+ * Run mocha, returning the Runner.
+ */
+
+mocha.run = function(fn){
+  var options = mocha.options;
+  mocha.globals('location');
+
+  var query = Mocha.utils.parseQuery(global.location.search || '');
+  if (query.grep) mocha.grep(query.grep);
+  if (query.invert) mocha.invert();
+
+  return Mocha.prototype.run.call(mocha, function(){
+    // The DOM Document is not available in Web Workers.
+    if (global.document) {
+      Mocha.utils.highlightTags('code');
+    }
+    if (fn) fn();
+  });
+};
+
+/**
+ * Expose the process shim.
+ */
+
+Mocha.process = process;
+})();
+// ┌────────────────────────────────────────────────────────────────────┐ \\
+// │ Raphaël 2.1.4 - JavaScript Vector Library                          │ \\
+// ├────────────────────────────────────────────────────────────────────┤ \\
+// │ Copyright © 2008-2012 Dmitry Baranovskiy (http://raphaeljs.com)    │ \\
+// │ Copyright © 2008-2012 Sencha Labs (http://sencha.com)              │ \\
+// ├────────────────────────────────────────────────────────────────────┤ \\
+// │ Licensed under the MIT (http://raphaeljs.com/license.html) license.│ \\
+// └────────────────────────────────────────────────────────────────────┘ \\
+// Copyright (c) 2013 Adobe Systems Incorporated. All rights reserved.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+// http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ┌────────────────────────────────────────────────────────────┐ \\
+// │ Eve 0.4.2 - JavaScript Events Library                      │ \\
+// ├────────────────────────────────────────────────────────────┤ \\
+// │ Author Dmitry Baranovskiy (http://dmitry.baranovskiy.com/) │ \\
+// └────────────────────────────────────────────────────────────┘ \\
+
+(function (glob) {
+    var version = "0.4.2",
+        has = "hasOwnProperty",
+        separator = /[\.\/]/,
+        wildcard = "*",
+        fun = function () {},
+        numsort = function (a, b) {
+            return a - b;
+        },
+        current_event,
+        stop,
+        events = {n: {}},
+    /*\
+     * eve
+     [ method ]
+
+     * Fires event with given `name`, given scope and other parameters.
+
+     > Arguments
+
+     - name (string) name of the *event*, dot (`.`) or slash (`/`) separated
+     - scope (object) context for the event handlers
+     - varargs (...) the rest of arguments will be sent to event handlers
+
+     = (object) array of returned values from the listeners
+    \*/
+        eve = function (name, scope) {
+			name = String(name);
+            var e = events,
+                oldstop = stop,
+                args = Array.prototype.slice.call(arguments, 2),
+                listeners = eve.listeners(name),
+                z = 0,
+                f = false,
+                l,
+                indexed = [],
+                queue = {},
+                out = [],
+                ce = current_event,
+                errors = [];
+            current_event = name;
+            stop = 0;
+            for (var i = 0, ii = listeners.length; i < ii; i++) if ("zIndex" in listeners[i]) {
+                indexed.push(listeners[i].zIndex);
+                if (listeners[i].zIndex < 0) {
+                    queue[listeners[i].zIndex] = listeners[i];
+                }
+            }
+            indexed.sort(numsort);
+            while (indexed[z] < 0) {
+                l = queue[indexed[z++]];
+                out.push(l.apply(scope, args));
+                if (stop) {
+                    stop = oldstop;
+                    return out;
+                }
+            }
+            for (i = 0; i < ii; i++) {
+                l = listeners[i];
+                if ("zIndex" in l) {
+                    if (l.zIndex == indexed[z]) {
+                        out.push(l.apply(scope, args));
+                        if (stop) {
+                            break;
+                        }
+                        do {
+                            z++;
+                            l = queue[indexed[z]];
+                            l && out.push(l.apply(scope, args));
+                            if (stop) {
+                                break;
+                            }
+                        } while (l)
+                    } else {
+                        queue[l.zIndex] = l;
+                    }
+                } else {
+                    out.push(l.apply(scope, args));
+                    if (stop) {
+                        break;
+                    }
+                }
+            }
+            stop = oldstop;
+            current_event = ce;
+            return out.length ? out : null;
+        };
+		// Undocumented. Debug only.
+		eve._events = events;
+    /*\
+     * eve.listeners
+     [ method ]
+
+     * Internal method which gives you array of all event handlers that will be triggered by the given `name`.
+
+     > Arguments
+
+     - name (string) name of the event, dot (`.`) or slash (`/`) separated
+
+     = (array) array of event handlers
+    \*/
+    eve.listeners = function (name) {
+        var names = name.split(separator),
+            e = events,
+            item,
+            items,
+            k,
+            i,
+            ii,
+            j,
+            jj,
+            nes,
+            es = [e],
+            out = [];
+        for (i = 0, ii = names.length; i < ii; i++) {
+            nes = [];
+            for (j = 0, jj = es.length; j < jj; j++) {
+                e = es[j].n;
+                items = [e[names[i]], e[wildcard]];
+                k = 2;
+                while (k--) {
+                    item = items[k];
+                    if (item) {
+                        nes.push(item);
+                        out = out.concat(item.f || []);
+                    }
+                }
+            }
+            es = nes;
+        }
+        return out;
+    };
+    
+    /*\
+     * eve.on
+     [ method ]
+     **
+     * Binds given event handler with a given name. You can use wildcards “`*`” for the names:
+     | eve.on("*.under.*", f);
+     | eve("mouse.under.floor"); // triggers f
+     * Use @eve to trigger the listener.
+     **
+     > Arguments
+     **
+     - name (string) name of the event, dot (`.`) or slash (`/`) separated, with optional wildcards
+     - f (function) event handler function
+     **
+     = (function) returned function accepts a single numeric parameter that represents z-index of the handler. It is an optional feature and only used when you need to ensure that some subset of handlers will be invoked in a given order, despite of the order of assignment. 
+     > Example:
+     | eve.on("mouse", eatIt)(2);
+     | eve.on("mouse", scream);
+     | eve.on("mouse", catchIt)(1);
+     * This will ensure that `catchIt()` function will be called before `eatIt()`.
+	 *
+     * If you want to put your handler before non-indexed handlers, specify a negative value.
+     * Note: I assume most of the time you don’t need to worry about z-index, but it’s nice to have this feature “just in case”.
+    \*/
+    eve.on = function (name, f) {
+		name = String(name);
+		if (typeof f != "function") {
+			return function () {};
+		}
+        var names = name.split(separator),
+            e = events;
+        for (var i = 0, ii = names.length; i < ii; i++) {
+            e = e.n;
+            e = e.hasOwnProperty(names[i]) && e[names[i]] || (e[names[i]] = {n: {}});
+        }
+        e.f = e.f || [];
+        for (i = 0, ii = e.f.length; i < ii; i++) if (e.f[i] == f) {
+            return fun;
+        }
+        e.f.push(f);
+        return function (zIndex) {
+            if (+zIndex == +zIndex) {
+                f.zIndex = +zIndex;
+            }
+        };
+    };
+    /*\
+     * eve.f
+     [ method ]
+     **
+     * Returns function that will fire given event with optional arguments.
+	 * Arguments that will be passed to the result function will be also
+	 * concated to the list of final arguments.
+ 	 | el.onclick = eve.f("click", 1, 2);
+ 	 | eve.on("click", function (a, b, c) {
+ 	 |     console.log(a, b, c); // 1, 2, [event object]
+ 	 | });
+     > Arguments
+	 - event (string) event name
+	 - varargs (…) and any other arguments
+	 = (function) possible event handler function
+    \*/
+	eve.f = function (event) {
+		var attrs = [].slice.call(arguments, 1);
+		return function () {
+			eve.apply(null, [event, null].concat(attrs).concat([].slice.call(arguments, 0)));
+		};
+	};
+    /*\
+     * eve.stop
+     [ method ]
+     **
+     * Is used inside an event handler to stop the event, preventing any subsequent listeners from firing.
+    \*/
+    eve.stop = function () {
+        stop = 1;
+    };
+    /*\
+     * eve.nt
+     [ method ]
+     **
+     * Could be used inside event handler to figure out actual name of the event.
+     **
+     > Arguments
+     **
+     - subname (string) #optional subname of the event
+     **
+     = (string) name of the event, if `subname` is not specified
+     * or
+     = (boolean) `true`, if current event’s name contains `subname`
+    \*/
+    eve.nt = function (subname) {
+        if (subname) {
+            return new RegExp("(?:\\.|\\/|^)" + subname + "(?:\\.|\\/|$)").test(current_event);
+        }
+        return current_event;
+    };
+    /*\
+     * eve.nts
+     [ method ]
+     **
+     * Could be used inside event handler to figure out actual name of the event.
+     **
+     **
+     = (array) names of the event
+    \*/
+    eve.nts = function () {
+        return current_event.split(separator);
+    };
+    /*\
+     * eve.off
+     [ method ]
+     **
+     * Removes given function from the list of event listeners assigned to given name.
+	 * If no arguments specified all the events will be cleared.
+     **
+     > Arguments
+     **
+     - name (string) name of the event, dot (`.`) or slash (`/`) separated, with optional wildcards
+     - f (function) event handler function
+    \*/
+    /*\
+     * eve.unbind
+     [ method ]
+     **
+     * See @eve.off
+    \*/
+    eve.off = eve.unbind = function (name, f) {
+		if (!name) {
+		    eve._events = events = {n: {}};
+			return;
+		}
+        var names = name.split(separator),
+            e,
+            key,
+            splice,
+            i, ii, j, jj,
+            cur = [events];
+        for (i = 0, ii = names.length; i < ii; i++) {
+            for (j = 0; j < cur.length; j += splice.length - 2) {
+                splice = [j, 1];
+                e = cur[j].n;
+                if (names[i] != wildcard) {
+                    if (e[names[i]]) {
+                        splice.push(e[names[i]]);
+                    }
+                } else {
+                    for (key in e) if (e[has](key)) {
+                        splice.push(e[key]);
+                    }
+                }
+                cur.splice.apply(cur, splice);
+            }
+        }
+        for (i = 0, ii = cur.length; i < ii; i++) {
+            e = cur[i];
+            while (e.n) {
+                if (f) {
+                    if (e.f) {
+                        for (j = 0, jj = e.f.length; j < jj; j++) if (e.f[j] == f) {
+                            e.f.splice(j, 1);
+                            break;
+                        }
+                        !e.f.length && delete e.f;
+                    }
+                    for (key in e.n) if (e.n[has](key) && e.n[key].f) {
+                        var funcs = e.n[key].f;
+                        for (j = 0, jj = funcs.length; j < jj; j++) if (funcs[j] == f) {
+                            funcs.splice(j, 1);
+                            break;
+                        }
+                        !funcs.length && delete e.n[key].f;
+                    }
+                } else {
+                    delete e.f;
+                    for (key in e.n) if (e.n[has](key) && e.n[key].f) {
+                        delete e.n[key].f;
+                    }
+                }
+                e = e.n;
+            }
+        }
+    };
+    /*\
+     * eve.once
+     [ method ]
+     **
+     * Binds given event handler with a given name to only run once then unbind itself.
+     | eve.once("login", f);
+     | eve("login"); // triggers f
+     | eve("login"); // no listeners
+     * Use @eve to trigger the listener.
+     **
+     > Arguments
+     **
+     - name (string) name of the event, dot (`.`) or slash (`/`) separated, with optional wildcards
+     - f (function) event handler function
+     **
+     = (function) same return function as @eve.on
+    \*/
+    eve.once = function (name, f) {
+        var f2 = function () {
+            eve.unbind(name, f2);
+            return f.apply(this, arguments);
+        };
+        return eve.on(name, f2);
+    };
+    /*\
+     * eve.version
+     [ property (string) ]
+     **
+     * Current version of the library.
+    \*/
+    eve.version = version;
+    eve.toString = function () {
+        return "You are running Eve " + version;
+    };
+    (typeof module != "undefined" && module.exports) ? (module.exports = eve) : (typeof define != "undefined" ? (define("eve", [], function() { return eve; })) : (glob.eve = eve));
+})(window || this);
+// ┌─────────────────────────────────────────────────────────────────────┐ \\
+// │ "Raphaël 2.1.2" - JavaScript Vector Library                         │ \\
+// ├─────────────────────────────────────────────────────────────────────┤ \\
+// │ Copyright (c) 2008-2011 Dmitry Baranovskiy (http://raphaeljs.com)   │ \\
+// │ Copyright (c) 2008-2011 Sencha Labs (http://sencha.com)             │ \\
+// │ Licensed under the MIT (http://raphaeljs.com/license.html) license. │ \\
+// └─────────────────────────────────────────────────────────────────────┘ \\
+
+(function (glob, factory) {
+    // AMD support
+    if (typeof define === "function" && define.amd) {
+        // Define as an anonymous module
+        define(["eve"], function( eve ) {
+            return factory(glob, eve);
+        });
+    } else {
+        // Browser globals (glob is window)
+        // Raphael adds itself to window
+        factory(glob, glob.eve || (typeof require == "function" && require('eve')) );
+    }
+}(this, function (window, eve) {
+    /*\
+     * Raphael
+     [ method ]
+     **
+     * Creates a canvas object on which to draw.
+     * You must do this first, as all future calls to drawing methods
+     * from this instance will be bound to this canvas.
+     > Parameters
+     **
+     - container (HTMLElement|string) DOM element or its ID which is going to be a parent for drawing surface
+     - width (number)
+     - height (number)
+     - callback (function) #optional callback function which is going to be executed in the context of newly created paper
+     * or
+     - x (number)
+     - y (number)
+     - width (number)
+     - height (number)
+     - callback (function) #optional callback function which is going to be executed in the context of newly created paper
+     * or
+     - all (array) (first 3 or 4 elements in the array are equal to [containerID, width, height] or [x, y, width, height]. The rest are element descriptions in format {type: type, <attributes>}). See @Paper.add.
+     - callback (function) #optional callback function which is going to be executed in the context of newly created paper
+     * or
+     - onReadyCallback (function) function that is going to be called on DOM ready event. You can also subscribe to this event via Eve’s “DOMLoad” event. In this case method returns `undefined`.
+     = (object) @Paper
+     > Usage
+     | // Each of the following examples create a canvas
+     | // that is 320px wide by 200px high.
+     | // Canvas is created at the viewport’s 10,50 coordinate.
+     | var paper = Raphael(10, 50, 320, 200);
+     | // Canvas is created at the top left corner of the #notepad element
+     | // (or its top right corner in dir="rtl" elements)
+     | var paper = Raphael(document.getElementById("notepad"), 320, 200);
+     | // Same as above
+     | var paper = Raphael("notepad", 320, 200);
+     | // Image dump
+     | var set = Raphael(["notepad", 320, 200, {
+     |     type: "rect",
+     |     x: 10,
+     |     y: 10,
+     |     width: 25,
+     |     height: 25,
+     |     stroke: "#f00"
+     | }, {
+     |     type: "text",
+     |     x: 30,
+     |     y: 40,
+     |     text: "Dump"
+     | }]);
+    \*/
+    function R(first) {
+        if (R.is(first, "function")) {
+            return loaded ? first() : eve.on("raphael.DOMload", first);
+        } else if (R.is(first, array)) {
+            return R._engine.create[apply](R, first.splice(0, 3 + R.is(first[0], nu))).add(first);
+        } else {
+            var args = Array.prototype.slice.call(arguments, 0);
+            if (R.is(args[args.length - 1], "function")) {
+                var f = args.pop();
+                return loaded ? f.call(R._engine.create[apply](R, args)) : eve.on("raphael.DOMload", function () {
+                    f.call(R._engine.create[apply](R, args));
+                });
+            } else {
+                return R._engine.create[apply](R, arguments);
+            }
+        }
+    }
+    R.version = "2.1.2";
+    R.eve = eve;
+    var loaded,
+        separator = /[, ]+/,
+        elements = {circle: 1, rect: 1, path: 1, ellipse: 1, text: 1, image: 1},
+        formatrg = /\{(\d+)\}/g,
+        proto = "prototype",
+        has = "hasOwnProperty",
+        g = {
+            doc: document,
+            win: window
+        },
+        oldRaphael = {
+            was: Object.prototype[has].call(g.win, "Raphael"),
+            is: g.win.Raphael
+        },
+        Paper = function () {
+            /*\
+             * Paper.ca
+             [ property (object) ]
+             **
+             * Shortcut for @Paper.customAttributes
+            \*/
+            /*\
+             * Paper.customAttributes
+             [ property (object) ]
+             **
+             * If you have a set of attributes that you would like to represent
+             * as a function of some number you can do it easily with custom attributes:
+             > Usage
+             | paper.customAttributes.hue = function (num) {
+             |     num = num % 1;
+             |     return {fill: "hsb(" + num + ", 0.75, 1)"};
+             | };
+             | // Custom attribute “hue” will change fill
+             | // to be given hue with fixed saturation and brightness.
+             | // Now you can use it like this:
+             | var c = paper.circle(10, 10, 10).attr({hue: .45});
+             | // or even like this:
+             | c.animate({hue: 1}, 1e3);
+             |
+             | // You could also create custom attribute
+             | // with multiple parameters:
+             | paper.customAttributes.hsb = function (h, s, b) {
+             |     return {fill: "hsb(" + [h, s, b].join(",") + ")"};
+             | };
+             | c.attr({hsb: "0.5 .8 1"});
+             | c.animate({hsb: [1, 0, 0.5]}, 1e3);
+            \*/
+            this.ca = this.customAttributes = {};
+        },
+        paperproto,
+        appendChild = "appendChild",
+        apply = "apply",
+        concat = "concat",
+        supportsTouch = ('ontouchstart' in g.win) || g.win.DocumentTouch && g.doc instanceof DocumentTouch, //taken from Modernizr touch test
+        E = "",
+        S = " ",
+        Str = String,
+        split = "split",
+        events = "click dblclick mousedown mousemove mouseout mouseover mouseup touchstart touchmove touchend touchcancel"[split](S),
+        touchMap = {
+            mousedown: "touchstart",
+            mousemove: "touchmove",
+            mouseup: "touchend"
+        },
+        lowerCase = Str.prototype.toLowerCase,
+        math = Math,
+        mmax = math.max,
+        mmin = math.min,
+        abs = math.abs,
+        pow = math.pow,
+        PI = math.PI,
+        nu = "number",
+        string = "string",
+        array = "array",
+        toString = "toString",
+        fillString = "fill",
+        objectToString = Object.prototype.toString,
+        paper = {},
+        push = "push",
+        ISURL = R._ISURL = /^url\(['"]?(.+?)['"]?\)$/i,
+        colourRegExp = /^\s*((#[a-f\d]{6})|(#[a-f\d]{3})|rgba?\(\s*([\d\.]+%?\s*,\s*[\d\.]+%?\s*,\s*[\d\.]+%?(?:\s*,\s*[\d\.]+%?)?)\s*\)|hsba?\(\s*([\d\.]+(?:deg|\xb0|%)?\s*,\s*[\d\.]+%?\s*,\s*[\d\.]+(?:%?\s*,\s*[\d\.]+)?)%?\s*\)|hsla?\(\s*([\d\.]+(?:deg|\xb0|%)?\s*,\s*[\d\.]+%?\s*,\s*[\d\.]+(?:%?\s*,\s*[\d\.]+)?)%?\s*\))\s*$/i,
+        isnan = {"NaN": 1, "Infinity": 1, "-Infinity": 1},
+        bezierrg = /^(?:cubic-)?bezier\(([^,]+),([^,]+),([^,]+),([^\)]+)\)/,
+        round = math.round,
+        setAttribute = "setAttribute",
+        toFloat = parseFloat,
+        toInt = parseInt,
+        upperCase = Str.prototype.toUpperCase,
+        availableAttrs = R._availableAttrs = {
+            "arrow-end": "none",
+            "arrow-start": "none",
+            blur: 0,
+            "clip-rect": "0 0 1e9 1e9",
+            cursor: "default",
+            cx: 0,
+            cy: 0,
+            fill: "#fff",
+            "fill-opacity": 1,
+            font: '10px "Arial"',
+            "font-family": '"Arial"',
+            "font-size": "10",
+            "font-style": "normal",
+            "font-weight": 400,
+            gradient: 0,
+            height: 0,
+            href: "http://raphaeljs.com/",
+            "letter-spacing": 0,
+            opacity: 1,
+            path: "M0,0",
+            r: 0,
+            rx: 0,
+            ry: 0,
+            src: "",
+            stroke: "#000",
+            "stroke-dasharray": "",
+            "stroke-linecap": "butt",
+            "stroke-linejoin": "butt",
+            "stroke-miterlimit": 0,
+            "stroke-opacity": 1,
+            "stroke-width": 1,
+            target: "_blank",
+            "text-anchor": "middle",
+            title: "Raphael",
+            transform: "",
+            width: 0,
+            x: 0,
+            y: 0
+        },
+        availableAnimAttrs = R._availableAnimAttrs = {
+            blur: nu,
+            "clip-rect": "csv",
+            cx: nu,
+            cy: nu,
+            fill: "colour",
+            "fill-opacity": nu,
+            "font-size": nu,
+            height: nu,
+            opacity: nu,
+            path: "path",
+            r: nu,
+            rx: nu,
+            ry: nu,
+            stroke: "colour",
+            "stroke-opacity": nu,
+            "stroke-width": nu,
+            transform: "transform",
+            width: nu,
+            x: nu,
+            y: nu
+        },
+        whitespace = /[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029]/g,
+        commaSpaces = /[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029]*,[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029]*/,
+        hsrg = {hs: 1, rg: 1},
+        p2s = /,?([achlmqrstvxz]),?/gi,
+        pathCommand = /([achlmrqstvz])[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029,]*((-?\d*\.?\d*(?:e[\-+]?\d+)?[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029]*,?[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029]*)+)/ig,
+        tCommand = /([rstm])[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029,]*((-?\d*\.?\d*(?:e[\-+]?\d+)?[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029]*,?[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029]*)+)/ig,
+        pathValues = /(-?\d*\.?\d*(?:e[\-+]?\d+)?)[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029]*,?[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029]*/ig,
+        radial_gradient = R._radial_gradient = /^r(?:\(([^,]+?)[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029]*,[\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u180e\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029]*([^\)]+?)\))?/,
+        eldata = {},
+        sortByKey = function (a, b) {
+            return a.key - b.key;
+        },
+        sortByNumber = function (a, b) {
+            return toFloat(a) - toFloat(b);
+        },
+        fun = function () {},
+        pipe = function (x) {
+            return x;
+        },
+        rectPath = R._rectPath = function (x, y, w, h, r) {
+            if (r) {
+                return [["M", x + r, y], ["l", w - r * 2, 0], ["a", r, r, 0, 0, 1, r, r], ["l", 0, h - r * 2], ["a", r, r, 0, 0, 1, -r, r], ["l", r * 2 - w, 0], ["a", r, r, 0, 0, 1, -r, -r], ["l", 0, r * 2 - h], ["a", r, r, 0, 0, 1, r, -r], ["z"]];
+            }
+            return [["M", x, y], ["l", w, 0], ["l", 0, h], ["l", -w, 0], ["z"]];
+        },
+        ellipsePath = function (x, y, rx, ry) {
+            if (ry == null) {
+                ry = rx;
+            }
+            return [["M", x, y], ["m", 0, -ry], ["a", rx, ry, 0, 1, 1, 0, 2 * ry], ["a", rx, ry, 0, 1, 1, 0, -2 * ry], ["z"]];
+        },
+        getPath = R._getPath = {
+            path: function (el) {
+                return el.attr("path");
+            },
+            circle: function (el) {
+                var a = el.attrs;
+                return ellipsePath(a.cx, a.cy, a.r);
+            },
+            ellipse: function (el) {
+                var a = el.attrs;
+                return ellipsePath(a.cx, a.cy, a.rx, a.ry);
+            },
+            rect: function (el) {
+                var a = el.attrs;
+                return rectPath(a.x, a.y, a.width, a.height, a.r);
+            },
+            image: function (el) {
+                var a = el.attrs;
+                return rectPath(a.x, a.y, a.width, a.height);
+            },
+            text: function (el) {
+                var bbox = el._getBBox();
+                return rectPath(bbox.x, bbox.y, bbox.width, bbox.height);
+            },
+            set : function(el) {
+                var bbox = el._getBBox();
+                return rectPath(bbox.x, bbox.y, bbox.width, bbox.height);
+            }
+        },
+        /*\
+         * Raphael.mapPath
+         [ method ]
+         **
+         * Transform the path string with given matrix.
+         > Parameters
+         - path (string) path string
+         - matrix (object) see @Matrix
+         = (string) transformed path string
+        \*/
+        mapPath = R.mapPath = function (path, matrix) {
+            if (!matrix) {
+                return path;
+            }
+            var x, y, i, j, ii, jj, pathi;
+            path = path2curve(path);
+            for (i = 0, ii = path.length; i < ii; i++) {
+                pathi = path[i];
+                for (j = 1, jj = pathi.length; j < jj; j += 2) {
+                    x = matrix.x(pathi[j], pathi[j + 1]);
+                    y = matrix.y(pathi[j], pathi[j + 1]);
+                    pathi[j] = x;
+                    pathi[j + 1] = y;
+                }
+            }
+            return path;
+        };
+
+    R._g = g;
+    /*\
+     * Raphael.type
+     [ property (string) ]
+     **
+     * Can be “SVG”, “VML” or empty, depending on browser support.
+    \*/
+    R.type = (g.win.SVGAngle || g.doc.implementation.hasFeature("http://www.w3.org/TR/SVG11/feature#BasicStructure", "1.1") ? "SVG" : "VML");
+    if (R.type == "VML") {
+        var d = g.doc.createElement("div"),
+            b;
+        d.innerHTML = '<v:shape adj="1"/>';
+        b = d.firstChild;
+        b.style.behavior = "url(#default#VML)";
+        if (!(b && typeof b.adj == "object")) {
+            return (R.type = E);
+        }
+        d = null;
+    }
+    /*\
+     * Raphael.svg
+     [ property (boolean) ]
+     **
+     * `true` if browser supports SVG.
+    \*/
+    /*\
+     * Raphael.vml
+     [ property (boolean) ]
+     **
+     * `true` if browser supports VML.
+    \*/
+    R.svg = !(R.vml = R.type == "VML");
+    R._Paper = Paper;
+    /*\
+     * Raphael.fn
+     [ property (object) ]
+     **
+     * You can add your own method to the canvas. For example if you want to draw a pie chart,
+     * you can create your own pie chart function and ship it as a Raphaël plugin. To do this
+     * you need to extend the `Raphael.fn` object. You should modify the `fn` object before a
+     * Raphaël instance is created, otherwise it will take no effect. Please note that the
+     * ability for namespaced plugins was removed in Raphael 2.0. It is up to the plugin to
+     * ensure any namespacing ensures proper context.
+     > Usage
+     | Raphael.fn.arrow = function (x1, y1, x2, y2, size) {
+     |     return this.path( ... );
+     | };
+     | // or create namespace
+     | Raphael.fn.mystuff = {
+     |     arrow: function () {…},
+     |     star: function () {…},
+     |     // etc…
+     | };
+     | var paper = Raphael(10, 10, 630, 480);
+     | // then use it
+     | paper.arrow(10, 10, 30, 30, 5).attr({fill: "#f00"});
+     | paper.mystuff.arrow();
+     | paper.mystuff.star();
+    \*/
+    R.fn = paperproto = Paper.prototype = R.prototype;
+    R._id = 0;
+    R._oid = 0;
+    /*\
+     * Raphael.is
+     [ method ]
+     **
+     * Handful of replacements for `typeof` operator.
+     > Parameters
+     - o (…) any object or primitive
+     - type (string) name of the type, i.e. “string”, “function”, “number”, etc.
+     = (boolean) is given value is of given type
+    \*/
+    R.is = function (o, type) {
+        type = lowerCase.call(type);
+        if (type == "finite") {
+            return !isnan[has](+o);
+        }
+        if (type == "array") {
+            return o instanceof Array;
+        }
+        return  (type == "null" && o === null) ||
+                (type == typeof o && o !== null) ||
+                (type == "object" && o === Object(o)) ||
+                (type == "array" && Array.isArray && Array.isArray(o)) ||
+                objectToString.call(o).slice(8, -1).toLowerCase() == type;
+    };
+
+    function clone(obj) {
+        if (typeof obj == "function" || Object(obj) !== obj) {
+            return obj;
+        }
+        var res = new obj.constructor;
+        for (var key in obj) if (obj[has](key)) {
+            res[key] = clone(obj[key]);
+        }
+        return res;
+    }
+
+    /*\
+     * Raphael.angle
+     [ method ]
+     **
+     * Returns angle between two or three points
+     > Parameters
+     - x1 (number) x coord of first point
+     - y1 (number) y coord of first point
+     - x2 (number) x coord of second point
+     - y2 (number) y coord of second point
+     - x3 (number) #optional x coord of third point
+     - y3 (number) #optional y coord of third point
+     = (number) angle in degrees.
+    \*/
+    R.angle = function (x1, y1, x2, y2, x3, y3) {
+        if (x3 == null) {
+            var x = x1 - x2,
+                y = y1 - y2;
+            if (!x && !y) {
+                return 0;
+            }
+            return (180 + math.atan2(-y, -x) * 180 / PI + 360) % 360;
+        } else {
+            return R.angle(x1, y1, x3, y3) - R.angle(x2, y2, x3, y3);
+        }
+    };
+    /*\
+     * Raphael.rad
+     [ method ]
+     **
+     * Transform angle to radians
+     > Parameters
+     - deg (number) angle in degrees
+     = (number) angle in radians.
+    \*/
+    R.rad = function (deg) {
+        return deg % 360 * PI / 180;
+    };
+    /*\
+     * Raphael.deg
+     [ method ]
+     **
+     * Transform angle to degrees
+     > Parameters
+     - rad (number) angle in radians
+     = (number) angle in degrees.
+    \*/
+    R.deg = function (rad) {
+        return Math.round ((rad * 180 / PI% 360)* 1000) / 1000;
+    };
+    /*\
+     * Raphael.snapTo
+     [ method ]
+     **
+     * Snaps given value to given grid.
+     > Parameters
+     - values (array|number) given array of values or step of the grid
+     - value (number) value to adjust
+     - tolerance (number) #optional tolerance for snapping. Default is `10`.
+     = (number) adjusted value.
+    \*/
+    R.snapTo = function (values, value, tolerance) {
+        tolerance = R.is(tolerance, "finite") ? tolerance : 10;
+        if (R.is(values, array)) {
+            var i = values.length;
+            while (i--) if (abs(values[i] - value) <= tolerance) {
+                return values[i];
+            }
+        } else {
+            values = +values;
+            var rem = value % values;
+            if (rem < tolerance) {
+                return value - rem;
+            }
+            if (rem > values - tolerance) {
+                return value - rem + values;
+            }
+        }
+        return value;
+    };
+
+    /*\
+     * Raphael.createUUID
+     [ method ]
+     **
+     * Returns RFC4122, version 4 ID
+    \*/
+    var createUUID = R.createUUID = (function (uuidRegEx, uuidReplacer) {
+        return function () {
+            return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(uuidRegEx, uuidReplacer).toUpperCase();
+        };
+    })(/[xy]/g, function (c) {
+        var r = math.random() * 16 | 0,
+            v = c == "x" ? r : (r & 3 | 8);
+        return v.toString(16);
+    });
+
+    /*\
+     * Raphael.setWindow
+     [ method ]
+     **
+     * Used when you need to draw in `&lt;iframe>`. Switched window to the iframe one.
+     > Parameters
+     - newwin (window) new window object
+    \*/
+    R.setWindow = function (newwin) {
+        eve("raphael.setWindow", R, g.win, newwin);
+        g.win = newwin;
+        g.doc = g.win.document;
+        if (R._engine.initWin) {
+            R._engine.initWin(g.win);
+        }
+    };
+    var toHex = function (color) {
+        if (R.vml) {
+            // http://dean.edwards.name/weblog/2009/10/convert-any-colour-value-to-hex-in-msie/
+            var trim = /^\s+|\s+$/g;
+            var bod;
+            try {
+                var docum = new ActiveXObject("htmlfile");
+                docum.write("<body>");
+                docum.close();
+                bod = docum.body;
+            } catch(e) {
+                bod = createPopup().document.body;
+            }
+            var range = bod.createTextRange();
+            toHex = cacher(function (color) {
+                try {
+                    bod.style.color = Str(color).replace(trim, E);
+                    var value = range.queryCommandValue("ForeColor");
+                    value = ((value & 255) << 16) | (value & 65280) | ((value & 16711680) >>> 16);
+                    return "#" + ("000000" + value.toString(16)).slice(-6);
+                } catch(e) {
+                    return "none";
+                }
+            });
+        } else {
+            var i = g.doc.createElement("i");
+            i.title = "Rapha\xebl Colour Picker";
+            i.style.display = "none";
+            g.doc.body.appendChild(i);
+            toHex = cacher(function (color) {
+                i.style.color = color;
+                return g.doc.defaultView.getComputedStyle(i, E).getPropertyValue("color");
+            });
+        }
+        return toHex(color);
+    },
+    hsbtoString = function () {
+        return "hsb(" + [this.h, this.s, this.b] + ")";
+    },
+    hsltoString = function () {
+        return "hsl(" + [this.h, this.s, this.l] + ")";
+    },
+    rgbtoString = function () {
+        return this.hex;
+    },
+    prepareRGB = function (r, g, b) {
+        if (g == null && R.is(r, "object") && "r" in r && "g" in r && "b" in r) {
+            b = r.b;
+            g = r.g;
+            r = r.r;
+        }
+        if (g == null && R.is(r, string)) {
+            var clr = R.getRGB(r);
+            r = clr.r;
+            g = clr.g;
+            b = clr.b;
+        }
+        if (r > 1 || g > 1 || b > 1) {
+            r /= 255;
+            g /= 255;
+            b /= 255;
+        }
+
+        return [r, g, b];
+    },
+    packageRGB = function (r, g, b, o) {
+        r *= 255;
+        g *= 255;
+        b *= 255;
+        var rgb = {
+            r: r,
+            g: g,
+            b: b,
+            hex: R.rgb(r, g, b),
+            toString: rgbtoString
+        };
+        R.is(o, "finite") && (rgb.opacity = o);
+        return rgb;
+    };
+
+    /*\
+     * Raphael.color
+     [ method ]
+     **
+     * Parses the color string and returns object with all values for the given color.
+     > Parameters
+     - clr (string) color string in one of the supported formats (see @Raphael.getRGB)
+     = (object) Combined RGB & HSB object in format:
+     o {
+     o     r (number) red,
+     o     g (number) green,
+     o     b (number) blue,
+     o     hex (string) color in HTML/CSS format: #••••••,
+     o     error (boolean) `true` if string can’t be parsed,
+     o     h (number) hue,
+     o     s (number) saturation,
+     o     v (number) value (brightness),
+     o     l (number) lightness
+     o }
+    \*/
+    R.color = function (clr) {
+        var rgb;
+        if (R.is(clr, "object") && "h" in clr && "s" in clr && "b" in clr) {
+            rgb = R.hsb2rgb(clr);
+            clr.r = rgb.r;
+            clr.g = rgb.g;
+            clr.b = rgb.b;
+            clr.hex = rgb.hex;
+        } else if (R.is(clr, "object") && "h" in clr && "s" in clr && "l" in clr) {
+            rgb = R.hsl2rgb(clr);
+            clr.r = rgb.r;
+            clr.g = rgb.g;
+            clr.b = rgb.b;
+            clr.hex = rgb.hex;
+        } else {
+            if (R.is(clr, "string")) {
+                clr = R.getRGB(clr);
+            }
+            if (R.is(clr, "object") && "r" in clr && "g" in clr && "b" in clr) {
+                rgb = R.rgb2hsl(clr);
+                clr.h = rgb.h;
+                clr.s = rgb.s;
+                clr.l = rgb.l;
+                rgb = R.rgb2hsb(clr);
+                clr.v = rgb.b;
+            } else {
+                clr = {hex: "none"};
+                clr.r = clr.g = clr.b = clr.h = clr.s = clr.v = clr.l = -1;
+            }
+        }
+        clr.toString = rgbtoString;
+        return clr;
+    };
+    /*\
+     * Raphael.hsb2rgb
+     [ method ]
+     **
+     * Converts HSB values to RGB object.
+     > Parameters
+     - h (number) hue
+     - s (number) saturation
+     - v (number) value or brightness
+     = (object) RGB object in format:
+     o {
+     o     r (number) red,
+     o     g (number) green,
+     o     b (number) blue,
+     o     hex (string) color in HTML/CSS format: #••••••
+     o }
+    \*/
+    R.hsb2rgb = function (h, s, v, o) {
+        if (this.is(h, "object") && "h" in h && "s" in h && "b" in h) {
+            v = h.b;
+            s = h.s;
+            o = h.o;
+            h = h.h;
+        }
+        h *= 360;
+        var R, G, B, X, C;
+        h = (h % 360) / 60;
+        C = v * s;
+        X = C * (1 - abs(h % 2 - 1));
+        R = G = B = v - C;
+
+        h = ~~h;
+        R += [C, X, 0, 0, X, C][h];
+        G += [X, C, C, X, 0, 0][h];
+        B += [0, 0, X, C, C, X][h];
+        return packageRGB(R, G, B, o);
+    };
+    /*\
+     * Raphael.hsl2rgb
+     [ method ]
+     **
+     * Converts HSL values to RGB object.
+     > Parameters
+     - h (number) hue
+     - s (number) saturation
+     - l (number) luminosity
+     = (object) RGB object in format:
+     o {
+     o     r (number) red,
+     o     g (number) green,
+     o     b (number) blue,
+     o     hex (string) color in HTML/CSS format: #••••••
+     o }
+    \*/
+    R.hsl2rgb = function (h, s, l, o) {
+        if (this.is(h, "object") && "h" in h && "s" in h && "l" in h) {
+            l = h.l;
+            s = h.s;
+            h = h.h;
+        }
+        if (h > 1 || s > 1 || l > 1) {
+            h /= 360;
+            s /= 100;
+            l /= 100;
+        }
+        h *= 360;
+        var R, G, B, X, C;
+        h = (h % 360) / 60;
+        C = 2 * s * (l < .5 ? l : 1 - l);
+        X = C * (1 - abs(h % 2 - 1));
+        R = G = B = l - C / 2;
+
+        h = ~~h;
+        R += [C, X, 0, 0, X, C][h];
+        G += [X, C, C, X, 0, 0][h];
+        B += [0, 0, X, C, C, X][h];
+        return packageRGB(R, G, B, o);
+    };
+    /*\
+     * Raphael.rgb2hsb
+     [ method ]
+     **
+     * Converts RGB values to HSB object.
+     > Parameters
+     - r (number) red
+     - g (number) green
+     - b (number) blue
+     = (object) HSB object in format:
+     o {
+     o     h (number) hue
+     o     s (number) saturation
+     o     b (number) brightness
+     o }
+    \*/
+    R.rgb2hsb = function (r, g, b) {
+        b = prepareRGB(r, g, b);
+        r = b[0];
+        g = b[1];
+        b = b[2];
+
+        var H, S, V, C;
+        V = mmax(r, g, b);
+        C = V - mmin(r, g, b);
+        H = (C == 0 ? null :
+             V == r ? (g - b) / C :
+             V == g ? (b - r) / C + 2 :
+                      (r - g) / C + 4
+            );
+        H = ((H + 360) % 6) * 60 / 360;
+        S = C == 0 ? 0 : C / V;
+        return {h: H, s: S, b: V, toString: hsbtoString};
+    };
+    /*\
+     * Raphael.rgb2hsl
+     [ method ]
+     **
+     * Converts RGB values to HSL object.
+     > Parameters
+     - r (number) red
+     - g (number) green
+     - b (number) blue
+     = (object) HSL object in format:
+     o {
+     o     h (number) hue
+     o     s (number) saturation
+     o     l (number) luminosity
+     o }
+    \*/
+    R.rgb2hsl = function (r, g, b) {
+        b = prepareRGB(r, g, b);
+        r = b[0];
+        g = b[1];
+        b = b[2];
+
+        var H, S, L, M, m, C;
+        M = mmax(r, g, b);
+        m = mmin(r, g, b);
+        C = M - m;
+        H = (C == 0 ? null :
+             M == r ? (g - b) / C :
+             M == g ? (b - r) / C + 2 :
+                      (r - g) / C + 4);
+        H = ((H + 360) % 6) * 60 / 360;
+        L = (M + m) / 2;
+        S = (C == 0 ? 0 :
+             L < .5 ? C / (2 * L) :
+                      C / (2 - 2 * L));
+        return {h: H, s: S, l: L, toString: hsltoString};
+    };
+    R._path2string = function () {
+        return this.join(",").replace(p2s, "$1");
+    };
+    function repush(array, item) {
+        for (var i = 0, ii = array.length; i < ii; i++) if (array[i] === item) {
+            return array.push(array.splice(i, 1)[0]);
+        }
+    }
+    function cacher(f, scope, postprocessor) {
+        function newf() {
+            var arg = Array.prototype.slice.call(arguments, 0),
+                args = arg.join("\u2400"),
+                cache = newf.cache = newf.cache || {},
+                count = newf.count = newf.count || [];
+            if (cache[has](args)) {
+                repush(count, args);
+                return postprocessor ? postprocessor(cache[args]) : cache[args];
+            }
+            count.length >= 1e3 && delete cache[count.shift()];
+            count.push(args);
+            cache[args] = f[apply](scope, arg);
+            return postprocessor ? postprocessor(cache[args]) : cache[args];
+        }
+        return newf;
+    }
+
+    var preload = R._preload = function (src, f) {
+        var img = g.doc.createElement("img");
+        img.style.cssText = "position:absolute;left:-9999em;top:-9999em";
+        img.onload = function () {
+            f.call(this);
+            this.onload = null;
+            g.doc.body.removeChild(this);
+        };
+        img.onerror = function () {
+            g.doc.body.removeChild(this);
+        };
+        g.doc.body.appendChild(img);
+        img.src = src;
+    };
+
+    function clrToString() {
+        return this.hex;
+    }
+
+    /*\
+     * Raphael.getRGB
+     [ method ]
+     **
+     * Parses colour string as RGB object
+     > Parameters
+     - colour (string) colour string in one of formats:
+     # <ul>
+     #     <li>Colour name (“<code>red</code>”, “<code>green</code>”, “<code>cornflowerblue</code>”, etc)</li>
+     #     <li>#••• — shortened HTML colour: (“<code>#000</code>”, “<code>#fc0</code>”, etc)</li>
+     #     <li>#•••••• — full length HTML colour: (“<code>#000000</code>”, “<code>#bd2300</code>”)</li>
+     #     <li>rgb(•••, •••, •••) — red, green and blue channels’ values: (“<code>rgb(200,&nbsp;100,&nbsp;0)</code>”)</li>
+     #     <li>rgb(•••%, •••%, •••%) — same as above, but in %: (“<code>rgb(100%,&nbsp;175%,&nbsp;0%)</code>”)</li>
+     #     <li>hsb(•••, •••, •••) — hue, saturation and brightness values: (“<code>hsb(0.5,&nbsp;0.25,&nbsp;1)</code>”)</li>
+     #     <li>hsb(•••%, •••%, •••%) — same as above, but in %</li>
+     #     <li>hsl(•••, •••, •••) — same as hsb</li>
+     #     <li>hsl(•••%, •••%, •••%) — same as hsb</li>
+     # </ul>
+     = (object) RGB object in format:
+     o {
+     o     r (number) red,
+     o     g (number) green,
+     o     b (number) blue
+     o     hex (string) color in HTML/CSS format: #••••••,
+     o     error (boolean) true if string can’t be parsed
+     o }
+    \*/
+    R.getRGB = cacher(function (colour) {
+        if (!colour || !!((colour = Str(colour)).indexOf("-") + 1)) {
+            return {r: -1, g: -1, b: -1, hex: "none", error: 1, toString: clrToString};
+        }
+        if (colour == "none") {
+            return {r: -1, g: -1, b: -1, hex: "none", toString: clrToString};
+        }
+        !(hsrg[has](colour.toLowerCase().substring(0, 2)) || colour.charAt() == "#") && (colour = toHex(colour));
+        var res,
+            red,
+            green,
+            blue,
+            opacity,
+            t,
+            values,
+            rgb = colour.match(colourRegExp);
+        if (rgb) {
+            if (rgb[2]) {
+                blue = toInt(rgb[2].substring(5), 16);
+                green = toInt(rgb[2].substring(3, 5), 16);
+                red = toInt(rgb[2].substring(1, 3), 16);
+            }
+            if (rgb[3]) {
+                blue = toInt((t = rgb[3].charAt(3)) + t, 16);
+                green = toInt((t = rgb[3].charAt(2)) + t, 16);
+                red = toInt((t = rgb[3].charAt(1)) + t, 16);
+            }
+            if (rgb[4]) {
+                values = rgb[4][split](commaSpaces);
+                red = toFloat(values[0]);
+                values[0].slice(-1) == "%" && (red *= 2.55);
+                green = toFloat(values[1]);
+                values[1].slice(-1) == "%" && (green *= 2.55);
+                blue = toFloat(values[2]);
+                values[2].slice(-1) == "%" && (blue *= 2.55);
+                rgb[1].toLowerCase().slice(0, 4) == "rgba" && (opacity = toFloat(values[3]));
+                values[3] && values[3].slice(-1) == "%" && (opacity /= 100);
+            }
+            if (rgb[5]) {
+                values = rgb[5][split](commaSpaces);
+                red = toFloat(values[0]);
+                values[0].slice(-1) == "%" && (red *= 2.55);
+                green = toFloat(values[1]);
+                values[1].slice(-1) == "%" && (green *= 2.55);
+                blue = toFloat(values[2]);
+                values[2].slice(-1) == "%" && (blue *= 2.55);
+                (values[0].slice(-3) == "deg" || values[0].slice(-1) == "\xb0") && (red /= 360);
+                rgb[1].toLowerCase().slice(0, 4) == "hsba" && (opacity = toFloat(values[3]));
+                values[3] && values[3].slice(-1) == "%" && (opacity /= 100);
+                return R.hsb2rgb(red, green, blue, opacity);
+            }
+            if (rgb[6]) {
+                values = rgb[6][split](commaSpaces);
+                red = toFloat(values[0]);
+                values[0].slice(-1) == "%" && (red *= 2.55);
+                green = toFloat(values[1]);
+                values[1].slice(-1) == "%" && (green *= 2.55);
+                blue = toFloat(values[2]);
+                values[2].slice(-1) == "%" && (blue *= 2.55);
+                (values[0].slice(-3) == "deg" || values[0].slice(-1) == "\xb0") && (red /= 360);
+                rgb[1].toLowerCase().slice(0, 4) == "hsla" && (opacity = toFloat(values[3]));
+                values[3] && values[3].slice(-1) == "%" && (opacity /= 100);
+                return R.hsl2rgb(red, green, blue, opacity);
+            }
+            rgb = {r: red, g: green, b: blue, toString: clrToString};
+            rgb.hex = "#" + (16777216 | blue | (green << 8) | (red << 16)).toString(16).slice(1);
+            R.is(opacity, "finite") && (rgb.opacity = opacity);
+            return rgb;
+        }
+        return {r: -1, g: -1, b: -1, hex: "none", error: 1, toString: clrToString};
+    }, R);
+    /*\
+     * Raphael.hsb
+     [ method ]
+     **
+     * Converts HSB values to hex representation of the colour.
+     > Parameters
+     - h (number) hue
+     - s (number) saturation
+     - b (number) value or brightness
+     = (string) hex representation of the colour.
+    \*/
+    R.hsb = cacher(function (h, s, b) {
+        return R.hsb2rgb(h, s, b).hex;
+    });
+    /*\
+     * Raphael.hsl
+     [ method ]
+     **
+     * Converts HSL values to hex representation of the colour.
+     > Parameters
+     - h (number) hue
+     - s (number) saturation
+     - l (number) luminosity
+     = (string) hex representation of the colour.
+    \*/
+    R.hsl = cacher(function (h, s, l) {
+        return R.hsl2rgb(h, s, l).hex;
+    });
+    /*\
+     * Raphael.rgb
+     [ method ]
+     **
+     * Converts RGB values to hex representation of the colour.
+     > Parameters
+     - r (number) red
+     - g (number) green
+     - b (number) blue
+     = (string) hex representation of the colour.
+    \*/
+    R.rgb = cacher(function (r, g, b) {
+        return "#" + (16777216 | b | (g << 8) | (r << 16)).toString(16).slice(1);
+    });
+    /*\
+     * Raphael.getColor
+     [ method ]
+     **
+     * On each call returns next colour in the spectrum. To reset it back to red call @Raphael.getColor.reset
+     > Parameters
+     - value (number) #optional brightness, default is `0.75`
+     = (string) hex representation of the colour.
+    \*/
+    R.getColor = function (value) {
+        var start = this.getColor.start = this.getColor.start || {h: 0, s: 1, b: value || .75},
+            rgb = this.hsb2rgb(start.h, start.s, start.b);
+        start.h += .075;
+        if (start.h > 1) {
+            start.h = 0;
+            start.s -= .2;
+            start.s <= 0 && (this.getColor.start = {h: 0, s: 1, b: start.b});
+        }
+        return rgb.hex;
+    };
+    /*\
+     * Raphael.getColor.reset
+     [ method ]
+     **
+     * Resets spectrum position for @Raphael.getColor back to red.
+    \*/
+    R.getColor.reset = function () {
+        delete this.start;
+    };
+
+    // http://schepers.cc/getting-to-the-point
+    function catmullRom2bezier(crp, z) {
+        var d = [];
+        for (var i = 0, iLen = crp.length; iLen - 2 * !z > i; i += 2) {
+            var p = [
+                        {x: +crp[i - 2], y: +crp[i - 1]},
+                        {x: +crp[i],     y: +crp[i + 1]},
+                        {x: +crp[i + 2], y: +crp[i + 3]},
+                        {x: +crp[i + 4], y: +crp[i + 5]}
+                    ];
+            if (z) {
+                if (!i) {
+                    p[0] = {x: +crp[iLen - 2], y: +crp[iLen - 1]};
+                } else if (iLen - 4 == i) {
+                    p[3] = {x: +crp[0], y: +crp[1]};
+                } else if (iLen - 2 == i) {
+                    p[2] = {x: +crp[0], y: +crp[1]};
+                    p[3] = {x: +crp[2], y: +crp[3]};
+                }
+            } else {
+                if (iLen - 4 == i) {
+                    p[3] = p[2];
+                } else if (!i) {
+                    p[0] = {x: +crp[i], y: +crp[i + 1]};
+                }
+            }
+            d.push(["C",
+                  (-p[0].x + 6 * p[1].x + p[2].x) / 6,
+                  (-p[0].y + 6 * p[1].y + p[2].y) / 6,
+                  (p[1].x + 6 * p[2].x - p[3].x) / 6,
+                  (p[1].y + 6*p[2].y - p[3].y) / 6,
+                  p[2].x,
+                  p[2].y
+            ]);
+        }
+
+        return d;
+    }
+    /*\
+     * Raphael.parsePathString
+     [ method ]
+     **
+     * Utility method
+     **
+     * Parses given path string into an array of arrays of path segments.
+     > Parameters
+     - pathString (string|array) path string or array of segments (in the last case it will be returned straight away)
+     = (array) array of segments.
+    \*/
+    R.parsePathString = function (pathString) {
+        if (!pathString) {
+            return null;
+        }
+        var pth = paths(pathString);
+        if (pth.arr) {
+            return pathClone(pth.arr);
+        }
+
+        var paramCounts = {a: 7, c: 6, h: 1, l: 2, m: 2, r: 4, q: 4, s: 4, t: 2, v: 1, z: 0},
+            data = [];
+        if (R.is(pathString, array) && R.is(pathString[0], array)) { // rough assumption
+            data = pathClone(pathString);
+        }
+        if (!data.length) {
+            Str(pathString).replace(pathCommand, function (a, b, c) {
+                var params = [],
+                    name = b.toLowerCase();
+                c.replace(pathValues, function (a, b) {
+                    b && params.push(+b);
+                });
+                if (name == "m" && params.length > 2) {
+                    data.push([b][concat](params.splice(0, 2)));
+                    name = "l";
+                    b = b == "m" ? "l" : "L";
+                }
+                if (name == "r") {
+                    data.push([b][concat](params));
+                } else while (params.length >= paramCounts[name]) {
+                    data.push([b][concat](params.splice(0, paramCounts[name])));
+                    if (!paramCounts[name]) {
+                        break;
+                    }
+                }
+            });
+        }
+        data.toString = R._path2string;
+        pth.arr = pathClone(data);
+        return data;
+    };
+    /*\
+     * Raphael.parseTransformString
+     [ method ]
+     **
+     * Utility method
+     **
+     * Parses given path string into an array of transformations.
+     > Parameters
+     - TString (string|array) transform string or array of transformations (in the last case it will be returned straight away)
+     = (array) array of transformations.
+    \*/
+    R.parseTransformString = cacher(function (TString) {
+        if (!TString) {
+            return null;
+        }
+        var paramCounts = {r: 3, s: 4, t: 2, m: 6},
+            data = [];
+        if (R.is(TString, array) && R.is(TString[0], array)) { // rough assumption
+            data = pathClone(TString);
+        }
+        if (!data.length) {
+            Str(TString).replace(tCommand, function (a, b, c) {
+                var params = [],
+                    name = lowerCase.call(b);
+                c.replace(pathValues, function (a, b) {
+                    b && params.push(+b);
+                });
+                data.push([b][concat](params));
+            });
+        }
+        data.toString = R._path2string;
+        return data;
+    });
+    // PATHS
+    var paths = function (ps) {
+        var p = paths.ps = paths.ps || {};
+        if (p[ps]) {
+            p[ps].sleep = 100;
+        } else {
+            p[ps] = {
+                sleep: 100
+            };
+        }
+        setTimeout(function () {
+            for (var key in p) if (p[has](key) && key != ps) {
+                p[key].sleep--;
+                !p[key].sleep && delete p[key];
+            }
+        });
+        return p[ps];
+    };
+    /*\
+     * Raphael.findDotsAtSegment
+     [ method ]
+     **
+     * Utility method
+     **
+     * Find dot coordinates on the given cubic bezier curve at the given t.
+     > Parameters
+     - p1x (number) x of the first point of the curve
+     - p1y (number) y of the first point of the curve
+     - c1x (number) x of the first anchor of the curve
+     - c1y (number) y of the first anchor of the curve
+     - c2x (number) x of the second anchor of the curve
+     - c2y (number) y of the second anchor of the curve
+     - p2x (number) x of the second point of the curve
+     - p2y (number) y of the second point of the curve
+     - t (number) position on the curve (0..1)
+     = (object) point information in format:
+     o {
+     o     x: (number) x coordinate of the point
+     o     y: (number) y coordinate of the point
+     o     m: {
+     o         x: (number) x coordinate of the left anchor
+     o         y: (number) y coordinate of the left anchor
+     o     }
+     o     n: {
+     o         x: (number) x coordinate of the right anchor
+     o         y: (number) y coordinate of the right anchor
+     o     }
+     o     start: {
+     o         x: (number) x coordinate of the start of the curve
+     o         y: (number) y coordinate of the start of the curve
+     o     }
+     o     end: {
+     o         x: (number) x coordinate of the end of the curve
+     o         y: (number) y coordinate of the end of the curve
+     o     }
+     o     alpha: (number) angle of the curve derivative at the point
+     o }
+    \*/
+    R.findDotsAtSegment = function (p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y, t) {
+        var t1 = 1 - t,
+            t13 = pow(t1, 3),
+            t12 = pow(t1, 2),
+            t2 = t * t,
+            t3 = t2 * t,
+            x = t13 * p1x + t12 * 3 * t * c1x + t1 * 3 * t * t * c2x + t3 * p2x,
+            y = t13 * p1y + t12 * 3 * t * c1y + t1 * 3 * t * t * c2y + t3 * p2y,
+            mx = p1x + 2 * t * (c1x - p1x) + t2 * (c2x - 2 * c1x + p1x),
+            my = p1y + 2 * t * (c1y - p1y) + t2 * (c2y - 2 * c1y + p1y),
+            nx = c1x + 2 * t * (c2x - c1x) + t2 * (p2x - 2 * c2x + c1x),
+            ny = c1y + 2 * t * (c2y - c1y) + t2 * (p2y - 2 * c2y + c1y),
+            ax = t1 * p1x + t * c1x,
+            ay = t1 * p1y + t * c1y,
+            cx = t1 * c2x + t * p2x,
+            cy = t1 * c2y + t * p2y,
+            alpha = (90 - math.atan2(mx - nx, my - ny) * 180 / PI);
+        (mx > nx || my < ny) && (alpha += 180);
+        return {
+            x: x,
+            y: y,
+            m: {x: mx, y: my},
+            n: {x: nx, y: ny},
+            start: {x: ax, y: ay},
+            end: {x: cx, y: cy},
+            alpha: alpha
+        };
+    };
+    /*\
+     * Raphael.bezierBBox
+     [ method ]
+     **
+     * Utility method
+     **
+     * Return bounding box of a given cubic bezier curve
+     > Parameters
+     - p1x (number) x of the first point of the curve
+     - p1y (number) y of the first point of the curve
+     - c1x (number) x of the first anchor of the curve
+     - c1y (number) y of the first anchor of the curve
+     - c2x (number) x of the second anchor of the curve
+     - c2y (number) y of the second anchor of the curve
+     - p2x (number) x of the second point of the curve
+     - p2y (number) y of the second point of the curve
+     * or
+     - bez (array) array of six points for bezier curve
+     = (object) point information in format:
+     o {
+     o     min: {
+     o         x: (number) x coordinate of the left point
+     o         y: (number) y coordinate of the top point
+     o     }
+     o     max: {
+     o         x: (number) x coordinate of the right point
+     o         y: (number) y coordinate of the bottom point
+     o     }
+     o }
+    \*/
+    R.bezierBBox = function (p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y) {
+        if (!R.is(p1x, "array")) {
+            p1x = [p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y];
+        }
+        var bbox = curveDim.apply(null, p1x);
+        return {
+            x: bbox.min.x,
+            y: bbox.min.y,
+            x2: bbox.max.x,
+            y2: bbox.max.y,
+            width: bbox.max.x - bbox.min.x,
+            height: bbox.max.y - bbox.min.y
+        };
+    };
+    /*\
+     * Raphael.isPointInsideBBox
+     [ method ]
+     **
+     * Utility method
+     **
+     * Returns `true` if given point is inside bounding boxes.
+     > Parameters
+     - bbox (string) bounding box
+     - x (string) x coordinate of the point
+     - y (string) y coordinate of the point
+     = (boolean) `true` if point inside
+    \*/
+    R.isPointInsideBBox = function (bbox, x, y) {
+        return x >= bbox.x && x <= bbox.x2 && y >= bbox.y && y <= bbox.y2;
+    };
+    /*\
+     * Raphael.isBBoxIntersect
+     [ method ]
+     **
+     * Utility method
+     **
+     * Returns `true` if two bounding boxes intersect
+     > Parameters
+     - bbox1 (string) first bounding box
+     - bbox2 (string) second bounding box
+     = (boolean) `true` if they intersect
+    \*/
+    R.isBBoxIntersect = function (bbox1, bbox2) {
+        var i = R.isPointInsideBBox;
+        return i(bbox2, bbox1.x, bbox1.y)
+            || i(bbox2, bbox1.x2, bbox1.y)
+            || i(bbox2, bbox1.x, bbox1.y2)
+            || i(bbox2, bbox1.x2, bbox1.y2)
+            || i(bbox1, bbox2.x, bbox2.y)
+            || i(bbox1, bbox2.x2, bbox2.y)
+            || i(bbox1, bbox2.x, bbox2.y2)
+            || i(bbox1, bbox2.x2, bbox2.y2)
+            || (bbox1.x < bbox2.x2 && bbox1.x > bbox2.x || bbox2.x < bbox1.x2 && bbox2.x > bbox1.x)
+            && (bbox1.y < bbox2.y2 && bbox1.y > bbox2.y || bbox2.y < bbox1.y2 && bbox2.y > bbox1.y);
+    };
+    function base3(t, p1, p2, p3, p4) {
+        var t1 = -3 * p1 + 9 * p2 - 9 * p3 + 3 * p4,
+            t2 = t * t1 + 6 * p1 - 12 * p2 + 6 * p3;
+        return t * t2 - 3 * p1 + 3 * p2;
+    }
+    function bezlen(x1, y1, x2, y2, x3, y3, x4, y4, z) {
+        if (z == null) {
+            z = 1;
+        }
+        z = z > 1 ? 1 : z < 0 ? 0 : z;
+        var z2 = z / 2,
+            n = 12,
+            Tvalues = [-0.1252,0.1252,-0.3678,0.3678,-0.5873,0.5873,-0.7699,0.7699,-0.9041,0.9041,-0.9816,0.9816],
+            Cvalues = [0.2491,0.2491,0.2335,0.2335,0.2032,0.2032,0.1601,0.1601,0.1069,0.1069,0.0472,0.0472],
+            sum = 0;
+        for (var i = 0; i < n; i++) {
+            var ct = z2 * Tvalues[i] + z2,
+                xbase = base3(ct, x1, x2, x3, x4),
+                ybase = base3(ct, y1, y2, y3, y4),
+                comb = xbase * xbase + ybase * ybase;
+            sum += Cvalues[i] * math.sqrt(comb);
+        }
+        return z2 * sum;
+    }
+    function getTatLen(x1, y1, x2, y2, x3, y3, x4, y4, ll) {
+        if (ll < 0 || bezlen(x1, y1, x2, y2, x3, y3, x4, y4) < ll) {
+            return;
+        }
+        var t = 1,
+            step = t / 2,
+            t2 = t - step,
+            l,
+            e = .01;
+        l = bezlen(x1, y1, x2, y2, x3, y3, x4, y4, t2);
+        while (abs(l - ll) > e) {
+            step /= 2;
+            t2 += (l < ll ? 1 : -1) * step;
+            l = bezlen(x1, y1, x2, y2, x3, y3, x4, y4, t2);
+        }
+        return t2;
+    }
+    function intersect(x1, y1, x2, y2, x3, y3, x4, y4) {
+        if (
+            mmax(x1, x2) < mmin(x3, x4) ||
+            mmin(x1, x2) > mmax(x3, x4) ||
+            mmax(y1, y2) < mmin(y3, y4) ||
+            mmin(y1, y2) > mmax(y3, y4)
+        ) {
+            return;
+        }
+        var nx = (x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4),
+            ny = (x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4),
+            denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+
+        if (!denominator) {
+            return;
+        }
+        var px = nx / denominator,
+            py = ny / denominator,
+            px2 = +px.toFixed(2),
+            py2 = +py.toFixed(2);
+        if (
+            px2 < +mmin(x1, x2).toFixed(2) ||
+            px2 > +mmax(x1, x2).toFixed(2) ||
+            px2 < +mmin(x3, x4).toFixed(2) ||
+            px2 > +mmax(x3, x4).toFixed(2) ||
+            py2 < +mmin(y1, y2).toFixed(2) ||
+            py2 > +mmax(y1, y2).toFixed(2) ||
+            py2 < +mmin(y3, y4).toFixed(2) ||
+            py2 > +mmax(y3, y4).toFixed(2)
+        ) {
+            return;
+        }
+        return {x: px, y: py};
+    }
+    function inter(bez1, bez2) {
+        return interHelper(bez1, bez2);
+    }
+    function interCount(bez1, bez2) {
+        return interHelper(bez1, bez2, 1);
+    }
+    function interHelper(bez1, bez2, justCount) {
+        var bbox1 = R.bezierBBox(bez1),
+            bbox2 = R.bezierBBox(bez2);
+        if (!R.isBBoxIntersect(bbox1, bbox2)) {
+            return justCount ? 0 : [];
+        }
+        var l1 = bezlen.apply(0, bez1),
+            l2 = bezlen.apply(0, bez2),
+            n1 = mmax(~~(l1 / 5), 1),
+            n2 = mmax(~~(l2 / 5), 1),
+            dots1 = [],
+            dots2 = [],
+            xy = {},
+            res = justCount ? 0 : [];
+        for (var i = 0; i < n1 + 1; i++) {
+            var p = R.findDotsAtSegment.apply(R, bez1.concat(i / n1));
+            dots1.push({x: p.x, y: p.y, t: i / n1});
+        }
+        for (i = 0; i < n2 + 1; i++) {
+            p = R.findDotsAtSegment.apply(R, bez2.concat(i / n2));
+            dots2.push({x: p.x, y: p.y, t: i / n2});
+        }
+        for (i = 0; i < n1; i++) {
+            for (var j = 0; j < n2; j++) {
+                var di = dots1[i],
+                    di1 = dots1[i + 1],
+                    dj = dots2[j],
+                    dj1 = dots2[j + 1],
+                    ci = abs(di1.x - di.x) < .001 ? "y" : "x",
+                    cj = abs(dj1.x - dj.x) < .001 ? "y" : "x",
+                    is = intersect(di.x, di.y, di1.x, di1.y, dj.x, dj.y, dj1.x, dj1.y);
+                if (is) {
+                    if (xy[is.x.toFixed(4)] == is.y.toFixed(4)) {
+                        continue;
+                    }
+                    xy[is.x.toFixed(4)] = is.y.toFixed(4);
+                    var t1 = di.t + abs((is[ci] - di[ci]) / (di1[ci] - di[ci])) * (di1.t - di.t),
+                        t2 = dj.t + abs((is[cj] - dj[cj]) / (dj1[cj] - dj[cj])) * (dj1.t - dj.t);
+                    if (t1 >= 0 && t1 <= 1.001 && t2 >= 0 && t2 <= 1.001) {
+                        if (justCount) {
+                            res++;
+                        } else {
+                            res.push({
+                                x: is.x,
+                                y: is.y,
+                                t1: mmin(t1, 1),
+                                t2: mmin(t2, 1)
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        return res;
+    }
+    /*\
+     * Raphael.pathIntersection
+     [ method ]
+     **
+     * Utility method
+     **
+     * Finds intersections of two paths
+     > Parameters
+     - path1 (string) path string
+     - path2 (string) path string
+     = (array) dots of intersection
+     o [
+     o     {
+     o         x: (number) x coordinate of the point
+     o         y: (number) y coordinate of the point
+     o         t1: (number) t value for segment of path1
+     o         t2: (number) t value for segment of path2
+     o         segment1: (number) order number for segment of path1
+     o         segment2: (number) order number for segment of path2
+     o         bez1: (array) eight coordinates representing beziér curve for the segment of path1
+     o         bez2: (array) eight coordinates representing beziér curve for the segment of path2
+     o     }
+     o ]
+    \*/
+    R.pathIntersection = function (path1, path2) {
+        return interPathHelper(path1, path2);
+    };
+    R.pathIntersectionNumber = function (path1, path2) {
+        return interPathHelper(path1, path2, 1);
+    };
+    function interPathHelper(path1, path2, justCount) {
+        path1 = R._path2curve(path1);
+        path2 = R._path2curve(path2);
+        var x1, y1, x2, y2, x1m, y1m, x2m, y2m, bez1, bez2,
+            res = justCount ? 0 : [];
+        for (var i = 0, ii = path1.length; i < ii; i++) {
+            var pi = path1[i];
+            if (pi[0] == "M") {
+                x1 = x1m = pi[1];
+                y1 = y1m = pi[2];
+            } else {
+                if (pi[0] == "C") {
+                    bez1 = [x1, y1].concat(pi.slice(1));
+                    x1 = bez1[6];
+                    y1 = bez1[7];
+                } else {
+                    bez1 = [x1, y1, x1, y1, x1m, y1m, x1m, y1m];
+                    x1 = x1m;
+                    y1 = y1m;
+                }
+                for (var j = 0, jj = path2.length; j < jj; j++) {
+                    var pj = path2[j];
+                    if (pj[0] == "M") {
+                        x2 = x2m = pj[1];
+                        y2 = y2m = pj[2];
+                    } else {
+                        if (pj[0] == "C") {
+                            bez2 = [x2, y2].concat(pj.slice(1));
+                            x2 = bez2[6];
+                            y2 = bez2[7];
+                        } else {
+                            bez2 = [x2, y2, x2, y2, x2m, y2m, x2m, y2m];
+                            x2 = x2m;
+                            y2 = y2m;
+                        }
+                        var intr = interHelper(bez1, bez2, justCount);
+                        if (justCount) {
+                            res += intr;
+                        } else {
+                            for (var k = 0, kk = intr.length; k < kk; k++) {
+                                intr[k].segment1 = i;
+                                intr[k].segment2 = j;
+                                intr[k].bez1 = bez1;
+                                intr[k].bez2 = bez2;
+                            }
+                            res = res.concat(intr);
+                        }
+                    }
+                }
+            }
+        }
+        return res;
+    }
+    /*\
+     * Raphael.isPointInsidePath
+     [ method ]
+     **
+     * Utility method
+     **
+     * Returns `true` if given point is inside a given closed path.
+     > Parameters
+     - path (string) path string
+     - x (number) x of the point
+     - y (number) y of the point
+     = (boolean) true, if point is inside the path
+    \*/
+    R.isPointInsidePath = function (path, x, y) {
+        var bbox = R.pathBBox(path);
+        return R.isPointInsideBBox(bbox, x, y) &&
+               interPathHelper(path, [["M", x, y], ["H", bbox.x2 + 10]], 1) % 2 == 1;
+    };
+    R._removedFactory = function (methodname) {
+        return function () {
+            eve("raphael.log", null, "Rapha\xebl: you are calling to method \u201c" + methodname + "\u201d of removed object", methodname);
+        };
+    };
+    /*\
+     * Raphael.pathBBox
+     [ method ]
+     **
+     * Utility method
+     **
+     * Return bounding box of a given path
+     > Parameters
+     - path (string) path string
+     = (object) bounding box
+     o {
+     o     x: (number) x coordinate of the left top point of the box
+     o     y: (number) y coordinate of the left top point of the box
+     o     x2: (number) x coordinate of the right bottom point of the box
+     o     y2: (number) y coordinate of the right bottom point of the box
+     o     width: (number) width of the box
+     o     height: (number) height of the box
+     o     cx: (number) x coordinate of the center of the box
+     o     cy: (number) y coordinate of the center of the box
+     o }
+    \*/
+    var pathDimensions = R.pathBBox = function (path) {
+        var pth = paths(path);
+        if (pth.bbox) {
+            return clone(pth.bbox);
+        }
+        if (!path) {
+            return {x: 0, y: 0, width: 0, height: 0, x2: 0, y2: 0};
+        }
+        path = path2curve(path);
+        var x = 0,
+            y = 0,
+            X = [],
+            Y = [],
+            p;
+        for (var i = 0, ii = path.length; i < ii; i++) {
+            p = path[i];
+            if (p[0] == "M") {
+                x = p[1];
+                y = p[2];
+                X.push(x);
+                Y.push(y);
+            } else {
+                var dim = curveDim(x, y, p[1], p[2], p[3], p[4], p[5], p[6]);
+                X = X[concat](dim.min.x, dim.max.x);
+                Y = Y[concat](dim.min.y, dim.max.y);
+                x = p[5];
+                y = p[6];
+            }
+        }
+        var xmin = mmin[apply](0, X),
+            ymin = mmin[apply](0, Y),
+            xmax = mmax[apply](0, X),
+            ymax = mmax[apply](0, Y),
+            width = xmax - xmin,
+            height = ymax - ymin,
+                bb = {
+                x: xmin,
+                y: ymin,
+                x2: xmax,
+                y2: ymax,
+                width: width,
+                height: height,
+                cx: xmin + width / 2,
+                cy: ymin + height / 2
+            };
+        pth.bbox = clone(bb);
+        return bb;
+    },
+        pathClone = function (pathArray) {
+            var res = clone(pathArray);
+            res.toString = R._path2string;
+            return res;
+        },
+        pathToRelative = R._pathToRelative = function (pathArray) {
+            var pth = paths(pathArray);
+            if (pth.rel) {
+                return pathClone(pth.rel);
+            }
+            if (!R.is(pathArray, array) || !R.is(pathArray && pathArray[0], array)) { // rough assumption
+                pathArray = R.parsePathString(pathArray);
+            }
+            var res = [],
+                x = 0,
+                y = 0,
+                mx = 0,
+                my = 0,
+                start = 0;
+            if (pathArray[0][0] == "M") {
+                x = pathArray[0][1];
+                y = pathArray[0][2];
+                mx = x;
+                my = y;
+                start++;
+                res.push(["M", x, y]);
+            }
+            for (var i = start, ii = pathArray.length; i < ii; i++) {
+                var r = res[i] = [],
+                    pa = pathArray[i];
+                if (pa[0] != lowerCase.call(pa[0])) {
+                    r[0] = lowerCase.call(pa[0]);
+                    switch (r[0]) {
+                        case "a":
+                            r[1] = pa[1];
+                            r[2] = pa[2];
+                            r[3] = pa[3];
+                            r[4] = pa[4];
+                            r[5] = pa[5];
+                            r[6] = +(pa[6] - x).toFixed(3);
+                            r[7] = +(pa[7] - y).toFixed(3);
+                            break;
+                        case "v":
+                            r[1] = +(pa[1] - y).toFixed(3);
+                            break;
+                        case "m":
+                            mx = pa[1];
+                            my = pa[2];
+                        default:
+                            for (var j = 1, jj = pa.length; j < jj; j++) {
+                                r[j] = +(pa[j] - ((j % 2) ? x : y)).toFixed(3);
+                            }
+                    }
+                } else {
+                    r = res[i] = [];
+                    if (pa[0] == "m") {
+                        mx = pa[1] + x;
+                        my = pa[2] + y;
+                    }
+                    for (var k = 0, kk = pa.length; k < kk; k++) {
+                        res[i][k] = pa[k];
+                    }
+                }
+                var len = res[i].length;
+                switch (res[i][0]) {
+                    case "z":
+                        x = mx;
+                        y = my;
+                        break;
+                    case "h":
+                        x += +res[i][len - 1];
+                        break;
+                    case "v":
+                        y += +res[i][len - 1];
+                        break;
+                    default:
+                        x += +res[i][len - 2];
+                        y += +res[i][len - 1];
+                }
+            }
+            res.toString = R._path2string;
+            pth.rel = pathClone(res);
+            return res;
+        },
+        pathToAbsolute = R._pathToAbsolute = function (pathArray) {
+            var pth = paths(pathArray);
+            if (pth.abs) {
+                return pathClone(pth.abs);
+            }
+            if (!R.is(pathArray, array) || !R.is(pathArray && pathArray[0], array)) { // rough assumption
+                pathArray = R.parsePathString(pathArray);
+            }
+            if (!pathArray || !pathArray.length) {
+                return [["M", 0, 0]];
+            }
+            var res = [],
+                x = 0,
+                y = 0,
+                mx = 0,
+                my = 0,
+                start = 0;
+            if (pathArray[0][0] == "M") {
+                x = +pathArray[0][1];
+                y = +pathArray[0][2];
+                mx = x;
+                my = y;
+                start++;
+                res[0] = ["M", x, y];
+            }
+            var crz = pathArray.length == 3 && pathArray[0][0] == "M" && pathArray[1][0].toUpperCase() == "R" && pathArray[2][0].toUpperCase() == "Z";
+            for (var r, pa, i = start, ii = pathArray.length; i < ii; i++) {
+                res.push(r = []);
+                pa = pathArray[i];
+                if (pa[0] != upperCase.call(pa[0])) {
+                    r[0] = upperCase.call(pa[0]);
+                    switch (r[0]) {
+                        case "A":
+                            r[1] = pa[1];
+                            r[2] = pa[2];
+                            r[3] = pa[3];
+                            r[4] = pa[4];
+                            r[5] = pa[5];
+                            r[6] = +(pa[6] + x);
+                            r[7] = +(pa[7] + y);
+                            break;
+                        case "V":
+                            r[1] = +pa[1] + y;
+                            break;
+                        case "H":
+                            r[1] = +pa[1] + x;
+                            break;
+                        case "R":
+                            var dots = [x, y][concat](pa.slice(1));
+                            for (var j = 2, jj = dots.length; j < jj; j++) {
+                                dots[j] = +dots[j] + x;
+                                dots[++j] = +dots[j] + y;
+                            }
+                            res.pop();
+                            res = res[concat](catmullRom2bezier(dots, crz));
+                            break;
+                        case "M":
+                            mx = +pa[1] + x;
+                            my = +pa[2] + y;
+                        default:
+                            for (j = 1, jj = pa.length; j < jj; j++) {
+                                r[j] = +pa[j] + ((j % 2) ? x : y);
+                            }
+                    }
+                } else if (pa[0] == "R") {
+                    dots = [x, y][concat](pa.slice(1));
+                    res.pop();
+                    res = res[concat](catmullRom2bezier(dots, crz));
+                    r = ["R"][concat](pa.slice(-2));
+                } else {
+                    for (var k = 0, kk = pa.length; k < kk; k++) {
+                        r[k] = pa[k];
+                    }
+                }
+                switch (r[0]) {
+                    case "Z":
+                        x = mx;
+                        y = my;
+                        break;
+                    case "H":
+                        x = r[1];
+                        break;
+                    case "V":
+                        y = r[1];
+                        break;
+                    case "M":
+                        mx = r[r.length - 2];
+                        my = r[r.length - 1];
+                    default:
+                        x = r[r.length - 2];
+                        y = r[r.length - 1];
+                }
+            }
+            res.toString = R._path2string;
+            pth.abs = pathClone(res);
+            return res;
+        },
+        l2c = function (x1, y1, x2, y2) {
+            return [x1, y1, x2, y2, x2, y2];
+        },
+        q2c = function (x1, y1, ax, ay, x2, y2) {
+            var _13 = 1 / 3,
+                _23 = 2 / 3;
+            return [
+                    _13 * x1 + _23 * ax,
+                    _13 * y1 + _23 * ay,
+                    _13 * x2 + _23 * ax,
+                    _13 * y2 + _23 * ay,
+                    x2,
+                    y2
+                ];
+        },
+        a2c = function (x1, y1, rx, ry, angle, large_arc_flag, sweep_flag, x2, y2, recursive) {
+            // for more information of where this math came from visit:
+            // http://www.w3.org/TR/SVG11/implnote.html#ArcImplementationNotes
+            var _120 = PI * 120 / 180,
+                rad = PI / 180 * (+angle || 0),
+                res = [],
+                xy,
+                rotate = cacher(function (x, y, rad) {
+                    var X = x * math.cos(rad) - y * math.sin(rad),
+                        Y = x * math.sin(rad) + y * math.cos(rad);
+                    return {x: X, y: Y};
+                });
+            if (!recursive) {
+                xy = rotate(x1, y1, -rad);
+                x1 = xy.x;
+                y1 = xy.y;
+                xy = rotate(x2, y2, -rad);
+                x2 = xy.x;
+                y2 = xy.y;
+                var cos = math.cos(PI / 180 * angle),
+                    sin = math.sin(PI / 180 * angle),
+                    x = (x1 - x2) / 2,
+                    y = (y1 - y2) / 2;
+                var h = (x * x) / (rx * rx) + (y * y) / (ry * ry);
+                if (h > 1) {
+                    h = math.sqrt(h);
+                    rx = h * rx;
+                    ry = h * ry;
+                }
+                var rx2 = rx * rx,
+                    ry2 = ry * ry,
+                    k = (large_arc_flag == sweep_flag ? -1 : 1) *
+                        math.sqrt(abs((rx2 * ry2 - rx2 * y * y - ry2 * x * x) / (rx2 * y * y + ry2 * x * x))),
+                    cx = k * rx * y / ry + (x1 + x2) / 2,
+                    cy = k * -ry * x / rx + (y1 + y2) / 2,
+                    f1 = math.asin(((y1 - cy) / ry).toFixed(9)),
+                    f2 = math.asin(((y2 - cy) / ry).toFixed(9));
+
+                f1 = x1 < cx ? PI - f1 : f1;
+                f2 = x2 < cx ? PI - f2 : f2;
+                f1 < 0 && (f1 = PI * 2 + f1);
+                f2 < 0 && (f2 = PI * 2 + f2);
+                if (sweep_flag && f1 > f2) {
+                    f1 = f1 - PI * 2;
+                }
+                if (!sweep_flag && f2 > f1) {
+                    f2 = f2 - PI * 2;
+                }
+            } else {
+                f1 = recursive[0];
+                f2 = recursive[1];
+                cx = recursive[2];
+                cy = recursive[3];
+            }
+            var df = f2 - f1;
+            if (abs(df) > _120) {
+                var f2old = f2,
+                    x2old = x2,
+                    y2old = y2;
+                f2 = f1 + _120 * (sweep_flag && f2 > f1 ? 1 : -1);
+                x2 = cx + rx * math.cos(f2);
+                y2 = cy + ry * math.sin(f2);
+                res = a2c(x2, y2, rx, ry, angle, 0, sweep_flag, x2old, y2old, [f2, f2old, cx, cy]);
+            }
+            df = f2 - f1;
+            var c1 = math.cos(f1),
+                s1 = math.sin(f1),
+                c2 = math.cos(f2),
+                s2 = math.sin(f2),
+                t = math.tan(df / 4),
+                hx = 4 / 3 * rx * t,
+                hy = 4 / 3 * ry * t,
+                m1 = [x1, y1],
+                m2 = [x1 + hx * s1, y1 - hy * c1],
+                m3 = [x2 + hx * s2, y2 - hy * c2],
+                m4 = [x2, y2];
+            m2[0] = 2 * m1[0] - m2[0];
+            m2[1] = 2 * m1[1] - m2[1];
+            if (recursive) {
+                return [m2, m3, m4][concat](res);
+            } else {
+                res = [m2, m3, m4][concat](res).join()[split](",");
+                var newres = [];
+                for (var i = 0, ii = res.length; i < ii; i++) {
+                    newres[i] = i % 2 ? rotate(res[i - 1], res[i], rad).y : rotate(res[i], res[i + 1], rad).x;
+                }
+                return newres;
+            }
+        },
+        findDotAtSegment = function (p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y, t) {
+            var t1 = 1 - t;
+            return {
+                x: pow(t1, 3) * p1x + pow(t1, 2) * 3 * t * c1x + t1 * 3 * t * t * c2x + pow(t, 3) * p2x,
+                y: pow(t1, 3) * p1y + pow(t1, 2) * 3 * t * c1y + t1 * 3 * t * t * c2y + pow(t, 3) * p2y
+            };
+        },
+        curveDim = cacher(function (p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y) {
+            var a = (c2x - 2 * c1x + p1x) - (p2x - 2 * c2x + c1x),
+                b = 2 * (c1x - p1x) - 2 * (c2x - c1x),
+                c = p1x - c1x,
+                t1 = (-b + math.sqrt(b * b - 4 * a * c)) / 2 / a,
+                t2 = (-b - math.sqrt(b * b - 4 * a * c)) / 2 / a,
+                y = [p1y, p2y],
+                x = [p1x, p2x],
+                dot;
+            abs(t1) > "1e12" && (t1 = .5);
+            abs(t2) > "1e12" && (t2 = .5);
+            if (t1 > 0 && t1 < 1) {
+                dot = findDotAtSegment(p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y, t1);
+                x.push(dot.x);
+                y.push(dot.y);
+            }
+            if (t2 > 0 && t2 < 1) {
+                dot = findDotAtSegment(p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y, t2);
+                x.push(dot.x);
+                y.push(dot.y);
+            }
+            a = (c2y - 2 * c1y + p1y) - (p2y - 2 * c2y + c1y);
+            b = 2 * (c1y - p1y) - 2 * (c2y - c1y);
+            c = p1y - c1y;
+            t1 = (-b + math.sqrt(b * b - 4 * a * c)) / 2 / a;
+            t2 = (-b - math.sqrt(b * b - 4 * a * c)) / 2 / a;
+            abs(t1) > "1e12" && (t1 = .5);
+            abs(t2) > "1e12" && (t2 = .5);
+            if (t1 > 0 && t1 < 1) {
+                dot = findDotAtSegment(p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y, t1);
+                x.push(dot.x);
+                y.push(dot.y);
+            }
+            if (t2 > 0 && t2 < 1) {
+                dot = findDotAtSegment(p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y, t2);
+                x.push(dot.x);
+                y.push(dot.y);
+            }
+            return {
+                min: {x: mmin[apply](0, x), y: mmin[apply](0, y)},
+                max: {x: mmax[apply](0, x), y: mmax[apply](0, y)}
+            };
+        }),
+        path2curve = R._path2curve = cacher(function (path, path2) {
+            var pth = !path2 && paths(path);
+            if (!path2 && pth.curve) {
+                return pathClone(pth.curve);
+            }
+            var p = pathToAbsolute(path),
+                p2 = path2 && pathToAbsolute(path2),
+                attrs = {x: 0, y: 0, bx: 0, by: 0, X: 0, Y: 0, qx: null, qy: null},
+                attrs2 = {x: 0, y: 0, bx: 0, by: 0, X: 0, Y: 0, qx: null, qy: null},
+                processPath = function (path, d, pcom) {
+                    var nx, ny, tq = {T:1, Q:1};
+                    if (!path) {
+                        return ["C", d.x, d.y, d.x, d.y, d.x, d.y];
+                    }
+                    !(path[0] in tq) && (d.qx = d.qy = null);
+                    switch (path[0]) {
+                        case "M":
+                            d.X = path[1];
+                            d.Y = path[2];
+                            break;
+                        case "A":
+                            path = ["C"][concat](a2c[apply](0, [d.x, d.y][concat](path.slice(1))));
+                            break;
+                        case "S":
+                            if (pcom == "C" || pcom == "S") { // In "S" case we have to take into account, if the previous command is C/S.
+                                nx = d.x * 2 - d.bx;          // And reflect the previous
+                                ny = d.y * 2 - d.by;          // command's control point relative to the current point.
+                            }
+                            else {                            // or some else or nothing
+                                nx = d.x;
+                                ny = d.y;
+                            }
+                            path = ["C", nx, ny][concat](path.slice(1));
+                            break;
+                        case "T":
+                            if (pcom == "Q" || pcom == "T") { // In "T" case we have to take into account, if the previous command is Q/T.
+                                d.qx = d.x * 2 - d.qx;        // And make a reflection similar
+                                d.qy = d.y * 2 - d.qy;        // to case "S".
+                            }
+                            else {                            // or something else or nothing
+                                d.qx = d.x;
+                                d.qy = d.y;
+                            }
+                            path = ["C"][concat](q2c(d.x, d.y, d.qx, d.qy, path[1], path[2]));
+                            break;
+                        case "Q":
+                            d.qx = path[1];
+                            d.qy = path[2];
+                            path = ["C"][concat](q2c(d.x, d.y, path[1], path[2], path[3], path[4]));
+                            break;
+                        case "L":
+                            path = ["C"][concat](l2c(d.x, d.y, path[1], path[2]));
+                            break;
+                        case "H":
+                            path = ["C"][concat](l2c(d.x, d.y, path[1], d.y));
+                            break;
+                        case "V":
+                            path = ["C"][concat](l2c(d.x, d.y, d.x, path[1]));
+                            break;
+                        case "Z":
+                            path = ["C"][concat](l2c(d.x, d.y, d.X, d.Y));
+                            break;
+                    }
+                    return path;
+                },
+                fixArc = function (pp, i) {
+                    if (pp[i].length > 7) {
+                        pp[i].shift();
+                        var pi = pp[i];
+                        while (pi.length) {
+                            pcoms1[i]="A"; // if created multiple C:s, their original seg is saved
+                            p2 && (pcoms2[i]="A"); // the same as above
+                            pp.splice(i++, 0, ["C"][concat](pi.splice(0, 6)));
+                        }
+                        pp.splice(i, 1);
+                        ii = mmax(p.length, p2 && p2.length || 0);
+                    }
+                },
+                fixM = function (path1, path2, a1, a2, i) {
+                    if (path1 && path2 && path1[i][0] == "M" && path2[i][0] != "M") {
+                        path2.splice(i, 0, ["M", a2.x, a2.y]);
+                        a1.bx = 0;
+                        a1.by = 0;
+                        a1.x = path1[i][1];
+                        a1.y = path1[i][2];
+                        ii = mmax(p.length, p2 && p2.length || 0);
+                    }
+                },
+                pcoms1 = [], // path commands of original path p
+                pcoms2 = [], // path commands of original path p2
+                pfirst = "", // temporary holder for original path command
+                pcom = ""; // holder for previous path command of original path
+            for (var i = 0, ii = mmax(p.length, p2 && p2.length || 0); i < ii; i++) {
+                p[i] && (pfirst = p[i][0]); // save current path command
+
+                if (pfirst != "C") // C is not saved yet, because it may be result of conversion
+                {
+                    pcoms1[i] = pfirst; // Save current path command
+                    i && ( pcom = pcoms1[i-1]); // Get previous path command pcom
+                }
+                p[i] = processPath(p[i], attrs, pcom); // Previous path command is inputted to processPath
+
+                if (pcoms1[i] != "A" && pfirst == "C") pcoms1[i] = "C"; // A is the only command
+                // which may produce multiple C:s
+                // so we have to make sure that C is also C in original path
+
+                fixArc(p, i); // fixArc adds also the right amount of A:s to pcoms1
+
+                if (p2) { // the same procedures is done to p2
+                    p2[i] && (pfirst = p2[i][0]);
+                    if (pfirst != "C")
+                    {
+                        pcoms2[i] = pfirst;
+                        i && (pcom = pcoms2[i-1]);
+                    }
+                    p2[i] = processPath(p2[i], attrs2, pcom);
+
+                    if (pcoms2[i]!="A" && pfirst=="C") pcoms2[i]="C";
+
+                    fixArc(p2, i);
+                }
+                fixM(p, p2, attrs, attrs2, i);
+                fixM(p2, p, attrs2, attrs, i);
+                var seg = p[i],
+                    seg2 = p2 && p2[i],
+                    seglen = seg.length,
+                    seg2len = p2 && seg2.length;
+                attrs.x = seg[seglen - 2];
+                attrs.y = seg[seglen - 1];
+                attrs.bx = toFloat(seg[seglen - 4]) || attrs.x;
+                attrs.by = toFloat(seg[seglen - 3]) || attrs.y;
+                attrs2.bx = p2 && (toFloat(seg2[seg2len - 4]) || attrs2.x);
+                attrs2.by = p2 && (toFloat(seg2[seg2len - 3]) || attrs2.y);
+                attrs2.x = p2 && seg2[seg2len - 2];
+                attrs2.y = p2 && seg2[seg2len - 1];
+            }
+            if (!p2) {
+                pth.curve = pathClone(p);
+            }
+            return p2 ? [p, p2] : p;
+        }, null, pathClone),
+        parseDots = R._parseDots = cacher(function (gradient) {
+            var dots = [];
+            for (var i = 0, ii = gradient.length; i < ii; i++) {
+                var dot = {},
+                    par = gradient[i].match(/^([^:]*):?([\d\.]*)/);
+                dot.color = R.getRGB(par[1]);
+                if (dot.color.error) {
+                    return null;
+                }
+                dot.color = dot.color.hex;
+                par[2] && (dot.offset = par[2] + "%");
+                dots.push(dot);
+            }
+            for (i = 1, ii = dots.length - 1; i < ii; i++) {
+                if (!dots[i].offset) {
+                    var start = toFloat(dots[i - 1].offset || 0),
+                        end = 0;
+                    for (var j = i + 1; j < ii; j++) {
+                        if (dots[j].offset) {
+                            end = dots[j].offset;
+                            break;
+                        }
+                    }
+                    if (!end) {
+                        end = 100;
+                        j = ii;
+                    }
+                    end = toFloat(end);
+                    var d = (end - start) / (j - i + 1);
+                    for (; i < j; i++) {
+                        start += d;
+                        dots[i].offset = start + "%";
+                    }
+                }
+            }
+            return dots;
+        }),
+        tear = R._tear = function (el, paper) {
+            el == paper.top && (paper.top = el.prev);
+            el == paper.bottom && (paper.bottom = el.next);
+            el.next && (el.next.prev = el.prev);
+            el.prev && (el.prev.next = el.next);
+        },
+        tofront = R._tofront = function (el, paper) {
+            if (paper.top === el) {
+                return;
+            }
+            tear(el, paper);
+            el.next = null;
+            el.prev = paper.top;
+            paper.top.next = el;
+            paper.top = el;
+        },
+        toback = R._toback = function (el, paper) {
+            if (paper.bottom === el) {
+                return;
+            }
+            tear(el, paper);
+            el.next = paper.bottom;
+            el.prev = null;
+            paper.bottom.prev = el;
+            paper.bottom = el;
+        },
+        insertafter = R._insertafter = function (el, el2, paper) {
+            tear(el, paper);
+            el2 == paper.top && (paper.top = el);
+            el2.next && (el2.next.prev = el);
+            el.next = el2.next;
+            el.prev = el2;
+            el2.next = el;
+        },
+        insertbefore = R._insertbefore = function (el, el2, paper) {
+            tear(el, paper);
+            el2 == paper.bottom && (paper.bottom = el);
+            el2.prev && (el2.prev.next = el);
+            el.prev = el2.prev;
+            el2.prev = el;
+            el.next = el2;
+        },
+        /*\
+         * Raphael.toMatrix
+         [ method ]
+         **
+         * Utility method
+         **
+         * Returns matrix of transformations applied to a given path
+         > Parameters
+         - path (string) path string
+         - transform (string|array) transformation string
+         = (object) @Matrix
+        \*/
+        toMatrix = R.toMatrix = function (path, transform) {
+            var bb = pathDimensions(path),
+                el = {
+                    _: {
+                        transform: E
+                    },
+                    getBBox: function () {
+                        return bb;
+                    }
+                };
+            extractTransform(el, transform);
+            return el.matrix;
+        },
+        /*\
+         * Raphael.transformPath
+         [ method ]
+         **
+         * Utility method
+         **
+         * Returns path transformed by a given transformation
+         > Parameters
+         - path (string) path string
+         - transform (string|array) transformation string
+         = (string) path
+        \*/
+        transformPath = R.transformPath = function (path, transform) {
+            return mapPath(path, toMatrix(path, transform));
+        },
+        extractTransform = R._extractTransform = function (el, tstr) {
+            if (tstr == null) {
+                return el._.transform;
+            }
+            tstr = Str(tstr).replace(/\.{3}|\u2026/g, el._.transform || E);
+            var tdata = R.parseTransformString(tstr),
+                deg = 0,
+                dx = 0,
+                dy = 0,
+                sx = 1,
+                sy = 1,
+                _ = el._,
+                m = new Matrix;
+            _.transform = tdata || [];
+            if (tdata) {
+                for (var i = 0, ii = tdata.length; i < ii; i++) {
+                    var t = tdata[i],
+                        tlen = t.length,
+                        command = Str(t[0]).toLowerCase(),
+                        absolute = t[0] != command,
+                        inver = absolute ? m.invert() : 0,
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        bb;
+                    if (command == "t" && tlen == 3) {
+                        if (absolute) {
+                            x1 = inver.x(0, 0);
+                            y1 = inver.y(0, 0);
+                            x2 = inver.x(t[1], t[2]);
+                            y2 = inver.y(t[1], t[2]);
+                            m.translate(x2 - x1, y2 - y1);
+                        } else {
+                            m.translate(t[1], t[2]);
+                        }
+                    } else if (command == "r") {
+                        if (tlen == 2) {
+                            bb = bb || el.getBBox(1);
+                            m.rotate(t[1], bb.x + bb.width / 2, bb.y + bb.height / 2);
+                            deg += t[1];
+                        } else if (tlen == 4) {
+                            if (absolute) {
+                                x2 = inver.x(t[2], t[3]);
+                                y2 = inver.y(t[2], t[3]);
+                                m.rotate(t[1], x2, y2);
+                            } else {
+                                m.rotate(t[1], t[2], t[3]);
+                            }
+                            deg += t[1];
+                        }
+                    } else if (command == "s") {
+                        if (tlen == 2 || tlen == 3) {
+                            bb = bb || el.getBBox(1);
+                            m.scale(t[1], t[tlen - 1], bb.x + bb.width / 2, bb.y + bb.height / 2);
+                            sx *= t[1];
+                            sy *= t[tlen - 1];
+                        } else if (tlen == 5) {
+                            if (absolute) {
+                                x2 = inver.x(t[3], t[4]);
+                                y2 = inver.y(t[3], t[4]);
+                                m.scale(t[1], t[2], x2, y2);
+                            } else {
+                                m.scale(t[1], t[2], t[3], t[4]);
+                            }
+                            sx *= t[1];
+                            sy *= t[2];
+                        }
+                    } else if (command == "m" && tlen == 7) {
+                        m.add(t[1], t[2], t[3], t[4], t[5], t[6]);
+                    }
+                    _.dirtyT = 1;
+                    el.matrix = m;
+                }
+            }
+
+            /*\
+             * Element.matrix
+             [ property (object) ]
+             **
+             * Keeps @Matrix object, which represents element transformation
+            \*/
+            el.matrix = m;
+
+            _.sx = sx;
+            _.sy = sy;
+            _.deg = deg;
+            _.dx = dx = m.e;
+            _.dy = dy = m.f;
+
+            if (sx == 1 && sy == 1 && !deg && _.bbox) {
+                _.bbox.x += +dx;
+                _.bbox.y += +dy;
+            } else {
+                _.dirtyT = 1;
+            }
+        },
+        getEmpty = function (item) {
+            var l = item[0];
+            switch (l.toLowerCase()) {
+                case "t": return [l, 0, 0];
+                case "m": return [l, 1, 0, 0, 1, 0, 0];
+                case "r": if (item.length == 4) {
+                    return [l, 0, item[2], item[3]];
+                } else {
+                    return [l, 0];
+                }
+                case "s": if (item.length == 5) {
+                    return [l, 1, 1, item[3], item[4]];
+                } else if (item.length == 3) {
+                    return [l, 1, 1];
+                } else {
+                    return [l, 1];
+                }
+            }
+        },
+        equaliseTransform = R._equaliseTransform = function (t1, t2) {
+            t2 = Str(t2).replace(/\.{3}|\u2026/g, t1);
+            t1 = R.parseTransformString(t1) || [];
+            t2 = R.parseTransformString(t2) || [];
+            var maxlength = mmax(t1.length, t2.length),
+                from = [],
+                to = [],
+                i = 0, j, jj,
+                tt1, tt2;
+            for (; i < maxlength; i++) {
+                tt1 = t1[i] || getEmpty(t2[i]);
+                tt2 = t2[i] || getEmpty(tt1);
+                if ((tt1[0] != tt2[0]) ||
+                    (tt1[0].toLowerCase() == "r" && (tt1[2] != tt2[2] || tt1[3] != tt2[3])) ||
+                    (tt1[0].toLowerCase() == "s" && (tt1[3] != tt2[3] || tt1[4] != tt2[4]))
+                    ) {
+                    return;
+                }
+                from[i] = [];
+                to[i] = [];
+                for (j = 0, jj = mmax(tt1.length, tt2.length); j < jj; j++) {
+                    j in tt1 && (from[i][j] = tt1[j]);
+                    j in tt2 && (to[i][j] = tt2[j]);
+                }
+            }
+            return {
+                from: from,
+                to: to
+            };
+        };
+    R._getContainer = function (x, y, w, h) {
+        var container;
+        container = h == null && !R.is(x, "object") ? g.doc.getElementById(x) : x;
+        if (container == null) {
+            return;
+        }
+        if (container.tagName) {
+            if (y == null) {
+                return {
+                    container: container,
+                    width: container.style.pixelWidth || container.offsetWidth,
+                    height: container.style.pixelHeight || container.offsetHeight
+                };
+            } else {
+                return {
+                    container: container,
+                    width: y,
+                    height: w
+                };
+            }
+        }
+        return {
+            container: 1,
+            x: x,
+            y: y,
+            width: w,
+            height: h
+        };
+    };
+    /*\
+     * Raphael.pathToRelative
+     [ method ]
+     **
+     * Utility method
+     **
+     * Converts path to relative form
+     > Parameters
+     - pathString (string|array) path string or array of segments
+     = (array) array of segments.
+    \*/
+    R.pathToRelative = pathToRelative;
+    R._engine = {};
+    /*\
+     * Raphael.path2curve
+     [ method ]
+     **
+     * Utility method
+     **
+     * Converts path to a new path where all segments are cubic bezier curves.
+     > Parameters
+     - pathString (string|array) path string or array of segments
+     = (array) array of segments.
+    \*/
+    R.path2curve = path2curve;
+    /*\
+     * Raphael.matrix
+     [ method ]
+     **
+     * Utility method
+     **
+     * Returns matrix based on given parameters.
+     > Parameters
+     - a (number)
+     - b (number)
+     - c (number)
+     - d (number)
+     - e (number)
+     - f (number)
+     = (object) @Matrix
+    \*/
+    R.matrix = function (a, b, c, d, e, f) {
+        return new Matrix(a, b, c, d, e, f);
+    };
+    function Matrix(a, b, c, d, e, f) {
+        if (a != null) {
+            this.a = +a;
+            this.b = +b;
+            this.c = +c;
+            this.d = +d;
+            this.e = +e;
+            this.f = +f;
+        } else {
+            this.a = 1;
+            this.b = 0;
+            this.c = 0;
+            this.d = 1;
+            this.e = 0;
+            this.f = 0;
+        }
+    }
+    (function (matrixproto) {
+        /*\
+         * Matrix.add
+         [ method ]
+         **
+         * Adds given matrix to existing one.
+         > Parameters
+         - a (number)
+         - b (number)
+         - c (number)
+         - d (number)
+         - e (number)
+         - f (number)
+         or
+         - matrix (object) @Matrix
+        \*/
+        matrixproto.add = function (a, b, c, d, e, f) {
+            var out = [[], [], []],
+                m = [[this.a, this.c, this.e], [this.b, this.d, this.f], [0, 0, 1]],
+                matrix = [[a, c, e], [b, d, f], [0, 0, 1]],
+                x, y, z, res;
+
+            if (a && a instanceof Matrix) {
+                matrix = [[a.a, a.c, a.e], [a.b, a.d, a.f], [0, 0, 1]];
+            }
+
+            for (x = 0; x < 3; x++) {
+                for (y = 0; y < 3; y++) {
+                    res = 0;
+                    for (z = 0; z < 3; z++) {
+                        res += m[x][z] * matrix[z][y];
+                    }
+                    out[x][y] = res;
+                }
+            }
+            this.a = out[0][0];
+            this.b = out[1][0];
+            this.c = out[0][1];
+            this.d = out[1][1];
+            this.e = out[0][2];
+            this.f = out[1][2];
+        };
+        /*\
+         * Matrix.invert
+         [ method ]
+         **
+         * Returns inverted version of the matrix
+         = (object) @Matrix
+        \*/
+        matrixproto.invert = function () {
+            var me = this,
+                x = me.a * me.d - me.b * me.c;
+            return new Matrix(me.d / x, -me.b / x, -me.c / x, me.a / x, (me.c * me.f - me.d * me.e) / x, (me.b * me.e - me.a * me.f) / x);
+        };
+        /*\
+         * Matrix.clone
+         [ method ]
+         **
+         * Returns copy of the matrix
+         = (object) @Matrix
+        \*/
+        matrixproto.clone = function () {
+            return new Matrix(this.a, this.b, this.c, this.d, this.e, this.f);
+        };
+        /*\
+         * Matrix.translate
+         [ method ]
+         **
+         * Translate the matrix
+         > Parameters
+         - x (number)
+         - y (number)
+        \*/
+        matrixproto.translate = function (x, y) {
+            this.add(1, 0, 0, 1, x, y);
+        };
+        /*\
+         * Matrix.scale
+         [ method ]
+         **
+         * Scales the matrix
+         > Parameters
+         - x (number)
+         - y (number) #optional
+         - cx (number) #optional
+         - cy (number) #optional
+        \*/
+        matrixproto.scale = function (x, y, cx, cy) {
+            y == null && (y = x);
+            (cx || cy) && this.add(1, 0, 0, 1, cx, cy);
+            this.add(x, 0, 0, y, 0, 0);
+            (cx || cy) && this.add(1, 0, 0, 1, -cx, -cy);
+        };
+        /*\
+         * Matrix.rotate
+         [ method ]
+         **
+         * Rotates the matrix
+         > Parameters
+         - a (number)
+         - x (number)
+         - y (number)
+        \*/
+        matrixproto.rotate = function (a, x, y) {
+            a = R.rad(a);
+            x = x || 0;
+            y = y || 0;
+            var cos = +math.cos(a).toFixed(9),
+                sin = +math.sin(a).toFixed(9);
+            this.add(cos, sin, -sin, cos, x, y);
+            this.add(1, 0, 0, 1, -x, -y);
+        };
+        /*\
+         * Matrix.x
+         [ method ]
+         **
+         * Return x coordinate for given point after transformation described by the matrix. See also @Matrix.y
+         > Parameters
+         - x (number)
+         - y (number)
+         = (number) x
+        \*/
+        matrixproto.x = function (x, y) {
+            return x * this.a + y * this.c + this.e;
+        };
+        /*\
+         * Matrix.y
+         [ method ]
+         **
+         * Return y coordinate for given point after transformation described by the matrix. See also @Matrix.x
+         > Parameters
+         - x (number)
+         - y (number)
+         = (number) y
+        \*/
+        matrixproto.y = function (x, y) {
+            return x * this.b + y * this.d + this.f;
+        };
+        matrixproto.get = function (i) {
+            return +this[Str.fromCharCode(97 + i)].toFixed(4);
+        };
+        matrixproto.toString = function () {
+            return R.svg ?
+                "matrix(" + [this.get(0), this.get(1), this.get(2), this.get(3), this.get(4), this.get(5)].join() + ")" :
+                [this.get(0), this.get(2), this.get(1), this.get(3), 0, 0].join();
+        };
+        matrixproto.toFilter = function () {
+            return "progid:DXImageTransform.Microsoft.Matrix(M11=" + this.get(0) +
+                ", M12=" + this.get(2) + ", M21=" + this.get(1) + ", M22=" + this.get(3) +
+                ", Dx=" + this.get(4) + ", Dy=" + this.get(5) + ", sizingmethod='auto expand')";
+        };
+        matrixproto.offset = function () {
+            return [this.e.toFixed(4), this.f.toFixed(4)];
+        };
+        function norm(a) {
+            return a[0] * a[0] + a[1] * a[1];
+        }
+        function normalize(a) {
+            var mag = math.sqrt(norm(a));
+            a[0] && (a[0] /= mag);
+            a[1] && (a[1] /= mag);
+        }
+        /*\
+         * Matrix.split
+         [ method ]
+         **
+         * Splits matrix into primitive transformations
+         = (object) in format:
+         o dx (number) translation by x
+         o dy (number) translation by y
+         o scalex (number) scale by x
+         o scaley (number) scale by y
+         o shear (number) shear
+         o rotate (number) rotation in deg
+         o isSimple (boolean) could it be represented via simple transformations
+        \*/
+        matrixproto.split = function () {
+            var out = {};
+            // translation
+            out.dx = this.e;
+            out.dy = this.f;
+
+            // scale and shear
+            var row = [[this.a, this.c], [this.b, this.d]];
+            out.scalex = math.sqrt(norm(row[0]));
+            normalize(row[0]);
+
+            out.shear = row[0][0] * row[1][0] + row[0][1] * row[1][1];
+            row[1] = [row[1][0] - row[0][0] * out.shear, row[1][1] - row[0][1] * out.shear];
+
+            out.scaley = math.sqrt(norm(row[1]));
+            normalize(row[1]);
+            out.shear /= out.scaley;
+
+            // rotation
+            var sin = -row[0][1],
+                cos = row[1][1];
+            if (cos < 0) {
+                out.rotate = R.deg(math.acos(cos));
+                if (sin < 0) {
+                    out.rotate = 360 - out.rotate;
+                }
+            } else {
+                out.rotate = R.deg(math.asin(sin));
+            }
+
+            out.isSimple = !+out.shear.toFixed(9) && (out.scalex.toFixed(9) == out.scaley.toFixed(9) || !out.rotate);
+            out.isSuperSimple = !+out.shear.toFixed(9) && out.scalex.toFixed(9) == out.scaley.toFixed(9) && !out.rotate;
+            out.noRotation = !+out.shear.toFixed(9) && !out.rotate;
+            return out;
+        };
+        /*\
+         * Matrix.toTransformString
+         [ method ]
+         **
+         * Return transform string that represents given matrix
+         = (string) transform string
+        \*/
+        matrixproto.toTransformString = function (shorter) {
+            var s = shorter || this[split]();
+            if (s.isSimple) {
+                s.scalex = +s.scalex.toFixed(4);
+                s.scaley = +s.scaley.toFixed(4);
+                s.rotate = +s.rotate.toFixed(4);
+                return  (s.dx || s.dy ? "t" + [s.dx, s.dy] : E) +
+                        (s.scalex != 1 || s.scaley != 1 ? "s" + [s.scalex, s.scaley, 0, 0] : E) +
+                        (s.rotate ? "r" + [s.rotate, 0, 0] : E);
+            } else {
+                return "m" + [this.get(0), this.get(1), this.get(2), this.get(3), this.get(4), this.get(5)];
+            }
+        };
+    })(Matrix.prototype);
+
+    // WebKit rendering bug workaround method
+    var version = navigator.userAgent.match(/Version\/(.*?)\s/) || navigator.userAgent.match(/Chrome\/(\d+)/);
+    if ((navigator.vendor == "Apple Computer, Inc.") && (version && version[1] < 4 || navigator.platform.slice(0, 2) == "iP") ||
+        (navigator.vendor == "Google Inc." && version && version[1] < 8)) {
+        /*\
+         * Paper.safari
+         [ method ]
+         **
+         * There is an inconvenient rendering bug in Safari (WebKit):
+         * sometimes the rendering should be forced.
+         * This method should help with dealing with this bug.
+        \*/
+        paperproto.safari = function () {
+            var rect = this.rect(-99, -99, this.width + 99, this.height + 99).attr({stroke: "none"});
+            setTimeout(function () {rect.remove();});
+        };
+    } else {
+        paperproto.safari = fun;
+    }
+
+    var preventDefault = function () {
+        this.returnValue = false;
+    },
+    preventTouch = function () {
+        return this.originalEvent.preventDefault();
+    },
+    stopPropagation = function () {
+        this.cancelBubble = true;
+    },
+    stopTouch = function () {
+        return this.originalEvent.stopPropagation();
+    },
+    getEventPosition = function (e) {
+        var scrollY = g.doc.documentElement.scrollTop || g.doc.body.scrollTop,
+            scrollX = g.doc.documentElement.scrollLeft || g.doc.body.scrollLeft;
+
+        return {
+            x: e.clientX + scrollX,
+            y: e.clientY + scrollY
+        };
+    },
+    addEvent = (function () {
+        if (g.doc.addEventListener) {
+            return function (obj, type, fn, element) {
+                var f = function (e) {
+                    var pos = getEventPosition(e);
+                    return fn.call(element, e, pos.x, pos.y);
+                };
+                obj.addEventListener(type, f, false);
+
+                if (supportsTouch && touchMap[type]) {
+                    var _f = function (e) {
+                        var pos = getEventPosition(e),
+                            olde = e;
+
+                        for (var i = 0, ii = e.targetTouches && e.targetTouches.length; i < ii; i++) {
+                            if (e.targetTouches[i].target == obj) {
+                                e = e.targetTouches[i];
+                                e.originalEvent = olde;
+                                e.preventDefault = preventTouch;
+                                e.stopPropagation = stopTouch;
+                                break;
+                            }
+                        }
+
+                        return fn.call(element, e, pos.x, pos.y);
+                    };
+                    obj.addEventListener(touchMap[type], _f, false);
+                }
+
+                return function () {
+                    obj.removeEventListener(type, f, false);
+
+                    if (supportsTouch && touchMap[type])
+                        obj.removeEventListener(touchMap[type], _f, false);
+
+                    return true;
+                };
+            };
+        } else if (g.doc.attachEvent) {
+            return function (obj, type, fn, element) {
+                var f = function (e) {
+                    e = e || g.win.event;
+                    var scrollY = g.doc.documentElement.scrollTop || g.doc.body.scrollTop,
+                        scrollX = g.doc.documentElement.scrollLeft || g.doc.body.scrollLeft,
+                        x = e.clientX + scrollX,
+                        y = e.clientY + scrollY;
+                    e.preventDefault = e.preventDefault || preventDefault;
+                    e.stopPropagation = e.stopPropagation || stopPropagation;
+                    return fn.call(element, e, x, y);
+                };
+                obj.attachEvent("on" + type, f);
+                var detacher = function () {
+                    obj.detachEvent("on" + type, f);
+                    return true;
+                };
+                return detacher;
+            };
+        }
+    })(),
+    drag = [],
+    dragMove = function (e) {
+        var x = e.clientX,
+            y = e.clientY,
+            scrollY = g.doc.documentElement.scrollTop || g.doc.body.scrollTop,
+            scrollX = g.doc.documentElement.scrollLeft || g.doc.body.scrollLeft,
+            dragi,
+            j = drag.length;
+        while (j--) {
+            dragi = drag[j];
+            if (supportsTouch && e.touches) {
+                var i = e.touches.length,
+                    touch;
+                while (i--) {
+                    touch = e.touches[i];
+                    if (touch.identifier == dragi.el._drag.id) {
+                        x = touch.clientX;
+                        y = touch.clientY;
+                        (e.originalEvent ? e.originalEvent : e).preventDefault();
+                        break;
+                    }
+                }
+            } else {
+                e.preventDefault();
+            }
+            var node = dragi.el.node,
+                o,
+                next = node.nextSibling,
+                parent = node.parentNode,
+                display = node.style.display;
+            g.win.opera && parent.removeChild(node);
+            node.style.display = "none";
+            o = dragi.el.paper.getElementByPoint(x, y);
+            node.style.display = display;
+            g.win.opera && (next ? parent.insertBefore(node, next) : parent.appendChild(node));
+            o && eve("raphael.drag.over." + dragi.el.id, dragi.el, o);
+            x += scrollX;
+            y += scrollY;
+            eve("raphael.drag.move." + dragi.el.id, dragi.move_scope || dragi.el, x - dragi.el._drag.x, y - dragi.el._drag.y, x, y, e);
+        }
+    },
+    dragUp = function (e) {
+        R.unmousemove(dragMove).unmouseup(dragUp);
+        var i = drag.length,
+            dragi;
+        while (i--) {
+            dragi = drag[i];
+            dragi.el._drag = {};
+            eve("raphael.drag.end." + dragi.el.id, dragi.end_scope || dragi.start_scope || dragi.move_scope || dragi.el, e);
+        }
+        drag = [];
+    },
+    /*\
+     * Raphael.el
+     [ property (object) ]
+     **
+     * You can add your own method to elements. This is usefull when you want to hack default functionality or
+     * want to wrap some common transformation or attributes in one method. In difference to canvas methods,
+     * you can redefine element method at any time. Expending element methods wouldn’t affect set.
+     > Usage
+     | Raphael.el.red = function () {
+     |     this.attr({fill: "#f00"});
+     | };
+     | // then use it
+     | paper.circle(100, 100, 20).red();
+    \*/
+    elproto = R.el = {};
+    /*\
+     * Element.click
+     [ method ]
+     **
+     * Adds event handler for click for the element.
+     > Parameters
+     - handler (function) handler for the event
+     = (object) @Element
+    \*/
+    /*\
+     * Element.unclick
+     [ method ]
+     **
+     * Removes event handler for click for the element.
+     > Parameters
+     - handler (function) #optional handler for the event
+     = (object) @Element
+    \*/
+
+    /*\
+     * Element.dblclick
+     [ method ]
+     **
+     * Adds event handler for double click for the element.
+     > Parameters
+     - handler (function) handler for the event
+     = (object) @Element
+    \*/
+    /*\
+     * Element.undblclick
+     [ method ]
+     **
+     * Removes event handler for double click for the element.
+     > Parameters
+     - handler (function) #optional handler for the event
+     = (object) @Element
+    \*/
+
+    /*\
+     * Element.mousedown
+     [ method ]
+     **
+     * Adds event handler for mousedown for the element.
+     > Parameters
+     - handler (function) handler for the event
+     = (object) @Element
+    \*/
+    /*\
+     * Element.unmousedown
+     [ method ]
+     **
+     * Removes event handler for mousedown for the element.
+     > Parameters
+     - handler (function) #optional handler for the event
+     = (object) @Element
+    \*/
+
+    /*\
+     * Element.mousemove
+     [ method ]
+     **
+     * Adds event handler for mousemove for the element.
+     > Parameters
+     - handler (function) handler for the event
+     = (object) @Element
+    \*/
+    /*\
+     * Element.unmousemove
+     [ method ]
+     **
+     * Removes event handler for mousemove for the element.
+     > Parameters
+     - handler (function) #optional handler for the event
+     = (object) @Element
+    \*/
+
+    /*\
+     * Element.mouseout
+     [ method ]
+     **
+     * Adds event handler for mouseout for the element.
+     > Parameters
+     - handler (function) handler for the event
+     = (object) @Element
+    \*/
+    /*\
+     * Element.unmouseout
+     [ method ]
+     **
+     * Removes event handler for mouseout for the element.
+     > Parameters
+     - handler (function) #optional handler for the event
+     = (object) @Element
+    \*/
+
+    /*\
+     * Element.mouseover
+     [ method ]
+     **
+     * Adds event handler for mouseover for the element.
+     > Parameters
+     - handler (function) handler for the event
+     = (object) @Element
+    \*/
+    /*\
+     * Element.unmouseover
+     [ method ]
+     **
+     * Removes event handler for mouseover for the element.
+     > Parameters
+     - handler (function) #optional handler for the event
+     = (object) @Element
+    \*/
+
+    /*\
+     * Element.mouseup
+     [ method ]
+     **
+     * Adds event handler for mouseup for the element.
+     > Parameters
+     - handler (function) handler for the event
+     = (object) @Element
+    \*/
+    /*\
+     * Element.unmouseup
+     [ method ]
+     **
+     * Removes event handler for mouseup for the element.
+     > Parameters
+     - handler (function) #optional handler for the event
+     = (object) @Element
+    \*/
+
+    /*\
+     * Element.touchstart
+     [ method ]
+     **
+     * Adds event handler for touchstart for the element.
+     > Parameters
+     - handler (function) handler for the event
+     = (object) @Element
+    \*/
+    /*\
+     * Element.untouchstart
+     [ method ]
+     **
+     * Removes event handler for touchstart for the element.
+     > Parameters
+     - handler (function) #optional handler for the event
+     = (object) @Element
+    \*/
+
+    /*\
+     * Element.touchmove
+     [ method ]
+     **
+     * Adds event handler for touchmove for the element.
+     > Parameters
+     - handler (function) handler for the event
+     = (object) @Element
+    \*/
+    /*\
+     * Element.untouchmove
+     [ method ]
+     **
+     * Removes event handler for touchmove for the element.
+     > Parameters
+     - handler (function) #optional handler for the event
+     = (object) @Element
+    \*/
+
+    /*\
+     * Element.touchend
+     [ method ]
+     **
+     * Adds event handler for touchend for the element.
+     > Parameters
+     - handler (function) handler for the event
+     = (object) @Element
+    \*/
+    /*\
+     * Element.untouchend
+     [ method ]
+     **
+     * Removes event handler for touchend for the element.
+     > Parameters
+     - handler (function) #optional handler for the event
+     = (object) @Element
+    \*/
+
+    /*\
+     * Element.touchcancel
+     [ method ]
+     **
+     * Adds event handler for touchcancel for the element.
+     > Parameters
+     - handler (function) handler for the event
+     = (object) @Element
+    \*/
+    /*\
+     * Element.untouchcancel
+     [ method ]
+     **
+     * Removes event handler for touchcancel for the element.
+     > Parameters
+     - handler (function) #optional handler for the event
+     = (object) @Element
+    \*/
+    for (var i = events.length; i--;) {
+        (function (eventName) {
+            R[eventName] = elproto[eventName] = function (fn, scope) {
+                if (R.is(fn, "function")) {
+                    this.events = this.events || [];
+                    this.events.push({name: eventName, f: fn, unbind: addEvent(this.shape || this.node || g.doc, eventName, fn, scope || this)});
+                }
+                return this;
+            };
+            R["un" + eventName] = elproto["un" + eventName] = function (fn) {
+                var events = this.events || [],
+                    l = events.length;
+                while (l--){
+                    if (events[l].name == eventName && (R.is(fn, "undefined") || events[l].f == fn)) {
+                        events[l].unbind();
+                        events.splice(l, 1);
+                        !events.length && delete this.events;
+                    }
+                }
+                return this;
+            };
+        })(events[i]);
+    }
+
+    /*\
+     * Element.data
+     [ method ]
+     **
+     * Adds or retrieves given value asociated with given key.
+     **
+     * See also @Element.removeData
+     > Parameters
+     - key (string) key to store data
+     - value (any) #optional value to store
+     = (object) @Element
+     * or, if value is not specified:
+     = (any) value
+     * or, if key and value are not specified:
+     = (object) Key/value pairs for all the data associated with the element.
+     > Usage
+     | for (var i = 0, i < 5, i++) {
+     |     paper.circle(10 + 15 * i, 10, 10)
+     |          .attr({fill: "#000"})
+     |          .data("i", i)
+     |          .click(function () {
+     |             alert(this.data("i"));
+     |          });
+     | }
+    \*/
+    elproto.data = function (key, value) {
+        var data = eldata[this.id] = eldata[this.id] || {};
+        if (arguments.length == 0) {
+            return data;
+        }
+        if (arguments.length == 1) {
+            if (R.is(key, "object")) {
+                for (var i in key) if (key[has](i)) {
+                    this.data(i, key[i]);
+                }
+                return this;
+            }
+            eve("raphael.data.get." + this.id, this, data[key], key);
+            return data[key];
+        }
+        data[key] = value;
+        eve("raphael.data.set." + this.id, this, value, key);
+        return this;
+    };
+    /*\
+     * Element.removeData
+     [ method ]
+     **
+     * Removes value associated with an element by given key.
+     * If key is not provided, removes all the data of the element.
+     > Parameters
+     - key (string) #optional key
+     = (object) @Element
+    \*/
+    elproto.removeData = function (key) {
+        if (key == null) {
+            eldata[this.id] = {};
+        } else {
+            eldata[this.id] && delete eldata[this.id][key];
+        }
+        return this;
+    };
+     /*\
+     * Element.getData
+     [ method ]
+     **
+     * Retrieves the element data
+     = (object) data
+    \*/
+    elproto.getData = function () {
+        return clone(eldata[this.id] || {});
+    };
+    /*\
+     * Element.hover
+     [ method ]
+     **
+     * Adds event handlers for hover for the element.
+     > Parameters
+     - f_in (function) handler for hover in
+     - f_out (function) handler for hover out
+     - icontext (object) #optional context for hover in handler
+     - ocontext (object) #optional context for hover out handler
+     = (object) @Element
+    \*/
+    elproto.hover = function (f_in, f_out, scope_in, scope_out) {
+        return this.mouseover(f_in, scope_in).mouseout(f_out, scope_out || scope_in);
+    };
+    /*\
+     * Element.unhover
+     [ method ]
+     **
+     * Removes event handlers for hover for the element.
+     > Parameters
+     - f_in (function) handler for hover in
+     - f_out (function) handler for hover out
+     = (object) @Element
+    \*/
+    elproto.unhover = function (f_in, f_out) {
+        return this.unmouseover(f_in).unmouseout(f_out);
+    };
+    var draggable = [];
+    /*\
+     * Element.drag
+     [ method ]
+     **
+     * Adds event handlers for drag of the element.
+     > Parameters
+     - onmove (function) handler for moving
+     - onstart (function) handler for drag start
+     - onend (function) handler for drag end
+     - mcontext (object) #optional context for moving handler
+     - scontext (object) #optional context for drag start handler
+     - econtext (object) #optional context for drag end handler
+     * Additionaly following `drag` events will be triggered: `drag.start.<id>` on start,
+     * `drag.end.<id>` on end and `drag.move.<id>` on every move. When element will be dragged over another element
+     * `drag.over.<id>` will be fired as well.
+     *
+     * Start event and start handler will be called in specified context or in context of the element with following parameters:
+     o x (number) x position of the mouse
+     o y (number) y position of the mouse
+     o event (object) DOM event object
+     * Move event and move handler will be called in specified context or in context of the element with following parameters:
+     o dx (number) shift by x from the start point
+     o dy (number) shift by y from the start point
+     o x (number) x position of the mouse
+     o y (number) y position of the mouse
+     o event (object) DOM event object
+     * End event and end handler will be called in specified context or in context of the element with following parameters:
+     o event (object) DOM event object
+     = (object) @Element
+    \*/
+    elproto.drag = function (onmove, onstart, onend, move_scope, start_scope, end_scope) {
+        function start(e) {
+            (e.originalEvent || e).preventDefault();
+            var x = e.clientX,
+                y = e.clientY,
+                scrollY = g.doc.documentElement.scrollTop || g.doc.body.scrollTop,
+                scrollX = g.doc.documentElement.scrollLeft || g.doc.body.scrollLeft;
+            this._drag.id = e.identifier;
+            if (supportsTouch && e.touches) {
+                var i = e.touches.length, touch;
+                while (i--) {
+                    touch = e.touches[i];
+                    this._drag.id = touch.identifier;
+                    if (touch.identifier == this._drag.id) {
+                        x = touch.clientX;
+                        y = touch.clientY;
+                        break;
+                    }
+                }
+            }
+            this._drag.x = x + scrollX;
+            this._drag.y = y + scrollY;
+            !drag.length && R.mousemove(dragMove).mouseup(dragUp);
+            drag.push({el: this, move_scope: move_scope, start_scope: start_scope, end_scope: end_scope});
+            onstart && eve.on("raphael.drag.start." + this.id, onstart);
+            onmove && eve.on("raphael.drag.move." + this.id, onmove);
+            onend && eve.on("raphael.drag.end." + this.id, onend);
+            eve("raphael.drag.start." + this.id, start_scope || move_scope || this, e.clientX + scrollX, e.clientY + scrollY, e);
+        }
+        this._drag = {};
+        draggable.push({el: this, start: start});
+        this.mousedown(start);
+        return this;
+    };
+    /*\
+     * Element.onDragOver
+     [ method ]
+     **
+     * Shortcut for assigning event handler for `drag.over.<id>` event, where id is id of the element (see @Element.id).
+     > Parameters
+     - f (function) handler for event, first argument would be the element you are dragging over
+    \*/
+    elproto.onDragOver = function (f) {
+        f ? eve.on("raphael.drag.over." + this.id, f) : eve.unbind("raphael.drag.over." + this.id);
+    };
+    /*\
+     * Element.undrag
+     [ method ]
+     **
+     * Removes all drag event handlers from given element.
+    \*/
+    elproto.undrag = function () {
+        var i = draggable.length;
+        while (i--) if (draggable[i].el == this) {
+            this.unmousedown(draggable[i].start);
+            draggable.splice(i, 1);
+            eve.unbind("raphael.drag.*." + this.id);
+        }
+        !draggable.length && R.unmousemove(dragMove).unmouseup(dragUp);
+        drag = [];
+    };
+    /*\
+     * Paper.circle
+     [ method ]
+     **
+     * Draws a circle.
+     **
+     > Parameters
+     **
+     - x (number) x coordinate of the centre
+     - y (number) y coordinate of the centre
+     - r (number) radius
+     = (object) Raphaël element object with type “circle”
+     **
+     > Usage
+     | var c = paper.circle(50, 50, 40);
+    \*/
+    paperproto.circle = function (x, y, r) {
+        var out = R._engine.circle(this, x || 0, y || 0, r || 0);
+        this.__set__ && this.__set__.push(out);
+        return out;
+    };
+    /*\
+     * Paper.rect
+     [ method ]
+     *
+     * Draws a rectangle.
+     **
+     > Parameters
+     **
+     - x (number) x coordinate of the top left corner
+     - y (number) y coordinate of the top left corner
+     - width (number) width
+     - height (number) height
+     - r (number) #optional radius for rounded corners, default is 0
+     = (object) Raphaël element object with type “rect”
+     **
+     > Usage
+     | // regular rectangle
+     | var c = paper.rect(10, 10, 50, 50);
+     | // rectangle with rounded corners
+     | var c = paper.rect(40, 40, 50, 50, 10);
+    \*/
+    paperproto.rect = function (x, y, w, h, r) {
+        var out = R._engine.rect(this, x || 0, y || 0, w || 0, h || 0, r || 0);
+        this.__set__ && this.__set__.push(out);
+        return out;
+    };
+    /*\
+     * Paper.ellipse
+     [ method ]
+     **
+     * Draws an ellipse.
+     **
+     > Parameters
+     **
+     - x (number) x coordinate of the centre
+     - y (number) y coordinate of the centre
+     - rx (number) horizontal radius
+     - ry (number) vertical radius
+     = (object) Raphaël element object with type “ellipse”
+     **
+     > Usage
+     | var c = paper.ellipse(50, 50, 40, 20);
+    \*/
+    paperproto.ellipse = function (x, y, rx, ry) {
+        var out = R._engine.ellipse(this, x || 0, y || 0, rx || 0, ry || 0);
+        this.__set__ && this.__set__.push(out);
+        return out;
+    };
+    /*\
+     * Paper.path
+     [ method ]
+     **
+     * Creates a path element by given path data string.
+     > Parameters
+     - pathString (string) #optional path string in SVG format.
+     * Path string consists of one-letter commands, followed by comma seprarated arguments in numercal form. Example:
+     | "M10,20L30,40"
+     * Here we can see two commands: “M”, with arguments `(10, 20)` and “L” with arguments `(30, 40)`. Upper case letter mean command is absolute, lower case—relative.
+     *
+     # <p>Here is short list of commands available, for more details see <a href="http://www.w3.org/TR/SVG/paths.html#PathData" title="Details of a path's data attribute's format are described in the SVG specification.">SVG path string format</a>.</p>
+     # <table><thead><tr><th>Command</th><th>Name</th><th>Parameters</th></tr></thead><tbody>
+     # <tr><td>M</td><td>moveto</td><td>(x y)+</td></tr>
+     # <tr><td>Z</td><td>closepath</td><td>(none)</td></tr>
+     # <tr><td>L</td><td>lineto</td><td>(x y)+</td></tr>
+     # <tr><td>H</td><td>horizontal lineto</td><td>x+</td></tr>
+     # <tr><td>V</td><td>vertical lineto</td><td>y+</td></tr>
+     # <tr><td>C</td><td>curveto</td><td>(x1 y1 x2 y2 x y)+</td></tr>
+     # <tr><td>S</td><td>smooth curveto</td><td>(x2 y2 x y)+</td></tr>
+     # <tr><td>Q</td><td>quadratic Bézier curveto</td><td>(x1 y1 x y)+</td></tr>
+     # <tr><td>T</td><td>smooth quadratic Bézier curveto</td><td>(x y)+</td></tr>
+     # <tr><td>A</td><td>elliptical arc</td><td>(rx ry x-axis-rotation large-arc-flag sweep-flag x y)+</td></tr>
+     # <tr><td>R</td><td><a href="http://en.wikipedia.org/wiki/Catmull–Rom_spline#Catmull.E2.80.93Rom_spline">Catmull-Rom curveto</a>*</td><td>x1 y1 (x y)+</td></tr></tbody></table>
+     * * “Catmull-Rom curveto” is a not standard SVG command and added in 2.0 to make life easier.
+     * Note: there is a special case when path consist of just three commands: “M10,10R…z”. In this case path will smoothly connects to its beginning.
+     > Usage
+     | var c = paper.path("M10 10L90 90");
+     | // draw a diagonal line:
+     | // move to 10,10, line to 90,90
+     * For example of path strings, check out these icons: http://raphaeljs.com/icons/
+    \*/
+    paperproto.path = function (pathString) {
+        pathString && !R.is(pathString, string) && !R.is(pathString[0], array) && (pathString += E);
+        var out = R._engine.path(R.format[apply](R, arguments), this);
+        this.__set__ && this.__set__.push(out);
+        return out;
+    };
+    /*\
+     * Paper.image
+     [ method ]
+     **
+     * Embeds an image into the surface.
+     **
+     > Parameters
+     **
+     - src (string) URI of the source image
+     - x (number) x coordinate position
+     - y (number) y coordinate position
+     - width (number) width of the image
+     - height (number) height of the image
+     = (object) Raphaël element object with type “image”
+     **
+     > Usage
+     | var c = paper.image("apple.png", 10, 10, 80, 80);
+    \*/
+    paperproto.image = function (src, x, y, w, h) {
+        var out = R._engine.image(this, src || "about:blank", x || 0, y || 0, w || 0, h || 0);
+        this.__set__ && this.__set__.push(out);
+        return out;
+    };
+    /*\
+     * Paper.text
+     [ method ]
+     **
+     * Draws a text string. If you need line breaks, put “\n” in the string.
+     **
+     > Parameters
+     **
+     - x (number) x coordinate position
+     - y (number) y coordinate position
+     - text (string) The text string to draw
+     = (object) Raphaël element object with type “text”
+     **
+     > Usage
+     | var t = paper.text(50, 50, "Raphaël\nkicks\nbutt!");
+    \*/
+    paperproto.text = function (x, y, text) {
+        var out = R._engine.text(this, x || 0, y || 0, Str(text));
+        this.__set__ && this.__set__.push(out);
+        return out;
+    };
+    /*\
+     * Paper.set
+     [ method ]
+     **
+     * Creates array-like object to keep and operate several elements at once.
+     * Warning: it doesn’t create any elements for itself in the page, it just groups existing elements.
+     * Sets act as pseudo elements — all methods available to an element can be used on a set.
+     = (object) array-like object that represents set of elements
+     **
+     > Usage
+     | var st = paper.set();
+     | st.push(
+     |     paper.circle(10, 10, 5),
+     |     paper.circle(30, 10, 5)
+     | );
+     | st.attr({fill: "red"}); // changes the fill of both circles
+    \*/
+    paperproto.set = function (itemsArray) {
+        !R.is(itemsArray, "array") && (itemsArray = Array.prototype.splice.call(arguments, 0, arguments.length));
+        var out = new Set(itemsArray);
+        this.__set__ && this.__set__.push(out);
+        out["paper"] = this;
+        out["type"] = "set";
+        return out;
+    };
+    /*\
+     * Paper.setStart
+     [ method ]
+     **
+     * Creates @Paper.set. All elements that will be created after calling this method and before calling
+     * @Paper.setFinish will be added to the set.
+     **
+     > Usage
+     | paper.setStart();
+     | paper.circle(10, 10, 5),
+     | paper.circle(30, 10, 5)
+     | var st = paper.setFinish();
+     | st.attr({fill: "red"}); // changes the fill of both circles
+    \*/
+    paperproto.setStart = function (set) {
+        this.__set__ = set || this.set();
+    };
+    /*\
+     * Paper.setFinish
+     [ method ]
+     **
+     * See @Paper.setStart. This method finishes catching and returns resulting set.
+     **
+     = (object) set
+    \*/
+    paperproto.setFinish = function (set) {
+        var out = this.__set__;
+        delete this.__set__;
+        return out;
+    };
+    /*\
+     * Paper.getSize
+     [ method ]
+     **
+     * Obtains current paper actual size.
+     **
+     = (object)
+     \*/
+    paperproto.getSize = function () {
+        var container = this.canvas.parentNode;
+        return {
+            width: container.offsetWidth,
+            height: container.offsetHeight
+                };
+        };
+    /*\
+     * Paper.setSize
+     [ method ]
+     **
+     * If you need to change dimensions of the canvas call this method
+     **
+     > Parameters
+     **
+     - width (number) new width of the canvas
+     - height (number) new height of the canvas
+    \*/
+    paperproto.setSize = function (width, height) {
+        return R._engine.setSize.call(this, width, height);
+    };
+    /*\
+     * Paper.setViewBox
+     [ method ]
+     **
+     * Sets the view box of the paper. Practically it gives you ability to zoom and pan whole paper surface by
+     * specifying new boundaries.
+     **
+     > Parameters
+     **
+     - x (number) new x position, default is `0`
+     - y (number) new y position, default is `0`
+     - w (number) new width of the canvas
+     - h (number) new height of the canvas
+     - fit (boolean) `true` if you want graphics to fit into new boundary box
+    \*/
+    paperproto.setViewBox = function (x, y, w, h, fit) {
+        return R._engine.setViewBox.call(this, x, y, w, h, fit);
+    };
+    /*\
+     * Paper.top
+     [ property ]
+     **
+     * Points to the topmost element on the paper
+    \*/
+    /*\
+     * Paper.bottom
+     [ property ]
+     **
+     * Points to the bottom element on the paper
+    \*/
+    paperproto.top = paperproto.bottom = null;
+    /*\
+     * Paper.raphael
+     [ property ]
+     **
+     * Points to the @Raphael object/function
+    \*/
+    paperproto.raphael = R;
+    var getOffset = function (elem) {
+        var box = elem.getBoundingClientRect(),
+            doc = elem.ownerDocument,
+            body = doc.body,
+            docElem = doc.documentElement,
+            clientTop = docElem.clientTop || body.clientTop || 0, clientLeft = docElem.clientLeft || body.clientLeft || 0,
+            top  = box.top  + (g.win.pageYOffset || docElem.scrollTop || body.scrollTop ) - clientTop,
+            left = box.left + (g.win.pageXOffset || docElem.scrollLeft || body.scrollLeft) - clientLeft;
+        return {
+            y: top,
+            x: left
+        };
+    };
+    /*\
+     * Paper.getElementByPoint
+     [ method ]
+     **
+     * Returns you topmost element under given point.
+     **
+     = (object) Raphaël element object
+     > Parameters
+     **
+     - x (number) x coordinate from the top left corner of the window
+     - y (number) y coordinate from the top left corner of the window
+     > Usage
+     | paper.getElementByPoint(mouseX, mouseY).attr({stroke: "#f00"});
+    \*/
+    paperproto.getElementByPoint = function (x, y) {
+        var paper = this,
+            svg = paper.canvas,
+            target = g.doc.elementFromPoint(x, y);
+        if (g.win.opera && target.tagName == "svg") {
+            var so = getOffset(svg),
+                sr = svg.createSVGRect();
+            sr.x = x - so.x;
+            sr.y = y - so.y;
+            sr.width = sr.height = 1;
+            var hits = svg.getIntersectionList(sr, null);
+            if (hits.length) {
+                target = hits[hits.length - 1];
+            }
+        }
+        if (!target) {
+            return null;
+        }
+        while (target.parentNode && target != svg.parentNode && !target.raphael) {
+            target = target.parentNode;
+        }
+        target == paper.canvas.parentNode && (target = svg);
+        target = target && target.raphael ? paper.getById(target.raphaelid) : null;
+        return target;
+    };
+
+    /*\
+     * Paper.getElementsByBBox
+     [ method ]
+     **
+     * Returns set of elements that have an intersecting bounding box
+     **
+     > Parameters
+     **
+     - bbox (object) bbox to check with
+     = (object) @Set
+     \*/
+    paperproto.getElementsByBBox = function (bbox) {
+        var set = this.set();
+        this.forEach(function (el) {
+            if (R.isBBoxIntersect(el.getBBox(), bbox)) {
+                set.push(el);
+            }
+        });
+        return set;
+    };
+
+    /*\
+     * Paper.getById
+     [ method ]
+     **
+     * Returns you element by its internal ID.
+     **
+     > Parameters
+     **
+     - id (number) id
+     = (object) Raphaël element object
+    \*/
+    paperproto.getById = function (id) {
+        var bot = this.bottom;
+        while (bot) {
+            if (bot.id == id) {
+                return bot;
+            }
+            bot = bot.next;
+        }
+        return null;
+    };
+    /*\
+     * Paper.forEach
+     [ method ]
+     **
+     * Executes given function for each element on the paper
+     *
+     * If callback function returns `false` it will stop loop running.
+     **
+     > Parameters
+     **
+     - callback (function) function to run
+     - thisArg (object) context object for the callback
+     = (object) Paper object
+     > Usage
+     | paper.forEach(function (el) {
+     |     el.attr({ stroke: "blue" });
+     | });
+    \*/
+    paperproto.forEach = function (callback, thisArg) {
+        var bot = this.bottom;
+        while (bot) {
+            if (callback.call(thisArg, bot) === false) {
+                return this;
+            }
+            bot = bot.next;
+        }
+        return this;
+    };
+    /*\
+     * Paper.getElementsByPoint
+     [ method ]
+     **
+     * Returns set of elements that have common point inside
+     **
+     > Parameters
+     **
+     - x (number) x coordinate of the point
+     - y (number) y coordinate of the point
+     = (object) @Set
+    \*/
+    paperproto.getElementsByPoint = function (x, y) {
+        var set = this.set();
+        this.forEach(function (el) {
+            if (el.isPointInside(x, y)) {
+                set.push(el);
+            }
+        });
+        return set;
+    };
+    function x_y() {
+        return this.x + S + this.y;
+    }
+    function x_y_w_h() {
+        return this.x + S + this.y + S + this.width + " \xd7 " + this.height;
+    }
+    /*\
+     * Element.isPointInside
+     [ method ]
+     **
+     * Determine if given point is inside this element’s shape
+     **
+     > Parameters
+     **
+     - x (number) x coordinate of the point
+     - y (number) y coordinate of the point
+     = (boolean) `true` if point inside the shape
+    \*/
+    elproto.isPointInside = function (x, y) {
+        var rp = this.realPath = getPath[this.type](this);
+        if (this.attr('transform') && this.attr('transform').length) {
+            rp = R.transformPath(rp, this.attr('transform'));
+        }
+        return R.isPointInsidePath(rp, x, y);
+    };
+    /*\
+     * Element.getBBox
+     [ method ]
+     **
+     * Return bounding box for a given element
+     **
+     > Parameters
+     **
+     - isWithoutTransform (boolean) flag, `true` if you want to have bounding box before transformations. Default is `false`.
+     = (object) Bounding box object:
+     o {
+     o     x: (number) top left corner x
+     o     y: (number) top left corner y
+     o     x2: (number) bottom right corner x
+     o     y2: (number) bottom right corner y
+     o     width: (number) width
+     o     height: (number) height
+     o }
+    \*/
+    elproto.getBBox = function (isWithoutTransform) {
+        if (this.removed) {
+            return {};
+        }
+        var _ = this._;
+        if (isWithoutTransform) {
+            if (_.dirty || !_.bboxwt) {
+                this.realPath = getPath[this.type](this);
+                _.bboxwt = pathDimensions(this.realPath);
+                _.bboxwt.toString = x_y_w_h;
+                _.dirty = 0;
+            }
+            return _.bboxwt;
+        }
+        if (_.dirty || _.dirtyT || !_.bbox) {
+            if (_.dirty || !this.realPath) {
+                _.bboxwt = 0;
+                this.realPath = getPath[this.type](this);
+            }
+            _.bbox = pathDimensions(mapPath(this.realPath, this.matrix));
+            _.bbox.toString = x_y_w_h;
+            _.dirty = _.dirtyT = 0;
+        }
+        return _.bbox;
+    };
+    /*\
+     * Element.clone
+     [ method ]
+     **
+     = (object) clone of a given element
+     **
+    \*/
+    elproto.clone = function () {
+        if (this.removed) {
+            return null;
+        }
+        var out = this.paper[this.type]().attr(this.attr());
+        this.__set__ && this.__set__.push(out);
+        return out;
+    };
+    /*\
+     * Element.glow
+     [ method ]
+     **
+     * Return set of elements that create glow-like effect around given element. See @Paper.set.
+     *
+     * Note: Glow is not connected to the element. If you change element attributes it won’t adjust itself.
+     **
+     > Parameters
+     **
+     - glow (object) #optional parameters object with all properties optional:
+     o {
+     o     width (number) size of the glow, default is `10`
+     o     fill (boolean) will it be filled, default is `false`
+     o     opacity (number) opacity, default is `0.5`
+     o     offsetx (number) horizontal offset, default is `0`
+     o     offsety (number) vertical offset, default is `0`
+     o     color (string) glow colour, default is `black`
+     o }
+     = (object) @Paper.set of elements that represents glow
+    \*/
+    elproto.glow = function (glow) {
+        if (this.type == "text") {
+            return null;
+        }
+        glow = glow || {};
+        var s = {
+            width: (glow.width || 10) + (+this.attr("stroke-width") || 1),
+            fill: glow.fill || false,
+            opacity: glow.opacity || .5,
+            offsetx: glow.offsetx || 0,
+            offsety: glow.offsety || 0,
+            color: glow.color || "#000"
+        },
+            c = s.width / 2,
+            r = this.paper,
+            out = r.set(),
+            path = this.realPath || getPath[this.type](this);
+        path = this.matrix ? mapPath(path, this.matrix) : path;
+        for (var i = 1; i < c + 1; i++) {
+            out.push(r.path(path).attr({
+                stroke: s.color,
+                fill: s.fill ? s.color : "none",
+                "stroke-linejoin": "round",
+                "stroke-linecap": "round",
+                "stroke-width": +(s.width / c * i).toFixed(3),
+                opacity: +(s.opacity / c).toFixed(3)
+            }));
+        }
+        return out.insertBefore(this).translate(s.offsetx, s.offsety);
+    };
+    var curveslengths = {},
+    getPointAtSegmentLength = function (p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y, length) {
+        if (length == null) {
+            return bezlen(p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y);
+        } else {
+            return R.findDotsAtSegment(p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y, getTatLen(p1x, p1y, c1x, c1y, c2x, c2y, p2x, p2y, length));
+        }
+    },
+    getLengthFactory = function (istotal, subpath) {
+        return function (path, length, onlystart) {
+            path = path2curve(path);
+            var x, y, p, l, sp = "", subpaths = {}, point,
+                len = 0;
+            for (var i = 0, ii = path.length; i < ii; i++) {
+                p = path[i];
+                if (p[0] == "M") {
+                    x = +p[1];
+                    y = +p[2];
+                } else {
+                    l = getPointAtSegmentLength(x, y, p[1], p[2], p[3], p[4], p[5], p[6]);
+                    if (len + l > length) {
+                        if (subpath && !subpaths.start) {
+                            point = getPointAtSegmentLength(x, y, p[1], p[2], p[3], p[4], p[5], p[6], length - len);
+                            sp += ["C" + point.start.x, point.start.y, point.m.x, point.m.y, point.x, point.y];
+                            if (onlystart) {return sp;}
+                            subpaths.start = sp;
+                            sp = ["M" + point.x, point.y + "C" + point.n.x, point.n.y, point.end.x, point.end.y, p[5], p[6]].join();
+                            len += l;
+                            x = +p[5];
+                            y = +p[6];
+                            continue;
+                        }
+                        if (!istotal && !subpath) {
+                            point = getPointAtSegmentLength(x, y, p[1], p[2], p[3], p[4], p[5], p[6], length - len);
+                            return {x: point.x, y: point.y, alpha: point.alpha};
+                        }
+                    }
+                    len += l;
+                    x = +p[5];
+                    y = +p[6];
+                }
+                sp += p.shift() + p;
+            }
+            subpaths.end = sp;
+            point = istotal ? len : subpath ? subpaths : R.findDotsAtSegment(x, y, p[0], p[1], p[2], p[3], p[4], p[5], 1);
+            point.alpha && (point = {x: point.x, y: point.y, alpha: point.alpha});
+            return point;
+        };
+    };
+    var getTotalLength = getLengthFactory(1),
+        getPointAtLength = getLengthFactory(),
+        getSubpathsAtLength = getLengthFactory(0, 1);
+    /*\
+     * Raphael.getTotalLength
+     [ method ]
+     **
+     * Returns length of the given path in pixels.
+     **
+     > Parameters
+     **
+     - path (string) SVG path string.
+     **
+     = (number) length.
+    \*/
+    R.getTotalLength = getTotalLength;
+    /*\
+     * Raphael.getPointAtLength
+     [ method ]
+     **
+     * Return coordinates of the point located at the given length on the given path.
+     **
+     > Parameters
+     **
+     - path (string) SVG path string
+     - length (number)
+     **
+     = (object) representation of the point:
+     o {
+     o     x: (number) x coordinate
+     o     y: (number) y coordinate
+     o     alpha: (number) angle of derivative
+     o }
+    \*/
+    R.getPointAtLength = getPointAtLength;
+    /*\
+     * Raphael.getSubpath
+     [ method ]
+     **
+     * Return subpath of a given path from given length to given length.
+     **
+     > Parameters
+     **
+     - path (string) SVG path string
+     - from (number) position of the start of the segment
+     - to (number) position of the end of the segment
+     **
+     = (string) pathstring for the segment
+    \*/
+    R.getSubpath = function (path, from, to) {
+        if (this.getTotalLength(path) - to < 1e-6) {
+            return getSubpathsAtLength(path, from).end;
+        }
+        var a = getSubpathsAtLength(path, to, 1);
+        return from ? getSubpathsAtLength(a, from).end : a;
+    };
+    /*\
+     * Element.getTotalLength
+     [ method ]
+     **
+     * Returns length of the path in pixels. Only works for element of “path” type.
+     = (number) length.
+    \*/
+    elproto.getTotalLength = function () {
+        var path = this.getPath();
+        if (!path) {
+            return;
+        }
+
+        if (this.node.getTotalLength) {
+            return this.node.getTotalLength();
+        }
+
+        return getTotalLength(path);
+    };
+    /*\
+     * Element.getPointAtLength
+     [ method ]
+     **
+     * Return coordinates of the point located at the given length on the given path. Only works for element of “path” type.
+     **
+     > Parameters
+     **
+     - length (number)
+     **
+     = (object) representation of the point:
+     o {
+     o     x: (number) x coordinate
+     o     y: (number) y coordinate
+     o     alpha: (number) angle of derivative
+     o }
+    \*/
+    elproto.getPointAtLength = function (length) {
+        var path = this.getPath();
+        if (!path) {
+            return;
+        }
+
+        return getPointAtLength(path, length);
+    };
+    /*\
+     * Element.getPath
+     [ method ]
+     **
+     * Returns path of the element. Only works for elements of “path” type and simple elements like circle.
+     = (object) path
+     **
+    \*/
+    elproto.getPath = function () {
+        var path,
+            getPath = R._getPath[this.type];
+
+        if (this.type == "text" || this.type == "set") {
+            return;
+        }
+
+        if (getPath) {
+            path = getPath(this);
+        }
+
+        return path;
+    };
+    /*\
+     * Element.getSubpath
+     [ method ]
+     **
+     * Return subpath of a given element from given length to given length. Only works for element of “path” type.
+     **
+     > Parameters
+     **
+     - from (number) position of the start of the segment
+     - to (number) position of the end of the segment
+     **
+     = (string) pathstring for the segment
+    \*/
+    elproto.getSubpath = function (from, to) {
+        var path = this.getPath();
+        if (!path) {
+            return;
+        }
+
+        return R.getSubpath(path, from, to);
+    };
+    /*\
+     * Raphael.easing_formulas
+     [ property ]
+     **
+     * Object that contains easing formulas for animation. You could extend it with your own. By default it has following list of easing:
+     # <ul>
+     #     <li>“linear”</li>
+     #     <li>“&lt;” or “easeIn” or “ease-in”</li>
+     #     <li>“>” or “easeOut” or “ease-out”</li>
+     #     <li>“&lt;>” or “easeInOut” or “ease-in-out”</li>
+     #     <li>“backIn” or “back-in”</li>
+     #     <li>“backOut” or “back-out”</li>
+     #     <li>“elastic”</li>
+     #     <li>“bounce”</li>
+     # </ul>
+     # <p>See also <a href="http://raphaeljs.com/easing.html">Easing demo</a>.</p>
+    \*/
+    var ef = R.easing_formulas = {
+        linear: function (n) {
+            return n;
+        },
+        "<": function (n) {
+            return pow(n, 1.7);
+        },
+        ">": function (n) {
+            return pow(n, .48);
+        },
+        "<>": function (n) {
+            var q = .48 - n / 1.04,
+                Q = math.sqrt(.1734 + q * q),
+                x = Q - q,
+                X = pow(abs(x), 1 / 3) * (x < 0 ? -1 : 1),
+                y = -Q - q,
+                Y = pow(abs(y), 1 / 3) * (y < 0 ? -1 : 1),
+                t = X + Y + .5;
+            return (1 - t) * 3 * t * t + t * t * t;
+        },
+        backIn: function (n) {
+            var s = 1.70158;
+            return n * n * ((s + 1) * n - s);
+        },
+        backOut: function (n) {
+            n = n - 1;
+            var s = 1.70158;
+            return n * n * ((s + 1) * n + s) + 1;
+        },
+        elastic: function (n) {
+            if (n == !!n) {
+                return n;
+            }
+            return pow(2, -10 * n) * math.sin((n - .075) * (2 * PI) / .3) + 1;
+        },
+        bounce: function (n) {
+            var s = 7.5625,
+                p = 2.75,
+                l;
+            if (n < (1 / p)) {
+                l = s * n * n;
+            } else {
+                if (n < (2 / p)) {
+                    n -= (1.5 / p);
+                    l = s * n * n + .75;
+                } else {
+                    if (n < (2.5 / p)) {
+                        n -= (2.25 / p);
+                        l = s * n * n + .9375;
+                    } else {
+                        n -= (2.625 / p);
+                        l = s * n * n + .984375;
+                    }
+                }
+            }
+            return l;
+        }
+    };
+    ef.easeIn = ef["ease-in"] = ef["<"];
+    ef.easeOut = ef["ease-out"] = ef[">"];
+    ef.easeInOut = ef["ease-in-out"] = ef["<>"];
+    ef["back-in"] = ef.backIn;
+    ef["back-out"] = ef.backOut;
+
+    var animationElements = [],
+        requestAnimFrame = window.requestAnimationFrame       ||
+                           window.webkitRequestAnimationFrame ||
+                           window.mozRequestAnimationFrame    ||
+                           window.oRequestAnimationFrame      ||
+                           window.msRequestAnimationFrame     ||
+                           function (callback) {
+                               setTimeout(callback, 16);
+                           },
+        animation = function () {
+            var Now = +new Date,
+                l = 0;
+            for (; l < animationElements.length; l++) {
+                var e = animationElements[l];
+                if (e.el.removed || e.paused) {
+                    continue;
+                }
+                var time = Now - e.start,
+                    ms = e.ms,
+                    easing = e.easing,
+                    from = e.from,
+                    diff = e.diff,
+                    to = e.to,
+                    t = e.t,
+                    that = e.el,
+                    set = {},
+                    now,
+                    init = {},
+                    key;
+                if (e.initstatus) {
+                    time = (e.initstatus * e.anim.top - e.prev) / (e.percent - e.prev) * ms;
+                    e.status = e.initstatus;
+                    delete e.initstatus;
+                    e.stop && animationElements.splice(l--, 1);
+                } else {
+                    e.status = (e.prev + (e.percent - e.prev) * (time / ms)) / e.anim.top;
+                }
+                if (time < 0) {
+                    continue;
+                }
+                if (time < ms) {
+                    var pos = easing(time / ms);
+                    for (var attr in from) if (from[has](attr)) {
+                        switch (availableAnimAttrs[attr]) {
+                            case nu:
+                                now = +from[attr] + pos * ms * diff[attr];
+                                break;
+                            case "colour":
+                                now = "rgb(" + [
+                                    upto255(round(from[attr].r + pos * ms * diff[attr].r)),
+                                    upto255(round(from[attr].g + pos * ms * diff[attr].g)),
+                                    upto255(round(from[attr].b + pos * ms * diff[attr].b))
+                                ].join(",") + ")";
+                                break;
+                            case "path":
+                                now = [];
+                                for (var i = 0, ii = from[attr].length; i < ii; i++) {
+                                    now[i] = [from[attr][i][0]];
+                                    for (var j = 1, jj = from[attr][i].length; j < jj; j++) {
+                                        now[i][j] = +from[attr][i][j] + pos * ms * diff[attr][i][j];
+                                    }
+                                    now[i] = now[i].join(S);
+                                }
+                                now = now.join(S);
+                                break;
+                            case "transform":
+                                if (diff[attr].real) {
+                                    now = [];
+                                    for (i = 0, ii = from[attr].length; i < ii; i++) {
+                                        now[i] = [from[attr][i][0]];
+                                        for (j = 1, jj = from[attr][i].length; j < jj; j++) {
+                                            now[i][j] = from[attr][i][j] + pos * ms * diff[attr][i][j];
+                                        }
+                                    }
+                                } else {
+                                    var get = function (i) {
+                                        return +from[attr][i] + pos * ms * diff[attr][i];
+                                    };
+                                    // now = [["r", get(2), 0, 0], ["t", get(3), get(4)], ["s", get(0), get(1), 0, 0]];
+                                    now = [["m", get(0), get(1), get(2), get(3), get(4), get(5)]];
+                                }
+                                break;
+                            case "csv":
+                                if (attr == "clip-rect") {
+                                    now = [];
+                                    i = 4;
+                                    while (i--) {
+                                        now[i] = +from[attr][i] + pos * ms * diff[attr][i];
+                                    }
+                                }
+                                break;
+                            default:
+                                var from2 = [][concat](from[attr]);
+                                now = [];
+                                i = that.paper.customAttributes[attr].length;
+                                while (i--) {
+                                    now[i] = +from2[i] + pos * ms * diff[attr][i];
+                                }
+                                break;
+                        }
+                        set[attr] = now;
+                    }
+                    that.attr(set);
+                    (function (id, that, anim) {
+                        setTimeout(function () {
+                            eve("raphael.anim.frame." + id, that, anim);
+                        });
+                    })(that.id, that, e.anim);
+                } else {
+                    (function(f, el, a) {
+                        setTimeout(function() {
+                            eve("raphael.anim.frame." + el.id, el, a);
+                            eve("raphael.anim.finish." + el.id, el, a);
+                            R.is(f, "function") && f.call(el);
+                        });
+                    })(e.callback, that, e.anim);
+                    that.attr(to);
+                    animationElements.splice(l--, 1);
+                    if (e.repeat > 1 && !e.next) {
+                        for (key in to) if (to[has](key)) {
+                            init[key] = e.totalOrigin[key];
+                        }
+                        e.el.attr(init);
+                        runAnimation(e.anim, e.el, e.anim.percents[0], null, e.totalOrigin, e.repeat - 1);
+                    }
+                    if (e.next && !e.stop) {
+                        runAnimation(e.anim, e.el, e.next, null, e.totalOrigin, e.repeat);
+                    }
+                }
+            }
+            R.svg && that && that.paper && that.paper.safari();
+            animationElements.length && requestAnimFrame(animation);
+        },
+        upto255 = function (color) {
+            return color > 255 ? 255 : color < 0 ? 0 : color;
+        };
+    /*\
+     * Element.animateWith
+     [ method ]
+     **
+     * Acts similar to @Element.animate, but ensure that given animation runs in sync with another given element.
+     **
+     > Parameters
+     **
+     - el (object) element to sync with
+     - anim (object) animation to sync with
+     - params (object) #optional final attributes for the element, see also @Element.attr
+     - ms (number) #optional number of milliseconds for animation to run
+     - easing (string) #optional easing type. Accept on of @Raphael.easing_formulas or CSS format: `cubic&#x2010;bezier(XX,&#160;XX,&#160;XX,&#160;XX)`
+     - callback (function) #optional callback function. Will be called at the end of animation.
+     * or
+     - element (object) element to sync with
+     - anim (object) animation to sync with
+     - animation (object) #optional animation object, see @Raphael.animation
+     **
+     = (object) original element
+    \*/
+    elproto.animateWith = function (el, anim, params, ms, easing, callback) {
+        var element = this;
+        if (element.removed) {
+            callback && callback.call(element);
+            return element;
+        }
+        var a = params instanceof Animation ? params : R.animation(params, ms, easing, callback),
+            x, y;
+        runAnimation(a, element, a.percents[0], null, element.attr());
+        for (var i = 0, ii = animationElements.length; i < ii; i++) {
+            if (animationElements[i].anim == anim && animationElements[i].el == el) {
+                animationElements[ii - 1].start = animationElements[i].start;
+                break;
+            }
+        }
+        return element;
+        //
+        //
+        // var a = params ? R.animation(params, ms, easing, callback) : anim,
+        //     status = element.status(anim);
+        // return this.animate(a).status(a, status * anim.ms / a.ms);
+    };
+    function CubicBezierAtTime(t, p1x, p1y, p2x, p2y, duration) {
+        var cx = 3 * p1x,
+            bx = 3 * (p2x - p1x) - cx,
+            ax = 1 - cx - bx,
+            cy = 3 * p1y,
+            by = 3 * (p2y - p1y) - cy,
+            ay = 1 - cy - by;
+        function sampleCurveX(t) {
+            return ((ax * t + bx) * t + cx) * t;
+        }
+        function solve(x, epsilon) {
+            var t = solveCurveX(x, epsilon);
+            return ((ay * t + by) * t + cy) * t;
+        }
+        function solveCurveX(x, epsilon) {
+            var t0, t1, t2, x2, d2, i;
+            for(t2 = x, i = 0; i < 8; i++) {
+                x2 = sampleCurveX(t2) - x;
+                if (abs(x2) < epsilon) {
+                    return t2;
+                }
+                d2 = (3 * ax * t2 + 2 * bx) * t2 + cx;
+                if (abs(d2) < 1e-6) {
+                    break;
+                }
+                t2 = t2 - x2 / d2;
+            }
+            t0 = 0;
+            t1 = 1;
+            t2 = x;
+            if (t2 < t0) {
+                return t0;
+            }
+            if (t2 > t1) {
+                return t1;
+            }
+            while (t0 < t1) {
+                x2 = sampleCurveX(t2);
+                if (abs(x2 - x) < epsilon) {
+                    return t2;
+                }
+                if (x > x2) {
+                    t0 = t2;
+                } else {
+                    t1 = t2;
+                }
+                t2 = (t1 - t0) / 2 + t0;
+            }
+            return t2;
+        }
+        return solve(t, 1 / (200 * duration));
+    }
+    elproto.onAnimation = function (f) {
+        f ? eve.on("raphael.anim.frame." + this.id, f) : eve.unbind("raphael.anim.frame." + this.id);
+        return this;
+    };
+    function Animation(anim, ms) {
+        var percents = [],
+            newAnim = {};
+        this.ms = ms;
+        this.times = 1;
+        if (anim) {
+            for (var attr in anim) if (anim[has](attr)) {
+                newAnim[toFloat(attr)] = anim[attr];
+                percents.push(toFloat(attr));
+            }
+            percents.sort(sortByNumber);
+        }
+        this.anim = newAnim;
+        this.top = percents[percents.length - 1];
+        this.percents = percents;
+    }
+    /*\
+     * Animation.delay
+     [ method ]
+     **
+     * Creates a copy of existing animation object with given delay.
+     **
+     > Parameters
+     **
+     - delay (number) number of ms to pass between animation start and actual animation
+     **
+     = (object) new altered Animation object
+     | var anim = Raphael.animation({cx: 10, cy: 20}, 2e3);
+     | circle1.animate(anim); // run the given animation immediately
+     | circle2.animate(anim.delay(500)); // run the given animation after 500 ms
+    \*/
+    Animation.prototype.delay = function (delay) {
+        var a = new Animation(this.anim, this.ms);
+        a.times = this.times;
+        a.del = +delay || 0;
+        return a;
+    };
+    /*\
+     * Animation.repeat
+     [ method ]
+     **
+     * Creates a copy of existing animation object with given repetition.
+     **
+     > Parameters
+     **
+     - repeat (number) number iterations of animation. For infinite animation pass `Infinity`
+     **
+     = (object) new altered Animation object
+    \*/
+    Animation.prototype.repeat = function (times) {
+        var a = new Animation(this.anim, this.ms);
+        a.del = this.del;
+        a.times = math.floor(mmax(times, 0)) || 1;
+        return a;
+    };
+    function runAnimation(anim, element, percent, status, totalOrigin, times) {
+        percent = toFloat(percent);
+        var params,
+            isInAnim,
+            isInAnimSet,
+            percents = [],
+            next,
+            prev,
+            timestamp,
+            ms = anim.ms,
+            from = {},
+            to = {},
+            diff = {};
+        if (status) {
+            for (i = 0, ii = animationElements.length; i < ii; i++) {
+                var e = animationElements[i];
+                if (e.el.id == element.id && e.anim == anim) {
+                    if (e.percent != percent) {
+                        animationElements.splice(i, 1);
+                        isInAnimSet = 1;
+                    } else {
+                        isInAnim = e;
+                    }
+                    element.attr(e.totalOrigin);
+                    break;
+                }
+            }
+        } else {
+            status = +to; // NaN
+        }
+        for (var i = 0, ii = anim.percents.length; i < ii; i++) {
+            if (anim.percents[i] == percent || anim.percents[i] > status * anim.top) {
+                percent = anim.percents[i];
+                prev = anim.percents[i - 1] || 0;
+                ms = ms / anim.top * (percent - prev);
+                next = anim.percents[i + 1];
+                params = anim.anim[percent];
+                break;
+            } else if (status) {
+                element.attr(anim.anim[anim.percents[i]]);
+            }
+        }
+        if (!params) {
+            return;
+        }
+        if (!isInAnim) {
+            for (var attr in params) if (params[has](attr)) {
+                if (availableAnimAttrs[has](attr) || element.paper.customAttributes[has](attr)) {
+                    from[attr] = element.attr(attr);
+                    (from[attr] == null) && (from[attr] = availableAttrs[attr]);
+                    to[attr] = params[attr];
+                    switch (availableAnimAttrs[attr]) {
+                        case nu:
+                            diff[attr] = (to[attr] - from[attr]) / ms;
+                            break;
+                        case "colour":
+                            from[attr] = R.getRGB(from[attr]);
+                            var toColour = R.getRGB(to[attr]);
+                            diff[attr] = {
+                                r: (toColour.r - from[attr].r) / ms,
+                                g: (toColour.g - from[attr].g) / ms,
+                                b: (toColour.b - from[attr].b) / ms
+                            };
+                            break;
+                        case "path":
+                            var pathes = path2curve(from[attr], to[attr]),
+                                toPath = pathes[1];
+                            from[attr] = pathes[0];
+                            diff[attr] = [];
+                            for (i = 0, ii = from[attr].length; i < ii; i++) {
+                                diff[attr][i] = [0];
+                                for (var j = 1, jj = from[attr][i].length; j < jj; j++) {
+                                    diff[attr][i][j] = (toPath[i][j] - from[attr][i][j]) / ms;
+                                }
+                            }
+                            break;
+                        case "transform":
+                            var _ = element._,
+                                eq = equaliseTransform(_[attr], to[attr]);
+                            if (eq) {
+                                from[attr] = eq.from;
+                                to[attr] = eq.to;
+                                diff[attr] = [];
+                                diff[attr].real = true;
+                                for (i = 0, ii = from[attr].length; i < ii; i++) {
+                                    diff[attr][i] = [from[attr][i][0]];
+                                    for (j = 1, jj = from[attr][i].length; j < jj; j++) {
+                                        diff[attr][i][j] = (to[attr][i][j] - from[attr][i][j]) / ms;
+                                    }
+                                }
+                            } else {
+                                var m = (element.matrix || new Matrix),
+                                    to2 = {
+                                        _: {transform: _.transform},
+                                        getBBox: function () {
+                                            return element.getBBox(1);
+                                        }
+                                    };
+                                from[attr] = [
+                                    m.a,
+                                    m.b,
+                                    m.c,
+                                    m.d,
+                                    m.e,
+                                    m.f
+                                ];
+                                extractTransform(to2, to[attr]);
+                                to[attr] = to2._.transform;
+                                diff[attr] = [
+                                    (to2.matrix.a - m.a) / ms,
+                                    (to2.matrix.b - m.b) / ms,
+                                    (to2.matrix.c - m.c) / ms,
+                                    (to2.matrix.d - m.d) / ms,
+                                    (to2.matrix.e - m.e) / ms,
+                                    (to2.matrix.f - m.f) / ms
+                                ];
+                                // from[attr] = [_.sx, _.sy, _.deg, _.dx, _.dy];
+                                // var to2 = {_:{}, getBBox: function () { return element.getBBox(); }};
+                                // extractTransform(to2, to[attr]);
+                                // diff[attr] = [
+                                //     (to2._.sx - _.sx) / ms,
+                                //     (to2._.sy - _.sy) / ms,
+                                //     (to2._.deg - _.deg) / ms,
+                                //     (to2._.dx - _.dx) / ms,
+                                //     (to2._.dy - _.dy) / ms
+                                // ];
+                            }
+                            break;
+                        case "csv":
+                            var values = Str(params[attr])[split](separator),
+                                from2 = Str(from[attr])[split](separator);
+                            if (attr == "clip-rect") {
+                                from[attr] = from2;
+                                diff[attr] = [];
+                                i = from2.length;
+                                while (i--) {
+                                    diff[attr][i] = (values[i] - from[attr][i]) / ms;
+                                }
+                            }
+                            to[attr] = values;
+                            break;
+                        default:
+                            values = [][concat](params[attr]);
+                            from2 = [][concat](from[attr]);
+                            diff[attr] = [];
+                            i = element.paper.customAttributes[attr].length;
+                            while (i--) {
+                                diff[attr][i] = ((values[i] || 0) - (from2[i] || 0)) / ms;
+                            }
+                            break;
+                    }
+                }
+            }
+            var easing = params.easing,
+                easyeasy = R.easing_formulas[easing];
+            if (!easyeasy) {
+                easyeasy = Str(easing).match(bezierrg);
+                if (easyeasy && easyeasy.length == 5) {
+                    var curve = easyeasy;
+                    easyeasy = function (t) {
+                        return CubicBezierAtTime(t, +curve[1], +curve[2], +curve[3], +curve[4], ms);
+                    };
+                } else {
+                    easyeasy = pipe;
+                }
+            }
+            timestamp = params.start || anim.start || +new Date;
+            e = {
+                anim: anim,
+                percent: percent,
+                timestamp: timestamp,
+                start: timestamp + (anim.del || 0),
+                status: 0,
+                initstatus: status || 0,
+                stop: false,
+                ms: ms,
+                easing: easyeasy,
+                from: from,
+                diff: diff,
+                to: to,
+                el: element,
+                callback: params.callback,
+                prev: prev,
+                next: next,
+                repeat: times || anim.times,
+                origin: element.attr(),
+                totalOrigin: totalOrigin
+            };
+            animationElements.push(e);
+            if (status && !isInAnim && !isInAnimSet) {
+                e.stop = true;
+                e.start = new Date - ms * status;
+                if (animationElements.length == 1) {
+                    return animation();
+                }
+            }
+            if (isInAnimSet) {
+                e.start = new Date - e.ms * status;
+            }
+            animationElements.length == 1 && requestAnimFrame(animation);
+        } else {
+            isInAnim.initstatus = status;
+            isInAnim.start = new Date - isInAnim.ms * status;
+        }
+        eve("raphael.anim.start." + element.id, element, anim);
+    }
+    /*\
+     * Raphael.animation
+     [ method ]
+     **
+     * Creates an animation object that can be passed to the @Element.animate or @Element.animateWith methods.
+     * See also @Animation.delay and @Animation.repeat methods.
+     **
+     > Parameters
+     **
+     - params (object) final attributes for the element, see also @Element.attr
+     - ms (number) number of milliseconds for animation to run
+     - easing (string) #optional easing type. Accept one of @Raphael.easing_formulas or CSS format: `cubic&#x2010;bezier(XX,&#160;XX,&#160;XX,&#160;XX)`
+     - callback (function) #optional callback function. Will be called at the end of animation.
+     **
+     = (object) @Animation
+    \*/
+    R.animation = function (params, ms, easing, callback) {
+        if (params instanceof Animation) {
+            return params;
+        }
+        if (R.is(easing, "function") || !easing) {
+            callback = callback || easing || null;
+            easing = null;
+        }
+        params = Object(params);
+        ms = +ms || 0;
+        var p = {},
+            json,
+            attr;
+        for (attr in params) if (params[has](attr) && toFloat(attr) != attr && toFloat(attr) + "%" != attr) {
+            json = true;
+            p[attr] = params[attr];
+        }
+        if (!json) {
+            // if percent-like syntax is used and end-of-all animation callback used
+            if(callback){
+                // find the last one
+                var lastKey = 0;
+                for(var i in params){
+                    var percent = toInt(i);
+                    if(params[has](i) && percent > lastKey){
+                        lastKey = percent;
+                    }
+                }
+                lastKey += '%';
+                // if already defined callback in the last keyframe, skip
+                !params[lastKey].callback && (params[lastKey].callback = callback);
+            }
+          return new Animation(params, ms);
+        } else {
+            easing && (p.easing = easing);
+            callback && (p.callback = callback);
+            return new Animation({100: p}, ms);
+        }
+    };
+    /*\
+     * Element.animate
+     [ method ]
+     **
+     * Creates and starts animation for given element.
+     **
+     > Parameters
+     **
+     - params (object) final attributes for the element, see also @Element.attr
+     - ms (number) number of milliseconds for animation to run
+     - easing (string) #optional easing type. Accept one of @Raphael.easing_formulas or CSS format: `cubic&#x2010;bezier(XX,&#160;XX,&#160;XX,&#160;XX)`
+     - callback (function) #optional callback function. Will be called at the end of animation.
+     * or
+     - animation (object) animation object, see @Raphael.animation
+     **
+     = (object) original element
+    \*/
+    elproto.animate = function (params, ms, easing, callback) {
+        var element = this;
+        if (element.removed) {
+            callback && callback.call(element);
+            return element;
+        }
+        var anim = params instanceof Animation ? params : R.animation(params, ms, easing, callback);
+        runAnimation(anim, element, anim.percents[0], null, element.attr());
+        return element;
+    };
+    /*\
+     * Element.setTime
+     [ method ]
+     **
+     * Sets the status of animation of the element in milliseconds. Similar to @Element.status method.
+     **
+     > Parameters
+     **
+     - anim (object) animation object
+     - value (number) number of milliseconds from the beginning of the animation
+     **
+     = (object) original element if `value` is specified
+     * Note, that during animation following events are triggered:
+     *
+     * On each animation frame event `anim.frame.<id>`, on start `anim.start.<id>` and on end `anim.finish.<id>`.
+    \*/
+    elproto.setTime = function (anim, value) {
+        if (anim && value != null) {
+            this.status(anim, mmin(value, anim.ms) / anim.ms);
+        }
+        return this;
+    };
+    /*\
+     * Element.status
+     [ method ]
+     **
+     * Gets or sets the status of animation of the element.
+     **
+     > Parameters
+     **
+     - anim (object) #optional animation object
+     - value (number) #optional 0 – 1. If specified, method works like a setter and sets the status of a given animation to the value. This will cause animation to jump to the given position.
+     **
+     = (number) status
+     * or
+     = (array) status if `anim` is not specified. Array of objects in format:
+     o {
+     o     anim: (object) animation object
+     o     status: (number) status
+     o }
+     * or
+     = (object) original element if `value` is specified
+    \*/
+    elproto.status = function (anim, value) {
+        var out = [],
+            i = 0,
+            len,
+            e;
+        if (value != null) {
+            runAnimation(anim, this, -1, mmin(value, 1));
+            return this;
+        } else {
+            len = animationElements.length;
+            for (; i < len; i++) {
+                e = animationElements[i];
+                if (e.el.id == this.id && (!anim || e.anim == anim)) {
+                    if (anim) {
+                        return e.status;
+                    }
+                    out.push({
+                        anim: e.anim,
+                        status: e.status
+                    });
+                }
+            }
+            if (anim) {
+                return 0;
+            }
+            return out;
+        }
+    };
+    /*\
+     * Element.pause
+     [ method ]
+     **
+     * Stops animation of the element with ability to resume it later on.
+     **
+     > Parameters
+     **
+     - anim (object) #optional animation object
+     **
+     = (object) original element
+    \*/
+    elproto.pause = function (anim) {
+        for (var i = 0; i < animationElements.length; i++) if (animationElements[i].el.id == this.id && (!anim || animationElements[i].anim == anim)) {
+            if (eve("raphael.anim.pause." + this.id, this, animationElements[i].anim) !== false) {
+                animationElements[i].paused = true;
+            }
+        }
+        return this;
+    };
+    /*\
+     * Element.resume
+     [ method ]
+     **
+     * Resumes animation if it was paused with @Element.pause method.
+     **
+     > Parameters
+     **
+     - anim (object) #optional animation object
+     **
+     = (object) original element
+    \*/
+    elproto.resume = function (anim) {
+        for (var i = 0; i < animationElements.length; i++) if (animationElements[i].el.id == this.id && (!anim || animationElements[i].anim == anim)) {
+            var e = animationElements[i];
+            if (eve("raphael.anim.resume." + this.id, this, e.anim) !== false) {
+                delete e.paused;
+                this.status(e.anim, e.status);
+            }
+        }
+        return this;
+    };
+    /*\
+     * Element.stop
+     [ method ]
+     **
+     * Stops animation of the element.
+     **
+     > Parameters
+     **
+     - anim (object) #optional animation object
+     **
+     = (object) original element
+    \*/
+    elproto.stop = function (anim) {
+        for (var i = 0; i < animationElements.length; i++) if (animationElements[i].el.id == this.id && (!anim || animationElements[i].anim == anim)) {
+            if (eve("raphael.anim.stop." + this.id, this, animationElements[i].anim) !== false) {
+                animationElements.splice(i--, 1);
+            }
+        }
+        return this;
+    };
+    function stopAnimation(paper) {
+        for (var i = 0; i < animationElements.length; i++) if (animationElements[i].el.paper == paper) {
+            animationElements.splice(i--, 1);
+        }
+    }
+    eve.on("raphael.remove", stopAnimation);
+    eve.on("raphael.clear", stopAnimation);
+    elproto.toString = function () {
+        return "Rapha\xebl\u2019s object";
+    };
+
+    // Set
+    var Set = function (items) {
+        this.items = [];
+        this.length = 0;
+        this.type = "set";
+        if (items) {
+            for (var i = 0, ii = items.length; i < ii; i++) {
+                if (items[i] && (items[i].constructor == elproto.constructor || items[i].constructor == Set)) {
+                    this[this.items.length] = this.items[this.items.length] = items[i];
+                    this.length++;
+                }
+            }
+        }
+    },
+    setproto = Set.prototype;
+    /*\
+     * Set.push
+     [ method ]
+     **
+     * Adds each argument to the current set.
+     = (object) original element
+    \*/
+    setproto.push = function () {
+        var item,
+            len;
+        for (var i = 0, ii = arguments.length; i < ii; i++) {
+            item = arguments[i];
+            if (item && (item.constructor == elproto.constructor || item.constructor == Set)) {
+                len = this.items.length;
+                this[len] = this.items[len] = item;
+                this.length++;
+            }
+        }
+        return this;
+    };
+    /*\
+     * Set.pop
+     [ method ]
+     **
+     * Removes last element and returns it.
+     = (object) element
+    \*/
+    setproto.pop = function () {
+        this.length && delete this[this.length--];
+        return this.items.pop();
+    };
+    /*\
+     * Set.forEach
+     [ method ]
+     **
+     * Executes given function for each element in the set.
+     *
+     * If function returns `false` it will stop loop running.
+     **
+     > Parameters
+     **
+     - callback (function) function to run
+     - thisArg (object) context object for the callback
+     = (object) Set object
+    \*/
+    setproto.forEach = function (callback, thisArg) {
+        for (var i = 0, ii = this.items.length; i < ii; i++) {
+            if (callback.call(thisArg, this.items[i], i) === false) {
+                return this;
+            }
+        }
+        return this;
+    };
+    for (var method in elproto) if (elproto[has](method)) {
+        setproto[method] = (function (methodname) {
+            return function () {
+                var arg = arguments;
+                return this.forEach(function (el) {
+                    el[methodname][apply](el, arg);
+                });
+            };
+        })(method);
+    }
+    setproto.attr = function (name, value) {
+        if (name && R.is(name, array) && R.is(name[0], "object")) {
+            for (var j = 0, jj = name.length; j < jj; j++) {
+                this.items[j].attr(name[j]);
+            }
+        } else {
+            for (var i = 0, ii = this.items.length; i < ii; i++) {
+                this.items[i].attr(name, value);
+            }
+        }
+        return this;
+    };
+    /*\
+     * Set.clear
+     [ method ]
+     **
+     * Removes all elements from the set
+    \*/
+    setproto.clear = function () {
+        while (this.length) {
+            this.pop();
+        }
+    };
+    /*\
+     * Set.splice
+     [ method ]
+     **
+     * Removes given element from the set
+     **
+     > Parameters
+     **
+     - index (number) position of the deletion
+     - count (number) number of element to remove
+     - insertion… (object) #optional elements to insert
+     = (object) set elements that were deleted
+    \*/
+    setproto.splice = function (index, count, insertion) {
+        index = index < 0 ? mmax(this.length + index, 0) : index;
+        count = mmax(0, mmin(this.length - index, count));
+        var tail = [],
+            todel = [],
+            args = [],
+            i;
+        for (i = 2; i < arguments.length; i++) {
+            args.push(arguments[i]);
+        }
+        for (i = 0; i < count; i++) {
+            todel.push(this[index + i]);
+        }
+        for (; i < this.length - index; i++) {
+            tail.push(this[index + i]);
+        }
+        var arglen = args.length;
+        for (i = 0; i < arglen + tail.length; i++) {
+            this.items[index + i] = this[index + i] = i < arglen ? args[i] : tail[i - arglen];
+        }
+        i = this.items.length = this.length -= count - arglen;
+        while (this[i]) {
+            delete this[i++];
+        }
+        return new Set(todel);
+    };
+    /*\
+     * Set.exclude
+     [ method ]
+     **
+     * Removes given element from the set
+     **
+     > Parameters
+     **
+     - element (object) element to remove
+     = (boolean) `true` if object was found & removed from the set
+    \*/
+    setproto.exclude = function (el) {
+        for (var i = 0, ii = this.length; i < ii; i++) if (this[i] == el) {
+            this.splice(i, 1);
+            return true;
+        }
+    };
+    setproto.animate = function (params, ms, easing, callback) {
+        (R.is(easing, "function") || !easing) && (callback = easing || null);
+        var len = this.items.length,
+            i = len,
+            item,
+            set = this,
+            collector;
+        if (!len) {
+            return this;
+        }
+        callback && (collector = function () {
+            !--len && callback.call(set);
+        });
+        easing = R.is(easing, string) ? easing : collector;
+        var anim = R.animation(params, ms, easing, collector);
+        item = this.items[--i].animate(anim);
+        while (i--) {
+            this.items[i] && !this.items[i].removed && this.items[i].animateWith(item, anim, anim);
+            (this.items[i] && !this.items[i].removed) || len--;
+        }
+        return this;
+    };
+    setproto.insertAfter = function (el) {
+        var i = this.items.length;
+        while (i--) {
+            this.items[i].insertAfter(el);
+        }
+        return this;
+    };
+    setproto.getBBox = function () {
+        var x = [],
+            y = [],
+            x2 = [],
+            y2 = [];
+        for (var i = this.items.length; i--;) if (!this.items[i].removed) {
+            var box = this.items[i].getBBox();
+            x.push(box.x);
+            y.push(box.y);
+            x2.push(box.x + box.width);
+            y2.push(box.y + box.height);
+        }
+        x = mmin[apply](0, x);
+        y = mmin[apply](0, y);
+        x2 = mmax[apply](0, x2);
+        y2 = mmax[apply](0, y2);
+        return {
+            x: x,
+            y: y,
+            x2: x2,
+            y2: y2,
+            width: x2 - x,
+            height: y2 - y
+        };
+    };
+    setproto.clone = function (s) {
+        s = this.paper.set();
+        for (var i = 0, ii = this.items.length; i < ii; i++) {
+            s.push(this.items[i].clone());
+        }
+        return s;
+    };
+    setproto.toString = function () {
+        return "Rapha\xebl\u2018s set";
+    };
+
+    setproto.glow = function(glowConfig) {
+        var ret = this.paper.set();
+        this.forEach(function(shape, index){
+            var g = shape.glow(glowConfig);
+            if(g != null){
+                g.forEach(function(shape2, index2){
+                    ret.push(shape2);
+                });
+            }
+        });
+        return ret;
+    };
+
+
+    /*\
+     * Set.isPointInside
+     [ method ]
+     **
+     * Determine if given point is inside this set’s elements
+     **
+     > Parameters
+     **
+     - x (number) x coordinate of the point
+     - y (number) y coordinate of the point
+     = (boolean) `true` if point is inside any of the set's elements
+     \*/
+    setproto.isPointInside = function (x, y) {
+        var isPointInside = false;
+        this.forEach(function (el) {
+            if (el.isPointInside(x, y)) {
+                isPointInside = true;
+                return false; // stop loop
+            }
+        });
+        return isPointInside;
+    };
+
+    /*\
+     * Raphael.registerFont
+     [ method ]
+     **
+     * Adds given font to the registered set of fonts for Raphaël. Should be used as an internal call from within Cufón’s font file.
+     * Returns original parameter, so it could be used with chaining.
+     # <a href="http://wiki.github.com/sorccu/cufon/about">More about Cufón and how to convert your font form TTF, OTF, etc to JavaScript file.</a>
+     **
+     > Parameters
+     **
+     - font (object) the font to register
+     = (object) the font you passed in
+     > Usage
+     | Cufon.registerFont(Raphael.registerFont({…}));
+    \*/
+    R.registerFont = function (font) {
+        if (!font.face) {
+            return font;
+        }
+        this.fonts = this.fonts || {};
+        var fontcopy = {
+                w: font.w,
+                face: {},
+                glyphs: {}
+            },
+            family = font.face["font-family"];
+        for (var prop in font.face) if (font.face[has](prop)) {
+            fontcopy.face[prop] = font.face[prop];
+        }
+        if (this.fonts[family]) {
+            this.fonts[family].push(fontcopy);
+        } else {
+            this.fonts[family] = [fontcopy];
+        }
+        if (!font.svg) {
+            fontcopy.face["units-per-em"] = toInt(font.face["units-per-em"], 10);
+            for (var glyph in font.glyphs) if (font.glyphs[has](glyph)) {
+                var path = font.glyphs[glyph];
+                fontcopy.glyphs[glyph] = {
+                    w: path.w,
+                    k: {},
+                    d: path.d && "M" + path.d.replace(/[mlcxtrv]/g, function (command) {
+                            return {l: "L", c: "C", x: "z", t: "m", r: "l", v: "c"}[command] || "M";
+                        }) + "z"
+                };
+                if (path.k) {
+                    for (var k in path.k) if (path[has](k)) {
+                        fontcopy.glyphs[glyph].k[k] = path.k[k];
+                    }
+                }
+            }
+        }
+        return font;
+    };
+    /*\
+     * Paper.getFont
+     [ method ]
+     **
+     * Finds font object in the registered fonts by given parameters. You could specify only one word from the font name, like “Myriad” for “Myriad Pro”.
+     **
+     > Parameters
+     **
+     - family (string) font family name or any word from it
+     - weight (string) #optional font weight
+     - style (string) #optional font style
+     - stretch (string) #optional font stretch
+     = (object) the font object
+     > Usage
+     | paper.print(100, 100, "Test string", paper.getFont("Times", 800), 30);
+    \*/
+    paperproto.getFont = function (family, weight, style, stretch) {
+        stretch = stretch || "normal";
+        style = style || "normal";
+        weight = +weight || {normal: 400, bold: 700, lighter: 300, bolder: 800}[weight] || 400;
+        if (!R.fonts) {
+            return;
+        }
+        var font = R.fonts[family];
+        if (!font) {
+            var name = new RegExp("(^|\\s)" + family.replace(/[^\w\d\s+!~.:_-]/g, E) + "(\\s|$)", "i");
+            for (var fontName in R.fonts) if (R.fonts[has](fontName)) {
+                if (name.test(fontName)) {
+                    font = R.fonts[fontName];
+                    break;
+                }
+            }
+        }
+        var thefont;
+        if (font) {
+            for (var i = 0, ii = font.length; i < ii; i++) {
+                thefont = font[i];
+                if (thefont.face["font-weight"] == weight && (thefont.face["font-style"] == style || !thefont.face["font-style"]) && thefont.face["font-stretch"] == stretch) {
+                    break;
+                }
+            }
+        }
+        return thefont;
+    };
+    /*\
+     * Paper.print
+     [ method ]
+     **
+     * Creates path that represent given text written using given font at given position with given size.
+     * Result of the method is path element that contains whole text as a separate path.
+     **
+     > Parameters
+     **
+     - x (number) x position of the text
+     - y (number) y position of the text
+     - string (string) text to print
+     - font (object) font object, see @Paper.getFont
+     - size (number) #optional size of the font, default is `16`
+     - origin (string) #optional could be `"baseline"` or `"middle"`, default is `"middle"`
+     - letter_spacing (number) #optional number in range `-1..1`, default is `0`
+     - line_spacing (number) #optional number in range `1..3`, default is `1`
+     = (object) resulting path element, which consist of all letters
+     > Usage
+     | var txt = r.print(10, 50, "print", r.getFont("Museo"), 30).attr({fill: "#fff"});
+    \*/
+    paperproto.print = function (x, y, string, font, size, origin, letter_spacing, line_spacing) {
+        origin = origin || "middle"; // baseline|middle
+        letter_spacing = mmax(mmin(letter_spacing || 0, 1), -1);
+        line_spacing = mmax(mmin(line_spacing || 1, 3), 1);
+        var letters = Str(string)[split](E),
+            shift = 0,
+            notfirst = 0,
+            path = E,
+            scale;
+        R.is(font, "string") && (font = this.getFont(font));
+        if (font) {
+            scale = (size || 16) / font.face["units-per-em"];
+            var bb = font.face.bbox[split](separator),
+                top = +bb[0],
+                lineHeight = bb[3] - bb[1],
+                shifty = 0,
+                height = +bb[1] + (origin == "baseline" ? lineHeight + (+font.face.descent) : lineHeight / 2);
+            for (var i = 0, ii = letters.length; i < ii; i++) {
+                if (letters[i] == "\n") {
+                    shift = 0;
+                    curr = 0;
+                    notfirst = 0;
+                    shifty += lineHeight * line_spacing;
+                } else {
+                    var prev = notfirst && font.glyphs[letters[i - 1]] || {},
+                        curr = font.glyphs[letters[i]];
+                    shift += notfirst ? (prev.w || font.w) + (prev.k && prev.k[letters[i]] || 0) + (font.w * letter_spacing) : 0;
+                    notfirst = 1;
+                }
+                if (curr && curr.d) {
+                    path += R.transformPath(curr.d, ["t", shift * scale, shifty * scale, "s", scale, scale, top, height, "t", (x - top) / scale, (y - height) / scale]);
+                }
+            }
+        }
+        return this.path(path).attr({
+            fill: "#000",
+            stroke: "none"
+        });
+    };
+
+    /*\
+     * Paper.add
+     [ method ]
+     **
+     * Imports elements in JSON array in format `{type: type, <attributes>}`
+     **
+     > Parameters
+     **
+     - json (array)
+     = (object) resulting set of imported elements
+     > Usage
+     | paper.add([
+     |     {
+     |         type: "circle",
+     |         cx: 10,
+     |         cy: 10,
+     |         r: 5
+     |     },
+     |     {
+     |         type: "rect",
+     |         x: 10,
+     |         y: 10,
+     |         width: 10,
+     |         height: 10,
+     |         fill: "#fc0"
+     |     }
+     | ]);
+    \*/
+    paperproto.add = function (json) {
+        if (R.is(json, "array")) {
+            var res = this.set(),
+                i = 0,
+                ii = json.length,
+                j;
+            for (; i < ii; i++) {
+                j = json[i] || {};
+                elements[has](j.type) && res.push(this[j.type]().attr(j));
+            }
+        }
+        return res;
+    };
+
+    /*\
+     * Raphael.format
+     [ method ]
+     **
+     * Simple format function. Replaces construction of type “`{<number>}`” to the corresponding argument.
+     **
+     > Parameters
+     **
+     - token (string) string to format
+     - … (string) rest of arguments will be treated as parameters for replacement
+     = (string) formated string
+     > Usage
+     | var x = 10,
+     |     y = 20,
+     |     width = 40,
+     |     height = 50;
+     | // this will draw a rectangular shape equivalent to "M10,20h40v50h-40z"
+     | paper.path(Raphael.format("M{0},{1}h{2}v{3}h{4}z", x, y, width, height, -width));
+    \*/
+    R.format = function (token, params) {
+        var args = R.is(params, array) ? [0][concat](params) : arguments;
+        token && R.is(token, string) && args.length - 1 && (token = token.replace(formatrg, function (str, i) {
+            return args[++i] == null ? E : args[i];
+        }));
+        return token || E;
+    };
+    /*\
+     * Raphael.fullfill
+     [ method ]
+     **
+     * A little bit more advanced format function than @Raphael.format. Replaces construction of type “`{<name>}`” to the corresponding argument.
+     **
+     > Parameters
+     **
+     - token (string) string to format
+     - json (object) object which properties will be used as a replacement
+     = (string) formated string
+     > Usage
+     | // this will draw a rectangular shape equivalent to "M10,20h40v50h-40z"
+     | paper.path(Raphael.fullfill("M{x},{y}h{dim.width}v{dim.height}h{dim['negative width']}z", {
+     |     x: 10,
+     |     y: 20,
+     |     dim: {
+     |         width: 40,
+     |         height: 50,
+     |         "negative width": -40
+     |     }
+     | }));
+    \*/
+    R.fullfill = (function () {
+        var tokenRegex = /\{([^\}]+)\}/g,
+            objNotationRegex = /(?:(?:^|\.)(.+?)(?=\[|\.|$|\()|\[('|")(.+?)\2\])(\(\))?/g, // matches .xxxxx or ["xxxxx"] to run over object properties
+            replacer = function (all, key, obj) {
+                var res = obj;
+                key.replace(objNotationRegex, function (all, name, quote, quotedName, isFunc) {
+                    name = name || quotedName;
+                    if (res) {
+                        if (name in res) {
+                            res = res[name];
+                        }
+                        typeof res == "function" && isFunc && (res = res());
+                    }
+                });
+                res = (res == null || res == obj ? all : res) + "";
+                return res;
+            };
+        return function (str, obj) {
+            return String(str).replace(tokenRegex, function (all, key) {
+                return replacer(all, key, obj);
+            });
+        };
+    })();
+    /*\
+     * Raphael.ninja
+     [ method ]
+     **
+     * If you want to leave no trace of Raphaël (Well, Raphaël creates only one global variable `Raphael`, but anyway.) You can use `ninja` method.
+     * Beware, that in this case plugins could stop working, because they are depending on global variable existance.
+     **
+     = (object) Raphael object
+     > Usage
+     | (function (local_raphael) {
+     |     var paper = local_raphael(10, 10, 320, 200);
+     |     …
+     | })(Raphael.ninja());
+    \*/
+    R.ninja = function () {
+        oldRaphael.was ? (g.win.Raphael = oldRaphael.is) : delete Raphael;
+        return R;
+    };
+    /*\
+     * Raphael.st
+     [ property (object) ]
+     **
+     * You can add your own method to elements and sets. It is wise to add a set method for each element method
+     * you added, so you will be able to call the same method on sets too.
+     **
+     * See also @Raphael.el.
+     > Usage
+     | Raphael.el.red = function () {
+     |     this.attr({fill: "#f00"});
+     | };
+     | Raphael.st.red = function () {
+     |     this.forEach(function (el) {
+     |         el.red();
+     |     });
+     | };
+     | // then use it
+     | paper.set(paper.circle(100, 100, 20), paper.circle(110, 100, 20)).red();
+    \*/
+    R.st = setproto;
+
+    eve.on("raphael.DOMload", function () {
+        loaded = true;
+    });
+
+    // Firefox <3.6 fix: http://webreflection.blogspot.com/2009/11/195-chars-to-help-lazy-loading.html
+    (function (doc, loaded, f) {
+        if (doc.readyState == null && doc.addEventListener){
+            doc.addEventListener(loaded, f = function () {
+                doc.removeEventListener(loaded, f, false);
+                doc.readyState = "complete";
+            }, false);
+            doc.readyState = "loading";
+        }
+        function isLoaded() {
+            (/in/).test(doc.readyState) ? setTimeout(isLoaded, 9) : R.eve("raphael.DOMload");
+        }
+        isLoaded();
+    })(document, "DOMContentLoaded");
+
+// ┌─────────────────────────────────────────────────────────────────────┐ \\
+// │ Raphaël - JavaScript Vector Library                                 │ \\
+// ├─────────────────────────────────────────────────────────────────────┤ \\
+// │ SVG Module                                                          │ \\
+// ├─────────────────────────────────────────────────────────────────────┤ \\
+// │ Copyright (c) 2008-2011 Dmitry Baranovskiy (http://raphaeljs.com)   │ \\
+// │ Copyright (c) 2008-2011 Sencha Labs (http://sencha.com)             │ \\
+// │ Licensed under the MIT (http://raphaeljs.com/license.html) license. │ \\
+// └─────────────────────────────────────────────────────────────────────┘ \\
+
+(function(){
+    if (!R.svg) {
+        return;
+    }
+    var has = "hasOwnProperty",
+        Str = String,
+        toFloat = parseFloat,
+        toInt = parseInt,
+        math = Math,
+        mmax = math.max,
+        abs = math.abs,
+        pow = math.pow,
+        separator = /[, ]+/,
+        eve = R.eve,
+        E = "",
+        S = " ";
+    var xlink = "http://www.w3.org/1999/xlink",
+        markers = {
+            block: "M5,0 0,2.5 5,5z",
+            classic: "M5,0 0,2.5 5,5 3.5,3 3.5,2z",
+            diamond: "M2.5,0 5,2.5 2.5,5 0,2.5z",
+            open: "M6,1 1,3.5 6,6",
+            oval: "M2.5,0A2.5,2.5,0,0,1,2.5,5 2.5,2.5,0,0,1,2.5,0z"
+        },
+        markerCounter = {};
+    R.toString = function () {
+        return  "Your browser supports SVG.\nYou are running Rapha\xebl " + this.version;
+    };
+    var $ = function (el, attr) {
+        if (attr) {
+            if (typeof el == "string") {
+                el = $(el);
+            }
+            for (var key in attr) if (attr[has](key)) {
+                if (key.substring(0, 6) == "xlink:") {
+                    el.setAttributeNS(xlink, key.substring(6), Str(attr[key]));
+                } else {
+                    el.setAttribute(key, Str(attr[key]));
+                }
+            }
+        } else {
+            el = R._g.doc.createElementNS("http://www.w3.org/2000/svg", el);
+            el.style && (el.style.webkitTapHighlightColor = "rgba(0,0,0,0)");
+        }
+        return el;
+    },
+    addGradientFill = function (element, gradient) {
+        var type = "linear",
+            id = element.id + gradient,
+            fx = .5, fy = .5,
+            o = element.node,
+            SVG = element.paper,
+            s = o.style,
+            el = R._g.doc.getElementById(id);
+        if (!el) {
+            gradient = Str(gradient).replace(R._radial_gradient, function (all, _fx, _fy) {
+                type = "radial";
+                if (_fx && _fy) {
+                    fx = toFloat(_fx);
+                    fy = toFloat(_fy);
+                    var dir = ((fy > .5) * 2 - 1);
+                    pow(fx - .5, 2) + pow(fy - .5, 2) > .25 &&
+                        (fy = math.sqrt(.25 - pow(fx - .5, 2)) * dir + .5) &&
+                        fy != .5 &&
+                        (fy = fy.toFixed(5) - 1e-5 * dir);
+                }
+                return E;
+            });
+            gradient = gradient.split(/\s*\-\s*/);
+            if (type == "linear") {
+                var angle = gradient.shift();
+                angle = -toFloat(angle);
+                if (isNaN(angle)) {
+                    return null;
+                }
+                var vector = [0, 0, math.cos(R.rad(angle)), math.sin(R.rad(angle))],
+                    max = 1 / (mmax(abs(vector[2]), abs(vector[3])) || 1);
+                vector[2] *= max;
+                vector[3] *= max;
+                if (vector[2] < 0) {
+                    vector[0] = -vector[2];
+                    vector[2] = 0;
+                }
+                if (vector[3] < 0) {
+                    vector[1] = -vector[3];
+                    vector[3] = 0;
+                }
+            }
+            var dots = R._parseDots(gradient);
+            if (!dots) {
+                return null;
+            }
+            id = id.replace(/[\(\)\s,\xb0#]/g, "_");
+
+            if (element.gradient && id != element.gradient.id) {
+                SVG.defs.removeChild(element.gradient);
+                delete element.gradient;
+            }
+
+            if (!element.gradient) {
+                el = $(type + "Gradient", {id: id});
+                element.gradient = el;
+                $(el, type == "radial" ? {
+                    fx: fx,
+                    fy: fy
+                } : {
+                    x1: vector[0],
+                    y1: vector[1],
+                    x2: vector[2],
+                    y2: vector[3],
+                    gradientTransform: element.matrix.invert()
+                });
+                SVG.defs.appendChild(el);
+                for (var i = 0, ii = dots.length; i < ii; i++) {
+                    el.appendChild($("stop", {
+                        offset: dots[i].offset ? dots[i].offset : i ? "100%" : "0%",
+                        "stop-color": dots[i].color || "#fff"
+                    }));
+                }
+            }
+        }
+        $(o, {
+            fill: "url('" + document.location + "#" + id + "')",
+            opacity: 1,
+            "fill-opacity": 1
+        });
+        s.fill = E;
+        s.opacity = 1;
+        s.fillOpacity = 1;
+        return 1;
+    },
+    updatePosition = function (o) {
+        var bbox = o.getBBox(1);
+        $(o.pattern, {patternTransform: o.matrix.invert() + " translate(" + bbox.x + "," + bbox.y + ")"});
+    },
+    addArrow = function (o, value, isEnd) {
+        if (o.type == "path") {
+            var values = Str(value).toLowerCase().split("-"),
+                p = o.paper,
+                se = isEnd ? "end" : "start",
+                node = o.node,
+                attrs = o.attrs,
+                stroke = attrs["stroke-width"],
+                i = values.length,
+                type = "classic",
+                from,
+                to,
+                dx,
+                refX,
+                attr,
+                w = 3,
+                h = 3,
+                t = 5;
+            while (i--) {
+                switch (values[i]) {
+                    case "block":
+                    case "classic":
+                    case "oval":
+                    case "diamond":
+                    case "open":
+                    case "none":
+                        type = values[i];
+                        break;
+                    case "wide": h = 5; break;
+                    case "narrow": h = 2; break;
+                    case "long": w = 5; break;
+                    case "short": w = 2; break;
+                }
+            }
+            if (type == "open") {
+                w += 2;
+                h += 2;
+                t += 2;
+                dx = 1;
+                refX = isEnd ? 4 : 1;
+                attr = {
+                    fill: "none",
+                    stroke: attrs.stroke
+                };
+            } else {
+                refX = dx = w / 2;
+                attr = {
+                    fill: attrs.stroke,
+                    stroke: "none"
+                };
+            }
+            if (o._.arrows) {
+                if (isEnd) {
+                    o._.arrows.endPath && markerCounter[o._.arrows.endPath]--;
+                    o._.arrows.endMarker && markerCounter[o._.arrows.endMarker]--;
+                } else {
+                    o._.arrows.startPath && markerCounter[o._.arrows.startPath]--;
+                    o._.arrows.startMarker && markerCounter[o._.arrows.startMarker]--;
+                }
+            } else {
+                o._.arrows = {};
+            }
+            if (type != "none") {
+                var pathId = "raphael-marker-" + type,
+                    markerId = "raphael-marker-" + se + type + w + h + "-obj" + o.id;
+                if (!R._g.doc.getElementById(pathId)) {
+                    p.defs.appendChild($($("path"), {
+                        "stroke-linecap": "round",
+                        d: markers[type],
+                        id: pathId
+                    }));
+                    markerCounter[pathId] = 1;
+                } else {
+                    markerCounter[pathId]++;
+                }
+                var marker = R._g.doc.getElementById(markerId),
+                    use;
+                if (!marker) {
+                    marker = $($("marker"), {
+                        id: markerId,
+                        markerHeight: h,
+                        markerWidth: w,
+                        orient: "auto",
+                        refX: refX,
+                        refY: h / 2
+                    });
+                    use = $($("use"), {
+                        "xlink:href": "#" + pathId,
+                        transform: (isEnd ? "rotate(180 " + w / 2 + " " + h / 2 + ") " : E) + "scale(" + w / t + "," + h / t + ")",
+                        "stroke-width": (1 / ((w / t + h / t) / 2)).toFixed(4)
+                    });
+                    marker.appendChild(use);
+                    p.defs.appendChild(marker);
+                    markerCounter[markerId] = 1;
+                } else {
+                    markerCounter[markerId]++;
+                    use = marker.getElementsByTagName("use")[0];
+                }
+                $(use, attr);
+                var delta = dx * (type != "diamond" && type != "oval");
+                if (isEnd) {
+                    from = o._.arrows.startdx * stroke || 0;
+                    to = R.getTotalLength(attrs.path) - delta * stroke;
+                } else {
+                    from = delta * stroke;
+                    to = R.getTotalLength(attrs.path) - (o._.arrows.enddx * stroke || 0);
+                }
+                attr = {};
+                attr["marker-" + se] = "url(#" + markerId + ")";
+                if (to || from) {
+                    attr.d = R.getSubpath(attrs.path, from, to);
+                }
+                $(node, attr);
+                o._.arrows[se + "Path"] = pathId;
+                o._.arrows[se + "Marker"] = markerId;
+                o._.arrows[se + "dx"] = delta;
+                o._.arrows[se + "Type"] = type;
+                o._.arrows[se + "String"] = value;
+            } else {
+                if (isEnd) {
+                    from = o._.arrows.startdx * stroke || 0;
+                    to = R.getTotalLength(attrs.path) - from;
+                } else {
+                    from = 0;
+                    to = R.getTotalLength(attrs.path) - (o._.arrows.enddx * stroke || 0);
+                }
+                o._.arrows[se + "Path"] && $(node, {d: R.getSubpath(attrs.path, from, to)});
+                delete o._.arrows[se + "Path"];
+                delete o._.arrows[se + "Marker"];
+                delete o._.arrows[se + "dx"];
+                delete o._.arrows[se + "Type"];
+                delete o._.arrows[se + "String"];
+            }
+            for (attr in markerCounter) if (markerCounter[has](attr) && !markerCounter[attr]) {
+                var item = R._g.doc.getElementById(attr);
+                item && item.parentNode.removeChild(item);
+            }
+        }
+    },
+    dasharray = {
+        "": [0],
+        "none": [0],
+        "-": [3, 1],
+        ".": [1, 1],
+        "-.": [3, 1, 1, 1],
+        "-..": [3, 1, 1, 1, 1, 1],
+        ". ": [1, 3],
+        "- ": [4, 3],
+        "--": [8, 3],
+        "- .": [4, 3, 1, 3],
+        "--.": [8, 3, 1, 3],
+        "--..": [8, 3, 1, 3, 1, 3]
+    },
+    addDashes = function (o, value, params) {
+        value = dasharray[Str(value).toLowerCase()];
+        if (value) {
+            var width = o.attrs["stroke-width"] || "1",
+                butt = {round: width, square: width, butt: 0}[o.attrs["stroke-linecap"] || params["stroke-linecap"]] || 0,
+                dashes = [],
+                i = value.length;
+            while (i--) {
+                dashes[i] = value[i] * width + ((i % 2) ? 1 : -1) * butt;
+            }
+            $(o.node, {"stroke-dasharray": dashes.join(",")});
+        }
+    },
+    setFillAndStroke = function (o, params) {
+        var node = o.node,
+            attrs = o.attrs,
+            vis = node.style.visibility;
+        node.style.visibility = "hidden";
+        for (var att in params) {
+            if (params[has](att)) {
+                if (!R._availableAttrs[has](att)) {
+                    continue;
+                }
+                var value = params[att];
+                attrs[att] = value;
+                switch (att) {
+                    case "blur":
+                        o.blur(value);
+                        break;
+                    case "title":
+                        var title = node.getElementsByTagName("title");
+
+                        // Use the existing <title>.
+                        if (title.length && (title = title[0])) {
+                          title.firstChild.nodeValue = value;
+                        } else {
+                          title = $("title");
+                          var val = R._g.doc.createTextNode(value);
+                          title.appendChild(val);
+                          node.appendChild(title);
+                        }
+                        break;
+                    case "href":
+                    case "target":
+                        var pn = node.parentNode;
+                        if (pn.tagName.toLowerCase() != "a") {
+                            var hl = $("a");
+                            pn.insertBefore(hl, node);
+                            hl.appendChild(node);
+                            pn = hl;
+                        }
+                        if (att == "target") {
+                            pn.setAttributeNS(xlink, "show", value == "blank" ? "new" : value);
+                        } else {
+                            pn.setAttributeNS(xlink, att, value);
+                        }
+                        break;
+                    case "cursor":
+                        node.style.cursor = value;
+                        break;
+                    case "transform":
+                        o.transform(value);
+                        break;
+                    case "arrow-start":
+                        addArrow(o, value);
+                        break;
+                    case "arrow-end":
+                        addArrow(o, value, 1);
+                        break;
+                    case "clip-rect":
+                        var rect = Str(value).split(separator);
+                        if (rect.length == 4) {
+                            o.clip && o.clip.parentNode.parentNode.removeChild(o.clip.parentNode);
+                            var el = $("clipPath"),
+                                rc = $("rect");
+                            el.id = R.createUUID();
+                            $(rc, {
+                                x: rect[0],
+                                y: rect[1],
+                                width: rect[2],
+                                height: rect[3]
+                            });
+                            el.appendChild(rc);
+                            o.paper.defs.appendChild(el);
+                            $(node, {"clip-path": "url(#" + el.id + ")"});
+                            o.clip = rc;
+                        }
+                        if (!value) {
+                            var path = node.getAttribute("clip-path");
+                            if (path) {
+                                var clip = R._g.doc.getElementById(path.replace(/(^url\(#|\)$)/g, E));
+                                clip && clip.parentNode.removeChild(clip);
+                                $(node, {"clip-path": E});
+                                delete o.clip;
+                            }
+                        }
+                    break;
+                    case "path":
+                        if (o.type == "path") {
+                            $(node, {d: value ? attrs.path = R._pathToAbsolute(value) : "M0,0"});
+                            o._.dirty = 1;
+                            if (o._.arrows) {
+                                "startString" in o._.arrows && addArrow(o, o._.arrows.startString);
+                                "endString" in o._.arrows && addArrow(o, o._.arrows.endString, 1);
+                            }
+                        }
+                        break;
+                    case "width":
+                        node.setAttribute(att, value);
+                        o._.dirty = 1;
+                        if (attrs.fx) {
+                            att = "x";
+                            value = attrs.x;
+                        } else {
+                            break;
+                        }
+                    case "x":
+                        if (attrs.fx) {
+                            value = -attrs.x - (attrs.width || 0);
+                        }
+                    case "rx":
+                        if (att == "rx" && o.type == "rect") {
+                            break;
+                        }
+                    case "cx":
+                        node.setAttribute(att, value);
+                        o.pattern && updatePosition(o);
+                        o._.dirty = 1;
+                        break;
+                    case "height":
+                        node.setAttribute(att, value);
+                        o._.dirty = 1;
+                        if (attrs.fy) {
+                            att = "y";
+                            value = attrs.y;
+                        } else {
+                            break;
+                        }
+                    case "y":
+                        if (attrs.fy) {
+                            value = -attrs.y - (attrs.height || 0);
+                        }
+                    case "ry":
+                        if (att == "ry" && o.type == "rect") {
+                            break;
+                        }
+                    case "cy":
+                        node.setAttribute(att, value);
+                        o.pattern && updatePosition(o);
+                        o._.dirty = 1;
+                        break;
+                    case "r":
+                        if (o.type == "rect") {
+                            $(node, {rx: value, ry: value});
+                        } else {
+                            node.setAttribute(att, value);
+                        }
+                        o._.dirty = 1;
+                        break;
+                    case "src":
+                        if (o.type == "image") {
+                            node.setAttributeNS(xlink, "href", value);
+                        }
+                        break;
+                    case "stroke-width":
+                        if (o._.sx != 1 || o._.sy != 1) {
+                            value /= mmax(abs(o._.sx), abs(o._.sy)) || 1;
+                        }
+                        node.setAttribute(att, value);
+                        if (attrs["stroke-dasharray"]) {
+                            addDashes(o, attrs["stroke-dasharray"], params);
+                        }
+                        if (o._.arrows) {
+                            "startString" in o._.arrows && addArrow(o, o._.arrows.startString);
+                            "endString" in o._.arrows && addArrow(o, o._.arrows.endString, 1);
+                        }
+                        break;
+                    case "stroke-dasharray":
+                        addDashes(o, value, params);
+                        break;
+                    case "fill":
+                        var isURL = Str(value).match(R._ISURL);
+                        if (isURL) {
+                            el = $("pattern");
+                            var ig = $("image");
+                            el.id = R.createUUID();
+                            $(el, {x: 0, y: 0, patternUnits: "userSpaceOnUse", height: 1, width: 1});
+                            $(ig, {x: 0, y: 0, "xlink:href": isURL[1]});
+                            el.appendChild(ig);
+
+                            (function (el) {
+                                R._preload(isURL[1], function () {
+                                    var w = this.offsetWidth,
+                                        h = this.offsetHeight;
+                                    $(el, {width: w, height: h});
+                                    $(ig, {width: w, height: h});
+                                    o.paper.safari();
+                                });
+                            })(el);
+                            o.paper.defs.appendChild(el);
+                            $(node, {fill: "url(#" + el.id + ")"});
+                            o.pattern = el;
+                            o.pattern && updatePosition(o);
+                            break;
+                        }
+                        var clr = R.getRGB(value);
+                        if (!clr.error) {
+                            delete params.gradient;
+                            delete attrs.gradient;
+                            !R.is(attrs.opacity, "undefined") &&
+                                R.is(params.opacity, "undefined") &&
+                                $(node, {opacity: attrs.opacity});
+                            !R.is(attrs["fill-opacity"], "undefined") &&
+                                R.is(params["fill-opacity"], "undefined") &&
+                                $(node, {"fill-opacity": attrs["fill-opacity"]});
+                        } else if ((o.type == "circle" || o.type == "ellipse" || Str(value).charAt() != "r") && addGradientFill(o, value)) {
+                            if ("opacity" in attrs || "fill-opacity" in attrs) {
+                                var gradient = R._g.doc.getElementById(node.getAttribute("fill").replace(/^url\(#|\)$/g, E));
+                                if (gradient) {
+                                    var stops = gradient.getElementsByTagName("stop");
+                                    $(stops[stops.length - 1], {"stop-opacity": ("opacity" in attrs ? attrs.opacity : 1) * ("fill-opacity" in attrs ? attrs["fill-opacity"] : 1)});
+                                }
+                            }
+                            attrs.gradient = value;
+                            attrs.fill = "none";
+                            break;
+                        }
+                        clr[has]("opacity") && $(node, {"fill-opacity": clr.opacity > 1 ? clr.opacity / 100 : clr.opacity});
+                    case "stroke":
+                        clr = R.getRGB(value);
+                        node.setAttribute(att, clr.hex);
+                        att == "stroke" && clr[has]("opacity") && $(node, {"stroke-opacity": clr.opacity > 1 ? clr.opacity / 100 : clr.opacity});
+                        if (att == "stroke" && o._.arrows) {
+                            "startString" in o._.arrows && addArrow(o, o._.arrows.startString);
+                            "endString" in o._.arrows && addArrow(o, o._.arrows.endString, 1);
+                        }
+                        break;
+                    case "gradient":
+                        (o.type == "circle" || o.type == "ellipse" || Str(value).charAt() != "r") && addGradientFill(o, value);
+                        break;
+                    case "opacity":
+                        if (attrs.gradient && !attrs[has]("stroke-opacity")) {
+                            $(node, {"stroke-opacity": value > 1 ? value / 100 : value});
+                        }
+                        // fall
+                    case "fill-opacity":
+                        if (attrs.gradient) {
+                            gradient = R._g.doc.getElementById(node.getAttribute("fill").replace(/^url\(#|\)$/g, E));
+                            if (gradient) {
+                                stops = gradient.getElementsByTagName("stop");
+                                $(stops[stops.length - 1], {"stop-opacity": value});
+                            }
+                            break;
+                        }
+                    default:
+                        att == "font-size" && (value = toInt(value, 10) + "px");
+                        var cssrule = att.replace(/(\-.)/g, function (w) {
+                            return w.substring(1).toUpperCase();
+                        });
+                        node.style[cssrule] = value;
+                        o._.dirty = 1;
+                        node.setAttribute(att, value);
+                        break;
+                }
+            }
+        }
+
+        tuneText(o, params);
+        node.style.visibility = vis;
+    },
+    leading = 1.2,
+    tuneText = function (el, params) {
+        if (el.type != "text" || !(params[has]("text") || params[has]("font") || params[has]("font-size") || params[has]("x") || params[has]("y"))) {
+            return;
+        }
+        var a = el.attrs,
+            node = el.node,
+            fontSize = node.firstChild ? toInt(R._g.doc.defaultView.getComputedStyle(node.firstChild, E).getPropertyValue("font-size"), 10) : 10;
+
+        if (params[has]("text")) {
+            a.text = params.text;
+            while (node.firstChild) {
+                node.removeChild(node.firstChild);
+            }
+            var texts = Str(params.text).split("\n"),
+                tspans = [],
+                tspan;
+            for (var i = 0, ii = texts.length; i < ii; i++) {
+                tspan = $("tspan");
+                i && $(tspan, {dy: fontSize * leading, x: a.x});
+                tspan.appendChild(R._g.doc.createTextNode(texts[i]));
+                node.appendChild(tspan);
+                tspans[i] = tspan;
+            }
+        } else {
+            tspans = node.getElementsByTagName("tspan");
+            for (i = 0, ii = tspans.length; i < ii; i++) if (i) {
+                $(tspans[i], {dy: fontSize * leading, x: a.x});
+            } else {
+                $(tspans[0], {dy: 0});
+            }
+        }
+        $(node, {x: a.x, y: a.y});
+        el._.dirty = 1;
+        var bb = el._getBBox(),
+            dif = a.y - (bb.y + bb.height / 2);
+        dif && R.is(dif, "finite") && $(tspans[0], {dy: dif});
+    },
+    getRealNode = function (node) {
+        if (node.parentNode && node.parentNode.tagName.toLowerCase() === "a") {
+            return node.parentNode;
+        } else {
+            return node;
+        }
+    },
+    Element = function (node, svg) {
+        var X = 0,
+            Y = 0;
+        /*\
+         * Element.node
+         [ property (object) ]
+         **
+         * Gives you a reference to the DOM object, so you can assign event handlers or just mess around.
+         **
+         * Note: Don’t mess with it.
+         > Usage
+         | // draw a circle at coordinate 10,10 with radius of 10
+         | var c = paper.circle(10, 10, 10);
+         | c.node.onclick = function () {
+         |     c.attr("fill", "red");
+         | };
+        \*/
+        this[0] = this.node = node;
+        /*\
+         * Element.raphael
+         [ property (object) ]
+         **
+         * Internal reference to @Raphael object. In case it is not available.
+         > Usage
+         | Raphael.el.red = function () {
+         |     var hsb = this.paper.raphael.rgb2hsb(this.attr("fill"));
+         |     hsb.h = 1;
+         |     this.attr({fill: this.paper.raphael.hsb2rgb(hsb).hex});
+         | }
+        \*/
+        node.raphael = true;
+        /*\
+         * Element.id
+         [ property (number) ]
+         **
+         * Unique id of the element. Especially useful when you want to listen to events of the element,
+         * because all events are fired in format `<module>.<action>.<id>`. Also useful for @Paper.getById method.
+        \*/
+        this.id = R._oid++;
+        node.raphaelid = this.id;
+        this.matrix = R.matrix();
+        this.realPath = null;
+        /*\
+         * Element.paper
+         [ property (object) ]
+         **
+         * Internal reference to “paper” where object drawn. Mainly for use in plugins and element extensions.
+         > Usage
+         | Raphael.el.cross = function () {
+         |     this.attr({fill: "red"});
+         |     this.paper.path("M10,10L50,50M50,10L10,50")
+         |         .attr({stroke: "red"});
+         | }
+        \*/
+        this.paper = svg;
+        this.attrs = this.attrs || {};
+        this._ = {
+            transform: [],
+            sx: 1,
+            sy: 1,
+            deg: 0,
+            dx: 0,
+            dy: 0,
+            dirty: 1
+        };
+        !svg.bottom && (svg.bottom = this);
+        /*\
+         * Element.prev
+         [ property (object) ]
+         **
+         * Reference to the previous element in the hierarchy.
+        \*/
+        this.prev = svg.top;
+        svg.top && (svg.top.next = this);
+        svg.top = this;
+        /*\
+         * Element.next
+         [ property (object) ]
+         **
+         * Reference to the next element in the hierarchy.
+        \*/
+        this.next = null;
+    },
+    elproto = R.el;
+
+    Element.prototype = elproto;
+    elproto.constructor = Element;
+
+    R._engine.path = function (pathString, SVG) {
+        var el = $("path");
+        SVG.canvas && SVG.canvas.appendChild(el);
+        var p = new Element(el, SVG);
+        p.type = "path";
+        setFillAndStroke(p, {
+            fill: "none",
+            stroke: "#000",
+            path: pathString
+        });
+        return p;
+    };
+    /*\
+     * Element.rotate
+     [ method ]
+     **
+     * Deprecated! Use @Element.transform instead.
+     * Adds rotation by given angle around given point to the list of
+     * transformations of the element.
+     > Parameters
+     - deg (number) angle in degrees
+     - cx (number) #optional x coordinate of the centre of rotation
+     - cy (number) #optional y coordinate of the centre of rotation
+     * If cx & cy aren’t specified centre of the shape is used as a point of rotation.
+     = (object) @Element
+    \*/
+    elproto.rotate = function (deg, cx, cy) {
+        if (this.removed) {
+            return this;
+        }
+        deg = Str(deg).split(separator);
+        if (deg.length - 1) {
+            cx = toFloat(deg[1]);
+            cy = toFloat(deg[2]);
+        }
+        deg = toFloat(deg[0]);
+        (cy == null) && (cx = cy);
+        if (cx == null || cy == null) {
+            var bbox = this.getBBox(1);
+            cx = bbox.x + bbox.width / 2;
+            cy = bbox.y + bbox.height / 2;
+        }
+        this.transform(this._.transform.concat([["r", deg, cx, cy]]));
+        return this;
+    };
+    /*\
+     * Element.scale
+     [ method ]
+     **
+     * Deprecated! Use @Element.transform instead.
+     * Adds scale by given amount relative to given point to the list of
+     * transformations of the element.
+     > Parameters
+     - sx (number) horisontal scale amount
+     - sy (number) vertical scale amount
+     - cx (number) #optional x coordinate of the centre of scale
+     - cy (number) #optional y coordinate of the centre of scale
+     * If cx & cy aren’t specified centre of the shape is used instead.
+     = (object) @Element
+    \*/
+    elproto.scale = function (sx, sy, cx, cy) {
+        if (this.removed) {
+            return this;
+        }
+        sx = Str(sx).split(separator);
+        if (sx.length - 1) {
+            sy = toFloat(sx[1]);
+            cx = toFloat(sx[2]);
+            cy = toFloat(sx[3]);
+        }
+        sx = toFloat(sx[0]);
+        (sy == null) && (sy = sx);
+        (cy == null) && (cx = cy);
+        if (cx == null || cy == null) {
+            var bbox = this.getBBox(1);
+        }
+        cx = cx == null ? bbox.x + bbox.width / 2 : cx;
+        cy = cy == null ? bbox.y + bbox.height / 2 : cy;
+        this.transform(this._.transform.concat([["s", sx, sy, cx, cy]]));
+        return this;
+    };
+    /*\
+     * Element.translate
+     [ method ]
+     **
+     * Deprecated! Use @Element.transform instead.
+     * Adds translation by given amount to the list of transformations of the element.
+     > Parameters
+     - dx (number) horisontal shift
+     - dy (number) vertical shift
+     = (object) @Element
+    \*/
+    elproto.translate = function (dx, dy) {
+        if (this.removed) {
+            return this;
+        }
+        dx = Str(dx).split(separator);
+        if (dx.length - 1) {
+            dy = toFloat(dx[1]);
+        }
+        dx = toFloat(dx[0]) || 0;
+        dy = +dy || 0;
+        this.transform(this._.transform.concat([["t", dx, dy]]));
+        return this;
+    };
+    /*\
+     * Element.transform
+     [ method ]
+     **
+     * Adds transformation to the element which is separate to other attributes,
+     * i.e. translation doesn’t change `x` or `y` of the rectange. The format
+     * of transformation string is similar to the path string syntax:
+     | "t100,100r30,100,100s2,2,100,100r45s1.5"
+     * Each letter is a command. There are four commands: `t` is for translate, `r` is for rotate, `s` is for
+     * scale and `m` is for matrix.
+     *
+     * There are also alternative “absolute” translation, rotation and scale: `T`, `R` and `S`. They will not take previous transformation into account. For example, `...T100,0` will always move element 100 px horisontally, while `...t100,0` could move it vertically if there is `r90` before. Just compare results of `r90t100,0` and `r90T100,0`.
+     *
+     * So, the example line above could be read like “translate by 100, 100; rotate 30° around 100, 100; scale twice around 100, 100;
+     * rotate 45° around centre; scale 1.5 times relative to centre”. As you can see rotate and scale commands have origin
+     * coordinates as optional parameters, the default is the centre point of the element.
+     * Matrix accepts six parameters.
+     > Usage
+     | var el = paper.rect(10, 20, 300, 200);
+     | // translate 100, 100, rotate 45°, translate -100, 0
+     | el.transform("t100,100r45t-100,0");
+     | // if you want you can append or prepend transformations
+     | el.transform("...t50,50");
+     | el.transform("s2...");
+     | // or even wrap
+     | el.transform("t50,50...t-50-50");
+     | // to reset transformation call method with empty string
+     | el.transform("");
+     | // to get current value call it without parameters
+     | console.log(el.transform());
+     > Parameters
+     - tstr (string) #optional transformation string
+     * If tstr isn’t specified
+     = (string) current transformation string
+     * else
+     = (object) @Element
+    \*/
+    elproto.transform = function (tstr) {
+        var _ = this._;
+        if (tstr == null) {
+            return _.transform;
+        }
+        R._extractTransform(this, tstr);
+
+        this.clip && $(this.clip, {transform: this.matrix.invert()});
+        this.pattern && updatePosition(this);
+        this.node && $(this.node, {transform: this.matrix});
+
+        if (_.sx != 1 || _.sy != 1) {
+            var sw = this.attrs[has]("stroke-width") ? this.attrs["stroke-width"] : 1;
+            this.attr({"stroke-width": sw});
+        }
+
+        return this;
+    };
+    /*\
+     * Element.hide
+     [ method ]
+     **
+     * Makes element invisible. See @Element.show.
+     = (object) @Element
+    \*/
+    elproto.hide = function () {
+        !this.removed && this.paper.safari(this.node.style.display = "none");
+        return this;
+    };
+    /*\
+     * Element.show
+     [ method ]
+     **
+     * Makes element visible. See @Element.hide.
+     = (object) @Element
+    \*/
+    elproto.show = function () {
+        !this.removed && this.paper.safari(this.node.style.display = "");
+        return this;
+    };
+    /*\
+     * Element.remove
+     [ method ]
+     **
+     * Removes element from the paper.
+    \*/
+    elproto.remove = function () {
+        var node = getRealNode(this.node);
+        if (this.removed || !node.parentNode) {
+            return;
+        }
+        var paper = this.paper;
+        paper.__set__ && paper.__set__.exclude(this);
+        eve.unbind("raphael.*.*." + this.id);
+        if (this.gradient) {
+            paper.defs.removeChild(this.gradient);
+        }
+        R._tear(this, paper);
+
+        node.parentNode.removeChild(node);
+
+        // Remove custom data for element
+        this.removeData();
+
+        for (var i in this) {
+            this[i] = typeof this[i] == "function" ? R._removedFactory(i) : null;
+        }
+        this.removed = true;
+    };
+    elproto._getBBox = function () {
+        if (this.node.style.display == "none") {
+            this.show();
+            var hide = true;
+        }
+        var canvasHidden = false,
+            containerStyle;
+        if (this.paper.canvas.parentElement) {
+          containerStyle = this.paper.canvas.parentElement.style;
+        } //IE10+ can't find parentElement
+        else if (this.paper.canvas.parentNode) {
+          containerStyle = this.paper.canvas.parentNode.style;
+        }
+
+        if(containerStyle && containerStyle.display == "none") {
+          canvasHidden = true;
+          containerStyle.display = "";
+        }
+        var bbox = {};
+        try {
+            bbox = this.node.getBBox();
+        } catch(e) {
+            // Firefox 3.0.x, 25.0.1 (probably more versions affected) play badly here - possible fix
+            bbox = {
+                x: this.node.clientLeft,
+                y: this.node.clientTop,
+                width: this.node.clientWidth,
+                height: this.node.clientHeight
+            }
+        } finally {
+            bbox = bbox || {};
+            if(canvasHidden){
+              containerStyle.display = "none";
+            }
+        }
+        hide && this.hide();
+        return bbox;
+    };
+    /*\
+     * Element.attr
+     [ method ]
+     **
+     * Sets the attributes of the element.
+     > Parameters
+     - attrName (string) attribute’s name
+     - value (string) value
+     * or
+     - params (object) object of name/value pairs
+     * or
+     - attrName (string) attribute’s name
+     * or
+     - attrNames (array) in this case method returns array of current values for given attribute names
+     = (object) @Element if attrsName & value or params are passed in.
+     = (...) value of the attribute if only attrsName is passed in.
+     = (array) array of values of the attribute if attrsNames is passed in.
+     = (object) object of attributes if nothing is passed in.
+     > Possible parameters
+     # <p>Please refer to the <a href="http://www.w3.org/TR/SVG/" title="The W3C Recommendation for the SVG language describes these properties in detail.">SVG specification</a> for an explanation of these parameters.</p>
+     o arrow-end (string) arrowhead on the end of the path. The format for string is `<type>[-<width>[-<length>]]`. Possible types: `classic`, `block`, `open`, `oval`, `diamond`, `none`, width: `wide`, `narrow`, `medium`, length: `long`, `short`, `midium`.
+     o clip-rect (string) comma or space separated values: x, y, width and height
+     o cursor (string) CSS type of the cursor
+     o cx (number) the x-axis coordinate of the center of the circle, or ellipse
+     o cy (number) the y-axis coordinate of the center of the circle, or ellipse
+     o fill (string) colour, gradient or image
+     o fill-opacity (number)
+     o font (string)
+     o font-family (string)
+     o font-size (number) font size in pixels
+     o font-weight (string)
+     o height (number)
+     o href (string) URL, if specified element behaves as hyperlink
+     o opacity (number)
+     o path (string) SVG path string format
+     o r (number) radius of the circle, ellipse or rounded corner on the rect
+     o rx (number) horisontal radius of the ellipse
+     o ry (number) vertical radius of the ellipse
+     o src (string) image URL, only works for @Element.image element
+     o stroke (string) stroke colour
+     o stroke-dasharray (string) [“”, “`-`”, “`.`”, “`-.`”, “`-..`”, “`. `”, “`- `”, “`--`”, “`- .`”, “`--.`”, “`--..`”]
+     o stroke-linecap (string) [“`butt`”, “`square`”, “`round`”]
+     o stroke-linejoin (string) [“`bevel`”, “`round`”, “`miter`”]
+     o stroke-miterlimit (number)
+     o stroke-opacity (number)
+     o stroke-width (number) stroke width in pixels, default is '1'
+     o target (string) used with href
+     o text (string) contents of the text element. Use `\n` for multiline text
+     o text-anchor (string) [“`start`”, “`middle`”, “`end`”], default is “`middle`”
+     o title (string) will create tooltip with a given text
+     o transform (string) see @Element.transform
+     o width (number)
+     o x (number)
+     o y (number)
+     > Gradients
+     * Linear gradient format: “`‹angle›-‹colour›[-‹colour›[:‹offset›]]*-‹colour›`”, example: “`90-#fff-#000`” – 90°
+     * gradient from white to black or “`0-#fff-#f00:20-#000`” – 0° gradient from white via red (at 20%) to black.
+     *
+     * radial gradient: “`r[(‹fx›, ‹fy›)]‹colour›[-‹colour›[:‹offset›]]*-‹colour›`”, example: “`r#fff-#000`” –
+     * gradient from white to black or “`r(0.25, 0.75)#fff-#000`” – gradient from white to black with focus point
+     * at 0.25, 0.75. Focus point coordinates are in 0..1 range. Radial gradients can only be applied to circles and ellipses.
+     > Path String
+     # <p>Please refer to <a href="http://www.w3.org/TR/SVG/paths.html#PathData" title="Details of a path’s data attribute’s format are described in the SVG specification.">SVG documentation regarding path string</a>. Raphaël fully supports it.</p>
+     > Colour Parsing
+     # <ul>
+     #     <li>Colour name (“<code>red</code>”, “<code>green</code>”, “<code>cornflowerblue</code>”, etc)</li>
+     #     <li>#••• — shortened HTML colour: (“<code>#000</code>”, “<code>#fc0</code>”, etc)</li>
+     #     <li>#•••••• — full length HTML colour: (“<code>#000000</code>”, “<code>#bd2300</code>”)</li>
+     #     <li>rgb(•••, •••, •••) — red, green and blue channels’ values: (“<code>rgb(200,&nbsp;100,&nbsp;0)</code>”)</li>
+     #     <li>rgb(•••%, •••%, •••%) — same as above, but in %: (“<code>rgb(100%,&nbsp;175%,&nbsp;0%)</code>”)</li>
+     #     <li>rgba(•••, •••, •••, •••) — red, green and blue channels’ values: (“<code>rgba(200,&nbsp;100,&nbsp;0, .5)</code>”)</li>
+     #     <li>rgba(•••%, •••%, •••%, •••%) — same as above, but in %: (“<code>rgba(100%,&nbsp;175%,&nbsp;0%, 50%)</code>”)</li>
+     #     <li>hsb(•••, •••, •••) — hue, saturation and brightness values: (“<code>hsb(0.5,&nbsp;0.25,&nbsp;1)</code>”)</li>
+     #     <li>hsb(•••%, •••%, •••%) — same as above, but in %</li>
+     #     <li>hsba(•••, •••, •••, •••) — same as above, but with opacity</li>
+     #     <li>hsl(•••, •••, •••) — almost the same as hsb, see <a href="http://en.wikipedia.org/wiki/HSL_and_HSV" title="HSL and HSV - Wikipedia, the free encyclopedia">Wikipedia page</a></li>
+     #     <li>hsl(•••%, •••%, •••%) — same as above, but in %</li>
+     #     <li>hsla(•••, •••, •••, •••) — same as above, but with opacity</li>
+     #     <li>Optionally for hsb and hsl you could specify hue as a degree: “<code>hsl(240deg,&nbsp;1,&nbsp;.5)</code>” or, if you want to go fancy, “<code>hsl(240°,&nbsp;1,&nbsp;.5)</code>”</li>
+     # </ul>
+    \*/
+    elproto.attr = function (name, value) {
+        if (this.removed) {
+            return this;
+        }
+        if (name == null) {
+            var res = {};
+            for (var a in this.attrs) if (this.attrs[has](a)) {
+                res[a] = this.attrs[a];
+            }
+            res.gradient && res.fill == "none" && (res.fill = res.gradient) && delete res.gradient;
+            res.transform = this._.transform;
+            return res;
+        }
+        if (value == null && R.is(name, "string")) {
+            if (name == "fill" && this.attrs.fill == "none" && this.attrs.gradient) {
+                return this.attrs.gradient;
+            }
+            if (name == "transform") {
+                return this._.transform;
+            }
+            var names = name.split(separator),
+                out = {};
+            for (var i = 0, ii = names.length; i < ii; i++) {
+                name = names[i];
+                if (name in this.attrs) {
+                    out[name] = this.attrs[name];
+                } else if (R.is(this.paper.customAttributes[name], "function")) {
+                    out[name] = this.paper.customAttributes[name].def;
+                } else {
+                    out[name] = R._availableAttrs[name];
+                }
+            }
+            return ii - 1 ? out : out[names[0]];
+        }
+        if (value == null && R.is(name, "array")) {
+            out = {};
+            for (i = 0, ii = name.length; i < ii; i++) {
+                out[name[i]] = this.attr(name[i]);
+            }
+            return out;
+        }
+        if (value != null) {
+            var params = {};
+            params[name] = value;
+        } else if (name != null && R.is(name, "object")) {
+            params = name;
+        }
+        for (var key in params) {
+            eve("raphael.attr." + key + "." + this.id, this, params[key]);
+        }
+        for (key in this.paper.customAttributes) if (this.paper.customAttributes[has](key) && params[has](key) && R.is(this.paper.customAttributes[key], "function")) {
+            var par = this.paper.customAttributes[key].apply(this, [].concat(params[key]));
+            this.attrs[key] = params[key];
+            for (var subkey in par) if (par[has](subkey)) {
+                params[subkey] = par[subkey];
+            }
+        }
+        setFillAndStroke(this, params);
+        return this;
+    };
+    /*\
+     * Element.toFront
+     [ method ]
+     **
+     * Moves the element so it is the closest to the viewer’s eyes, on top of other elements.
+     = (object) @Element
+    \*/
+    elproto.toFront = function () {
+        if (this.removed) {
+            return this;
+        }
+        var node = getRealNode(this.node);
+        node.parentNode.appendChild(node);
+        var svg = this.paper;
+        svg.top != this && R._tofront(this, svg);
+        return this;
+    };
+    /*\
+     * Element.toBack
+     [ method ]
+     **
+     * Moves the element so it is the furthest from the viewer’s eyes, behind other elements.
+     = (object) @Element
+    \*/
+    elproto.toBack = function () {
+        if (this.removed) {
+            return this;
+        }
+        var node = getRealNode(this.node);
+        var parentNode = node.parentNode;
+        parentNode.insertBefore(node, parentNode.firstChild);
+        R._toback(this, this.paper);
+        var svg = this.paper;
+        return this;
+    };
+    /*\
+     * Element.insertAfter
+     [ method ]
+     **
+     * Inserts current object after the given one.
+     = (object) @Element
+    \*/
+    elproto.insertAfter = function (element) {
+        if (this.removed || !element) {
+            return this;
+        }
+
+        var node = getRealNode(this.node);
+        var afterNode = getRealNode(element.node || element[element.length - 1].node);
+        if (afterNode.nextSibling) {
+            afterNode.parentNode.insertBefore(node, afterNode.nextSibling);
+        } else {
+            afterNode.parentNode.appendChild(node);
+        }
+        R._insertafter(this, element, this.paper);
+        return this;
+    };
+    /*\
+     * Element.insertBefore
+     [ method ]
+     **
+     * Inserts current object before the given one.
+     = (object) @Element
+    \*/
+    elproto.insertBefore = function (element) {
+        if (this.removed || !element) {
+            return this;
+        }
+
+        var node = getRealNode(this.node);
+        var beforeNode = getRealNode(element.node || element[0].node);
+        beforeNode.parentNode.insertBefore(node, beforeNode);
+        R._insertbefore(this, element, this.paper);
+        return this;
+    };
+    elproto.blur = function (size) {
+        // Experimental. No Safari support. Use it on your own risk.
+        var t = this;
+        if (+size !== 0) {
+            var fltr = $("filter"),
+                blur = $("feGaussianBlur");
+            t.attrs.blur = size;
+            fltr.id = R.createUUID();
+            $(blur, {stdDeviation: +size || 1.5});
+            fltr.appendChild(blur);
+            t.paper.defs.appendChild(fltr);
+            t._blur = fltr;
+            $(t.node, {filter: "url(#" + fltr.id + ")"});
+        } else {
+            if (t._blur) {
+                t._blur.parentNode.removeChild(t._blur);
+                delete t._blur;
+                delete t.attrs.blur;
+            }
+            t.node.removeAttribute("filter");
+        }
+        return t;
+    };
+    R._engine.circle = function (svg, x, y, r) {
+        var el = $("circle");
+        svg.canvas && svg.canvas.appendChild(el);
+        var res = new Element(el, svg);
+        res.attrs = {cx: x, cy: y, r: r, fill: "none", stroke: "#000"};
+        res.type = "circle";
+        $(el, res.attrs);
+        return res;
+    };
+    R._engine.rect = function (svg, x, y, w, h, r) {
+        var el = $("rect");
+        svg.canvas && svg.canvas.appendChild(el);
+        var res = new Element(el, svg);
+        res.attrs = {x: x, y: y, width: w, height: h, rx: r || 0, ry: r || 0, fill: "none", stroke: "#000"};
+        res.type = "rect";
+        $(el, res.attrs);
+        return res;
+    };
+    R._engine.ellipse = function (svg, x, y, rx, ry) {
+        var el = $("ellipse");
+        svg.canvas && svg.canvas.appendChild(el);
+        var res = new Element(el, svg);
+        res.attrs = {cx: x, cy: y, rx: rx, ry: ry, fill: "none", stroke: "#000"};
+        res.type = "ellipse";
+        $(el, res.attrs);
+        return res;
+    };
+    R._engine.image = function (svg, src, x, y, w, h) {
+        var el = $("image");
+        $(el, {x: x, y: y, width: w, height: h, preserveAspectRatio: "none"});
+        el.setAttributeNS(xlink, "href", src);
+        svg.canvas && svg.canvas.appendChild(el);
+        var res = new Element(el, svg);
+        res.attrs = {x: x, y: y, width: w, height: h, src: src};
+        res.type = "image";
+        return res;
+    };
+    R._engine.text = function (svg, x, y, text) {
+        var el = $("text");
+        svg.canvas && svg.canvas.appendChild(el);
+        var res = new Element(el, svg);
+        res.attrs = {
+            x: x,
+            y: y,
+            "text-anchor": "middle",
+            text: text,
+            "font-family": R._availableAttrs["font-family"],
+            "font-size": R._availableAttrs["font-size"],
+            stroke: "none",
+            fill: "#000"
+        };
+        res.type = "text";
+        setFillAndStroke(res, res.attrs);
+        return res;
+    };
+    R._engine.setSize = function (width, height) {
+        this.width = width || this.width;
+        this.height = height || this.height;
+        this.canvas.setAttribute("width", this.width);
+        this.canvas.setAttribute("height", this.height);
+        if (this._viewBox) {
+            this.setViewBox.apply(this, this._viewBox);
+        }
+        return this;
+    };
+    R._engine.create = function () {
+        var con = R._getContainer.apply(0, arguments),
+            container = con && con.container,
+            x = con.x,
+            y = con.y,
+            width = con.width,
+            height = con.height;
+        if (!container) {
+            throw new Error("SVG container not found.");
+        }
+        var cnvs = $("svg"),
+            css = "overflow:hidden;",
+            isFloating;
+        x = x || 0;
+        y = y || 0;
+        width = width || 512;
+        height = height || 342;
+        $(cnvs, {
+            height: height,
+            version: 1.1,
+            width: width,
+            xmlns: "http://www.w3.org/2000/svg",
+            "xmlns:xlink": "http://www.w3.org/1999/xlink"
+        });
+        if (container == 1) {
+            cnvs.style.cssText = css + "position:absolute;left:" + x + "px;top:" + y + "px";
+            R._g.doc.body.appendChild(cnvs);
+            isFloating = 1;
+        } else {
+            cnvs.style.cssText = css + "position:relative";
+            if (container.firstChild) {
+                container.insertBefore(cnvs, container.firstChild);
+            } else {
+                container.appendChild(cnvs);
+            }
+        }
+        container = new R._Paper;
+        container.width = width;
+        container.height = height;
+        container.canvas = cnvs;
+        container.clear();
+        container._left = container._top = 0;
+        isFloating && (container.renderfix = function () {});
+        container.renderfix();
+        return container;
+    };
+    R._engine.setViewBox = function (x, y, w, h, fit) {
+        eve("raphael.setViewBox", this, this._viewBox, [x, y, w, h, fit]);
+        var paperSize = this.getSize(),
+            size = mmax(w / paperSize.width, h / paperSize.height),
+            top = this.top,
+            aspectRatio = fit ? "xMidYMid meet" : "xMinYMin",
+            vb,
+            sw;
+        if (x == null) {
+            if (this._vbSize) {
+                size = 1;
+            }
+            delete this._vbSize;
+            vb = "0 0 " + this.width + S + this.height;
+        } else {
+            this._vbSize = size;
+            vb = x + S + y + S + w + S + h;
+        }
+        $(this.canvas, {
+            viewBox: vb,
+            preserveAspectRatio: aspectRatio
+        });
+        while (size && top) {
+            sw = "stroke-width" in top.attrs ? top.attrs["stroke-width"] : 1;
+            top.attr({"stroke-width": sw});
+            top._.dirty = 1;
+            top._.dirtyT = 1;
+            top = top.prev;
+        }
+        this._viewBox = [x, y, w, h, !!fit];
+        return this;
+    };
+    /*\
+     * Paper.renderfix
+     [ method ]
+     **
+     * Fixes the issue of Firefox and IE9 regarding subpixel rendering. If paper is dependant
+     * on other elements after reflow it could shift half pixel which cause for lines to lost their crispness.
+     * This method fixes the issue.
+     **
+       Special thanks to Mariusz Nowak (http://www.medikoo.com/) for this method.
+    \*/
+    R.prototype.renderfix = function () {
+        var cnvs = this.canvas,
+            s = cnvs.style,
+            pos;
+        try {
+            pos = cnvs.getScreenCTM() || cnvs.createSVGMatrix();
+        } catch (e) {
+            pos = cnvs.createSVGMatrix();
+        }
+        var left = -pos.e % 1,
+            top = -pos.f % 1;
+        if (left || top) {
+            if (left) {
+                this._left = (this._left + left) % 1;
+                s.left = this._left + "px";
+            }
+            if (top) {
+                this._top = (this._top + top) % 1;
+                s.top = this._top + "px";
+            }
+        }
+    };
+    /*\
+     * Paper.clear
+     [ method ]
+     **
+     * Clears the paper, i.e. removes all the elements.
+    \*/
+    R.prototype.clear = function () {
+        R.eve("raphael.clear", this);
+        var c = this.canvas;
+        while (c.firstChild) {
+            c.removeChild(c.firstChild);
+        }
+        this.bottom = this.top = null;
+        (this.desc = $("desc")).appendChild(R._g.doc.createTextNode("Created with Rapha\xebl " + R.version));
+        c.appendChild(this.desc);
+        c.appendChild(this.defs = $("defs"));
+    };
+    /*\
+     * Paper.remove
+     [ method ]
+     **
+     * Removes the paper from the DOM.
+    \*/
+    R.prototype.remove = function () {
+        eve("raphael.remove", this);
+        this.canvas.parentNode && this.canvas.parentNode.removeChild(this.canvas);
+        for (var i in this) {
+            this[i] = typeof this[i] == "function" ? R._removedFactory(i) : null;
+        }
+    };
+    var setproto = R.st;
+    for (var method in elproto) if (elproto[has](method) && !setproto[has](method)) {
+        setproto[method] = (function (methodname) {
+            return function () {
+                var arg = arguments;
+                return this.forEach(function (el) {
+                    el[methodname].apply(el, arg);
+                });
+            };
+        })(method);
+    }
+})();
+
+// ┌─────────────────────────────────────────────────────────────────────┐ \\
+// │ Raphaël - JavaScript Vector Library                                 │ \\
+// ├─────────────────────────────────────────────────────────────────────┤ \\
+// │ VML Module                                                          │ \\
+// ├─────────────────────────────────────────────────────────────────────┤ \\
+// │ Copyright (c) 2008-2011 Dmitry Baranovskiy (http://raphaeljs.com)   │ \\
+// │ Copyright (c) 2008-2011 Sencha Labs (http://sencha.com)             │ \\
+// │ Licensed under the MIT (http://raphaeljs.com/license.html) license. │ \\
+// └─────────────────────────────────────────────────────────────────────┘ \\
+
+(function(){
+    if (!R.vml) {
+        return;
+    }
+    var has = "hasOwnProperty",
+        Str = String,
+        toFloat = parseFloat,
+        math = Math,
+        round = math.round,
+        mmax = math.max,
+        mmin = math.min,
+        abs = math.abs,
+        fillString = "fill",
+        separator = /[, ]+/,
+        eve = R.eve,
+        ms = " progid:DXImageTransform.Microsoft",
+        S = " ",
+        E = "",
+        map = {M: "m", L: "l", C: "c", Z: "x", m: "t", l: "r", c: "v", z: "x"},
+        bites = /([clmz]),?([^clmz]*)/gi,
+        blurregexp = / progid:\S+Blur\([^\)]+\)/g,
+        val = /-?[^,\s-]+/g,
+        cssDot = "position:absolute;left:0;top:0;width:1px;height:1px;behavior:url(#default#VML)",
+        zoom = 21600,
+        pathTypes = {path: 1, rect: 1, image: 1},
+        ovalTypes = {circle: 1, ellipse: 1},
+        path2vml = function (path) {
+            var total =  /[ahqstv]/ig,
+                command = R._pathToAbsolute;
+            Str(path).match(total) && (command = R._path2curve);
+            total = /[clmz]/g;
+            if (command == R._pathToAbsolute && !Str(path).match(total)) {
+                var res = Str(path).replace(bites, function (all, command, args) {
+                    var vals = [],
+                        isMove = command.toLowerCase() == "m",
+                        res = map[command];
+                    args.replace(val, function (value) {
+                        if (isMove && vals.length == 2) {
+                            res += vals + map[command == "m" ? "l" : "L"];
+                            vals = [];
+                        }
+                        vals.push(round(value * zoom));
+                    });
+                    return res + vals;
+                });
+                return res;
+            }
+            var pa = command(path), p, r;
+            res = [];
+            for (var i = 0, ii = pa.length; i < ii; i++) {
+                p = pa[i];
+                r = pa[i][0].toLowerCase();
+                r == "z" && (r = "x");
+                for (var j = 1, jj = p.length; j < jj; j++) {
+                    r += round(p[j] * zoom) + (j != jj - 1 ? "," : E);
+                }
+                res.push(r);
+            }
+            return res.join(S);
+        },
+        compensation = function (deg, dx, dy) {
+            var m = R.matrix();
+            m.rotate(-deg, .5, .5);
+            return {
+                dx: m.x(dx, dy),
+                dy: m.y(dx, dy)
+            };
+        },
+        setCoords = function (p, sx, sy, dx, dy, deg) {
+            var _ = p._,
+                m = p.matrix,
+                fillpos = _.fillpos,
+                o = p.node,
+                s = o.style,
+                y = 1,
+                flip = "",
+                dxdy,
+                kx = zoom / sx,
+                ky = zoom / sy;
+            s.visibility = "hidden";
+            if (!sx || !sy) {
+                return;
+            }
+            o.coordsize = abs(kx) + S + abs(ky);
+            s.rotation = deg * (sx * sy < 0 ? -1 : 1);
+            if (deg) {
+                var c = compensation(deg, dx, dy);
+                dx = c.dx;
+                dy = c.dy;
+            }
+            sx < 0 && (flip += "x");
+            sy < 0 && (flip += " y") && (y = -1);
+            s.flip = flip;
+            o.coordorigin = (dx * -kx) + S + (dy * -ky);
+            if (fillpos || _.fillsize) {
+                var fill = o.getElementsByTagName(fillString);
+                fill = fill && fill[0];
+                o.removeChild(fill);
+                if (fillpos) {
+                    c = compensation(deg, m.x(fillpos[0], fillpos[1]), m.y(fillpos[0], fillpos[1]));
+                    fill.position = c.dx * y + S + c.dy * y;
+                }
+                if (_.fillsize) {
+                    fill.size = _.fillsize[0] * abs(sx) + S + _.fillsize[1] * abs(sy);
+                }
+                o.appendChild(fill);
+            }
+            s.visibility = "visible";
+        };
+    R.toString = function () {
+        return  "Your browser doesn\u2019t support SVG. Falling down to VML.\nYou are running Rapha\xebl " + this.version;
+    };
+    var addArrow = function (o, value, isEnd) {
+        var values = Str(value).toLowerCase().split("-"),
+            se = isEnd ? "end" : "start",
+            i = values.length,
+            type = "classic",
+            w = "medium",
+            h = "medium";
+        while (i--) {
+            switch (values[i]) {
+                case "block":
+                case "classic":
+                case "oval":
+                case "diamond":
+                case "open":
+                case "none":
+                    type = values[i];
+                    break;
+                case "wide":
+                case "narrow": h = values[i]; break;
+                case "long":
+                case "short": w = values[i]; break;
+            }
+        }
+        var stroke = o.node.getElementsByTagName("stroke")[0];
+        stroke[se + "arrow"] = type;
+        stroke[se + "arrowlength"] = w;
+        stroke[se + "arrowwidth"] = h;
+    },
+    setFillAndStroke = function (o, params) {
+        // o.paper.canvas.style.display = "none";
+        o.attrs = o.attrs || {};
+        var node = o.node,
+            a = o.attrs,
+            s = node.style,
+            xy,
+            newpath = pathTypes[o.type] && (params.x != a.x || params.y != a.y || params.width != a.width || params.height != a.height || params.cx != a.cx || params.cy != a.cy || params.rx != a.rx || params.ry != a.ry || params.r != a.r),
+            isOval = ovalTypes[o.type] && (a.cx != params.cx || a.cy != params.cy || a.r != params.r || a.rx != params.rx || a.ry != params.ry),
+            res = o;
+
+
+        for (var par in params) if (params[has](par)) {
+            a[par] = params[par];
+        }
+        if (newpath) {
+            a.path = R._getPath[o.type](o);
+            o._.dirty = 1;
+        }
+        params.href && (node.href = params.href);
+        params.title && (node.title = params.title);
+        params.target && (node.target = params.target);
+        params.cursor && (s.cursor = params.cursor);
+        "blur" in params && o.blur(params.blur);
+        if (params.path && o.type == "path" || newpath) {
+            node.path = path2vml(~Str(a.path).toLowerCase().indexOf("r") ? R._pathToAbsolute(a.path) : a.path);
+            o._.dirty = 1;
+            if (o.type == "image") {
+                o._.fillpos = [a.x, a.y];
+                o._.fillsize = [a.width, a.height];
+                setCoords(o, 1, 1, 0, 0, 0);
+            }
+        }
+        "transform" in params && o.transform(params.transform);
+        if (isOval) {
+            var cx = +a.cx,
+                cy = +a.cy,
+                rx = +a.rx || +a.r || 0,
+                ry = +a.ry || +a.r || 0;
+            node.path = R.format("ar{0},{1},{2},{3},{4},{1},{4},{1}x", round((cx - rx) * zoom), round((cy - ry) * zoom), round((cx + rx) * zoom), round((cy + ry) * zoom), round(cx * zoom));
+            o._.dirty = 1;
+        }
+        if ("clip-rect" in params) {
+            var rect = Str(params["clip-rect"]).split(separator);
+            if (rect.length == 4) {
+                rect[2] = +rect[2] + (+rect[0]);
+                rect[3] = +rect[3] + (+rect[1]);
+                var div = node.clipRect || R._g.doc.createElement("div"),
+                    dstyle = div.style;
+                dstyle.clip = R.format("rect({1}px {2}px {3}px {0}px)", rect);
+                if (!node.clipRect) {
+                    dstyle.position = "absolute";
+                    dstyle.top = 0;
+                    dstyle.left = 0;
+                    dstyle.width = o.paper.width + "px";
+                    dstyle.height = o.paper.height + "px";
+                    node.parentNode.insertBefore(div, node);
+                    div.appendChild(node);
+                    node.clipRect = div;
+                }
+            }
+            if (!params["clip-rect"]) {
+                node.clipRect && (node.clipRect.style.clip = "auto");
+            }
+        }
+        if (o.textpath) {
+            var textpathStyle = o.textpath.style;
+            params.font && (textpathStyle.font = params.font);
+            params["font-family"] && (textpathStyle.fontFamily = '"' + params["font-family"].split(",")[0].replace(/^['"]+|['"]+$/g, E) + '"');
+            params["font-size"] && (textpathStyle.fontSize = params["font-size"]);
+            params["font-weight"] && (textpathStyle.fontWeight = params["font-weight"]);
+            params["font-style"] && (textpathStyle.fontStyle = params["font-style"]);
+        }
+        if ("arrow-start" in params) {
+            addArrow(res, params["arrow-start"]);
+        }
+        if ("arrow-end" in params) {
+            addArrow(res, params["arrow-end"], 1);
+        }
+        if (params.opacity != null || 
+            params["stroke-width"] != null ||
+            params.fill != null ||
+            params.src != null ||
+            params.stroke != null ||
+            params["stroke-width"] != null ||
+            params["stroke-opacity"] != null ||
+            params["fill-opacity"] != null ||
+            params["stroke-dasharray"] != null ||
+            params["stroke-miterlimit"] != null ||
+            params["stroke-linejoin"] != null ||
+            params["stroke-linecap"] != null) {
+            var fill = node.getElementsByTagName(fillString),
+                newfill = false;
+            fill = fill && fill[0];
+            !fill && (newfill = fill = createNode(fillString));
+            if (o.type == "image" && params.src) {
+                fill.src = params.src;
+            }
+            params.fill && (fill.on = true);
+            if (fill.on == null || params.fill == "none" || params.fill === null) {
+                fill.on = false;
+            }
+            if (fill.on && params.fill) {
+                var isURL = Str(params.fill).match(R._ISURL);
+                if (isURL) {
+                    fill.parentNode == node && node.removeChild(fill);
+                    fill.rotate = true;
+                    fill.src = isURL[1];
+                    fill.type = "tile";
+                    var bbox = o.getBBox(1);
+                    fill.position = bbox.x + S + bbox.y;
+                    o._.fillpos = [bbox.x, bbox.y];
+
+                    R._preload(isURL[1], function () {
+                        o._.fillsize = [this.offsetWidth, this.offsetHeight];
+                    });
+                } else {
+                    fill.color = R.getRGB(params.fill).hex;
+                    fill.src = E;
+                    fill.type = "solid";
+                    if (R.getRGB(params.fill).error && (res.type in {circle: 1, ellipse: 1} || Str(params.fill).charAt() != "r") && addGradientFill(res, params.fill, fill)) {
+                        a.fill = "none";
+                        a.gradient = params.fill;
+                        fill.rotate = false;
+                    }
+                }
+            }
+            if ("fill-opacity" in params || "opacity" in params) {
+                var opacity = ((+a["fill-opacity"] + 1 || 2) - 1) * ((+a.opacity + 1 || 2) - 1) * ((+R.getRGB(params.fill).o + 1 || 2) - 1);
+                opacity = mmin(mmax(opacity, 0), 1);
+                fill.opacity = opacity;
+                if (fill.src) {
+                    fill.color = "none";
+                }
+            }
+            node.appendChild(fill);
+            var stroke = (node.getElementsByTagName("stroke") && node.getElementsByTagName("stroke")[0]),
+            newstroke = false;
+            !stroke && (newstroke = stroke = createNode("stroke"));
+            if ((params.stroke && params.stroke != "none") ||
+                params["stroke-width"] ||
+                params["stroke-opacity"] != null ||
+                params["stroke-dasharray"] ||
+                params["stroke-miterlimit"] ||
+                params["stroke-linejoin"] ||
+                params["stroke-linecap"]) {
+                stroke.on = true;
+            }
+            (params.stroke == "none" || params.stroke === null || stroke.on == null || params.stroke == 0 || params["stroke-width"] == 0) && (stroke.on = false);
+            var strokeColor = R.getRGB(params.stroke);
+            stroke.on && params.stroke && (stroke.color = strokeColor.hex);
+            opacity = ((+a["stroke-opacity"] + 1 || 2) - 1) * ((+a.opacity + 1 || 2) - 1) * ((+strokeColor.o + 1 || 2) - 1);
+            var width = (toFloat(params["stroke-width"]) || 1) * .75;
+            opacity = mmin(mmax(opacity, 0), 1);
+            params["stroke-width"] == null && (width = a["stroke-width"]);
+            params["stroke-width"] && (stroke.weight = width);
+            width && width < 1 && (opacity *= width) && (stroke.weight = 1);
+            stroke.opacity = opacity;
+        
+            params["stroke-linejoin"] && (stroke.joinstyle = params["stroke-linejoin"] || "miter");
+            stroke.miterlimit = params["stroke-miterlimit"] || 8;
+            params["stroke-linecap"] && (stroke.endcap = params["stroke-linecap"] == "butt" ? "flat" : params["stroke-linecap"] == "square" ? "square" : "round");
+            if ("stroke-dasharray" in params) {
+                var dasharray = {
+                    "-": "shortdash",
+                    ".": "shortdot",
+                    "-.": "shortdashdot",
+                    "-..": "shortdashdotdot",
+                    ". ": "dot",
+                    "- ": "dash",
+                    "--": "longdash",
+                    "- .": "dashdot",
+                    "--.": "longdashdot",
+                    "--..": "longdashdotdot"
+                };
+                stroke.dashstyle = dasharray[has](params["stroke-dasharray"]) ? dasharray[params["stroke-dasharray"]] : E;
+            }
+            newstroke && node.appendChild(stroke);
+        }
+        if (res.type == "text") {
+            res.paper.canvas.style.display = E;
+            var span = res.paper.span,
+                m = 100,
+                fontSize = a.font && a.font.match(/\d+(?:\.\d*)?(?=px)/);
+            s = span.style;
+            a.font && (s.font = a.font);
+            a["font-family"] && (s.fontFamily = a["font-family"]);
+            a["font-weight"] && (s.fontWeight = a["font-weight"]);
+            a["font-style"] && (s.fontStyle = a["font-style"]);
+            fontSize = toFloat(a["font-size"] || fontSize && fontSize[0]) || 10;
+            s.fontSize = fontSize * m + "px";
+            res.textpath.string && (span.innerHTML = Str(res.textpath.string).replace(/</g, "&#60;").replace(/&/g, "&#38;").replace(/\n/g, "<br>"));
+            var brect = span.getBoundingClientRect();
+            res.W = a.w = (brect.right - brect.left) / m;
+            res.H = a.h = (brect.bottom - brect.top) / m;
+            // res.paper.canvas.style.display = "none";
+            res.X = a.x;
+            res.Y = a.y + res.H / 2;
+
+            ("x" in params || "y" in params) && (res.path.v = R.format("m{0},{1}l{2},{1}", round(a.x * zoom), round(a.y * zoom), round(a.x * zoom) + 1));
+            var dirtyattrs = ["x", "y", "text", "font", "font-family", "font-weight", "font-style", "font-size"];
+            for (var d = 0, dd = dirtyattrs.length; d < dd; d++) if (dirtyattrs[d] in params) {
+                res._.dirty = 1;
+                break;
+            }
+        
+            // text-anchor emulation
+            switch (a["text-anchor"]) {
+                case "start":
+                    res.textpath.style["v-text-align"] = "left";
+                    res.bbx = res.W / 2;
+                break;
+                case "end":
+                    res.textpath.style["v-text-align"] = "right";
+                    res.bbx = -res.W / 2;
+                break;
+                default:
+                    res.textpath.style["v-text-align"] = "center";
+                    res.bbx = 0;
+                break;
+            }
+            res.textpath.style["v-text-kern"] = true;
+        }
+        // res.paper.canvas.style.display = E;
+    },
+    addGradientFill = function (o, gradient, fill) {
+        o.attrs = o.attrs || {};
+        var attrs = o.attrs,
+            pow = Math.pow,
+            opacity,
+            oindex,
+            type = "linear",
+            fxfy = ".5 .5";
+        o.attrs.gradient = gradient;
+        gradient = Str(gradient).replace(R._radial_gradient, function (all, fx, fy) {
+            type = "radial";
+            if (fx && fy) {
+                fx = toFloat(fx);
+                fy = toFloat(fy);
+                pow(fx - .5, 2) + pow(fy - .5, 2) > .25 && (fy = math.sqrt(.25 - pow(fx - .5, 2)) * ((fy > .5) * 2 - 1) + .5);
+                fxfy = fx + S + fy;
+            }
+            return E;
+        });
+        gradient = gradient.split(/\s*\-\s*/);
+        if (type == "linear") {
+            var angle = gradient.shift();
+            angle = -toFloat(angle);
+            if (isNaN(angle)) {
+                return null;
+            }
+        }
+        var dots = R._parseDots(gradient);
+        if (!dots) {
+            return null;
+        }
+        o = o.shape || o.node;
+        if (dots.length) {
+            o.removeChild(fill);
+            fill.on = true;
+            fill.method = "none";
+            fill.color = dots[0].color;
+            fill.color2 = dots[dots.length - 1].color;
+            var clrs = [];
+            for (var i = 0, ii = dots.length; i < ii; i++) {
+                dots[i].offset && clrs.push(dots[i].offset + S + dots[i].color);
+            }
+            fill.colors = clrs.length ? clrs.join() : "0% " + fill.color;
+            if (type == "radial") {
+                fill.type = "gradientTitle";
+                fill.focus = "100%";
+                fill.focussize = "0 0";
+                fill.focusposition = fxfy;
+                fill.angle = 0;
+            } else {
+                // fill.rotate= true;
+                fill.type = "gradient";
+                fill.angle = (270 - angle) % 360;
+            }
+            o.appendChild(fill);
+        }
+        return 1;
+    },
+    Element = function (node, vml) {
+        this[0] = this.node = node;
+        node.raphael = true;
+        this.id = R._oid++;
+        node.raphaelid = this.id;
+        this.X = 0;
+        this.Y = 0;
+        this.attrs = {};
+        this.paper = vml;
+        this.matrix = R.matrix();
+        this._ = {
+            transform: [],
+            sx: 1,
+            sy: 1,
+            dx: 0,
+            dy: 0,
+            deg: 0,
+            dirty: 1,
+            dirtyT: 1
+        };
+        !vml.bottom && (vml.bottom = this);
+        this.prev = vml.top;
+        vml.top && (vml.top.next = this);
+        vml.top = this;
+        this.next = null;
+    };
+    var elproto = R.el;
+
+    Element.prototype = elproto;
+    elproto.constructor = Element;
+    elproto.transform = function (tstr) {
+        if (tstr == null) {
+            return this._.transform;
+        }
+        var vbs = this.paper._viewBoxShift,
+            vbt = vbs ? "s" + [vbs.scale, vbs.scale] + "-1-1t" + [vbs.dx, vbs.dy] : E,
+            oldt;
+        if (vbs) {
+            oldt = tstr = Str(tstr).replace(/\.{3}|\u2026/g, this._.transform || E);
+        }
+        R._extractTransform(this, vbt + tstr);
+        var matrix = this.matrix.clone(),
+            skew = this.skew,
+            o = this.node,
+            split,
+            isGrad = ~Str(this.attrs.fill).indexOf("-"),
+            isPatt = !Str(this.attrs.fill).indexOf("url(");
+        matrix.translate(1, 1);
+        if (isPatt || isGrad || this.type == "image") {
+            skew.matrix = "1 0 0 1";
+            skew.offset = "0 0";
+            split = matrix.split();
+            if ((isGrad && split.noRotation) || !split.isSimple) {
+                o.style.filter = matrix.toFilter();
+                var bb = this.getBBox(),
+                    bbt = this.getBBox(1),
+                    dx = bb.x - bbt.x,
+                    dy = bb.y - bbt.y;
+                o.coordorigin = (dx * -zoom) + S + (dy * -zoom);
+                setCoords(this, 1, 1, dx, dy, 0);
+            } else {
+                o.style.filter = E;
+                setCoords(this, split.scalex, split.scaley, split.dx, split.dy, split.rotate);
+            }
+        } else {
+            o.style.filter = E;
+            skew.matrix = Str(matrix);
+            skew.offset = matrix.offset();
+        }
+        if (oldt !== null) { // empty string value is true as well
+            this._.transform = oldt;
+            R._extractTransform(this, oldt);
+        }
+        return this;
+    };
+    elproto.rotate = function (deg, cx, cy) {
+        if (this.removed) {
+            return this;
+        }
+        if (deg == null) {
+            return;
+        }
+        deg = Str(deg).split(separator);
+        if (deg.length - 1) {
+            cx = toFloat(deg[1]);
+            cy = toFloat(deg[2]);
+        }
+        deg = toFloat(deg[0]);
+        (cy == null) && (cx = cy);
+        if (cx == null || cy == null) {
+            var bbox = this.getBBox(1);
+            cx = bbox.x + bbox.width / 2;
+            cy = bbox.y + bbox.height / 2;
+        }
+        this._.dirtyT = 1;
+        this.transform(this._.transform.concat([["r", deg, cx, cy]]));
+        return this;
+    };
+    elproto.translate = function (dx, dy) {
+        if (this.removed) {
+            return this;
+        }
+        dx = Str(dx).split(separator);
+        if (dx.length - 1) {
+            dy = toFloat(dx[1]);
+        }
+        dx = toFloat(dx[0]) || 0;
+        dy = +dy || 0;
+        if (this._.bbox) {
+            this._.bbox.x += dx;
+            this._.bbox.y += dy;
+        }
+        this.transform(this._.transform.concat([["t", dx, dy]]));
+        return this;
+    };
+    elproto.scale = function (sx, sy, cx, cy) {
+        if (this.removed) {
+            return this;
+        }
+        sx = Str(sx).split(separator);
+        if (sx.length - 1) {
+            sy = toFloat(sx[1]);
+            cx = toFloat(sx[2]);
+            cy = toFloat(sx[3]);
+            isNaN(cx) && (cx = null);
+            isNaN(cy) && (cy = null);
+        }
+        sx = toFloat(sx[0]);
+        (sy == null) && (sy = sx);
+        (cy == null) && (cx = cy);
+        if (cx == null || cy == null) {
+            var bbox = this.getBBox(1);
+        }
+        cx = cx == null ? bbox.x + bbox.width / 2 : cx;
+        cy = cy == null ? bbox.y + bbox.height / 2 : cy;
+    
+        this.transform(this._.transform.concat([["s", sx, sy, cx, cy]]));
+        this._.dirtyT = 1;
+        return this;
+    };
+    elproto.hide = function () {
+        !this.removed && (this.node.style.display = "none");
+        return this;
+    };
+    elproto.show = function () {
+        !this.removed && (this.node.style.display = E);
+        return this;
+    };
+    // Needed to fix the vml setViewBox issues
+    elproto.auxGetBBox = R.el.getBBox;
+    elproto.getBBox = function(){
+      var b = this.auxGetBBox();
+      if (this.paper && this.paper._viewBoxShift)
+      {
+        var c = {};
+        var z = 1/this.paper._viewBoxShift.scale;
+        c.x = b.x - this.paper._viewBoxShift.dx;
+        c.x *= z;
+        c.y = b.y - this.paper._viewBoxShift.dy;
+        c.y *= z;
+        c.width  = b.width  * z;
+        c.height = b.height * z;
+        c.x2 = c.x + c.width;
+        c.y2 = c.y + c.height;
+        return c;
+      }
+      return b;
+    };
+    elproto._getBBox = function () {
+        if (this.removed) {
+            return {};
+        }
+        return {
+            x: this.X + (this.bbx || 0) - this.W / 2,
+            y: this.Y - this.H,
+            width: this.W,
+            height: this.H
+        };
+    };
+    elproto.remove = function () {
+        if (this.removed || !this.node.parentNode) {
+            return;
+        }
+        this.paper.__set__ && this.paper.__set__.exclude(this);
+        R.eve.unbind("raphael.*.*." + this.id);
+        R._tear(this, this.paper);
+        this.node.parentNode.removeChild(this.node);
+        this.shape && this.shape.parentNode.removeChild(this.shape);
+        for (var i in this) {
+            this[i] = typeof this[i] == "function" ? R._removedFactory(i) : null;
+        }
+        this.removed = true;
+    };
+    elproto.attr = function (name, value) {
+        if (this.removed) {
+            return this;
+        }
+        if (name == null) {
+            var res = {};
+            for (var a in this.attrs) if (this.attrs[has](a)) {
+                res[a] = this.attrs[a];
+            }
+            res.gradient && res.fill == "none" && (res.fill = res.gradient) && delete res.gradient;
+            res.transform = this._.transform;
+            return res;
+        }
+        if (value == null && R.is(name, "string")) {
+            if (name == fillString && this.attrs.fill == "none" && this.attrs.gradient) {
+                return this.attrs.gradient;
+            }
+            var names = name.split(separator),
+                out = {};
+            for (var i = 0, ii = names.length; i < ii; i++) {
+                name = names[i];
+                if (name in this.attrs) {
+                    out[name] = this.attrs[name];
+                } else if (R.is(this.paper.customAttributes[name], "function")) {
+                    out[name] = this.paper.customAttributes[name].def;
+                } else {
+                    out[name] = R._availableAttrs[name];
+                }
+            }
+            return ii - 1 ? out : out[names[0]];
+        }
+        if (this.attrs && value == null && R.is(name, "array")) {
+            out = {};
+            for (i = 0, ii = name.length; i < ii; i++) {
+                out[name[i]] = this.attr(name[i]);
+            }
+            return out;
+        }
+        var params;
+        if (value != null) {
+            params = {};
+            params[name] = value;
+        }
+        value == null && R.is(name, "object") && (params = name);
+        for (var key in params) {
+            eve("raphael.attr." + key + "." + this.id, this, params[key]);
+        }
+        if (params) {
+            for (key in this.paper.customAttributes) if (this.paper.customAttributes[has](key) && params[has](key) && R.is(this.paper.customAttributes[key], "function")) {
+                var par = this.paper.customAttributes[key].apply(this, [].concat(params[key]));
+                this.attrs[key] = params[key];
+                for (var subkey in par) if (par[has](subkey)) {
+                    params[subkey] = par[subkey];
+                }
+            }
+            // this.paper.canvas.style.display = "none";
+            if (params.text && this.type == "text") {
+                this.textpath.string = params.text;
+            }
+            setFillAndStroke(this, params);
+            // this.paper.canvas.style.display = E;
+        }
+        return this;
+    };
+    elproto.toFront = function () {
+        !this.removed && this.node.parentNode.appendChild(this.node);
+        this.paper && this.paper.top != this && R._tofront(this, this.paper);
+        return this;
+    };
+    elproto.toBack = function () {
+        if (this.removed) {
+            return this;
+        }
+        if (this.node.parentNode.firstChild != this.node) {
+            this.node.parentNode.insertBefore(this.node, this.node.parentNode.firstChild);
+            R._toback(this, this.paper);
+        }
+        return this;
+    };
+    elproto.insertAfter = function (element) {
+        if (this.removed) {
+            return this;
+        }
+        if (element.constructor == R.st.constructor) {
+            element = element[element.length - 1];
+        }
+        if (element.node.nextSibling) {
+            element.node.parentNode.insertBefore(this.node, element.node.nextSibling);
+        } else {
+            element.node.parentNode.appendChild(this.node);
+        }
+        R._insertafter(this, element, this.paper);
+        return this;
+    };
+    elproto.insertBefore = function (element) {
+        if (this.removed) {
+            return this;
+        }
+        if (element.constructor == R.st.constructor) {
+            element = element[0];
+        }
+        element.node.parentNode.insertBefore(this.node, element.node);
+        R._insertbefore(this, element, this.paper);
+        return this;
+    };
+    elproto.blur = function (size) {
+        var s = this.node.runtimeStyle,
+            f = s.filter;
+        f = f.replace(blurregexp, E);
+        if (+size !== 0) {
+            this.attrs.blur = size;
+            s.filter = f + S + ms + ".Blur(pixelradius=" + (+size || 1.5) + ")";
+            s.margin = R.format("-{0}px 0 0 -{0}px", round(+size || 1.5));
+        } else {
+            s.filter = f;
+            s.margin = 0;
+            delete this.attrs.blur;
+        }
+        return this;
+    };
+
+    R._engine.path = function (pathString, vml) {
+        var el = createNode("shape");
+        el.style.cssText = cssDot;
+        el.coordsize = zoom + S + zoom;
+        el.coordorigin = vml.coordorigin;
+        var p = new Element(el, vml),
+            attr = {fill: "none", stroke: "#000"};
+        pathString && (attr.path = pathString);
+        p.type = "path";
+        p.path = [];
+        p.Path = E;
+        setFillAndStroke(p, attr);
+        vml.canvas.appendChild(el);
+        var skew = createNode("skew");
+        skew.on = true;
+        el.appendChild(skew);
+        p.skew = skew;
+        p.transform(E);
+        return p;
+    };
+    R._engine.rect = function (vml, x, y, w, h, r) {
+        var path = R._rectPath(x, y, w, h, r),
+            res = vml.path(path),
+            a = res.attrs;
+        res.X = a.x = x;
+        res.Y = a.y = y;
+        res.W = a.width = w;
+        res.H = a.height = h;
+        a.r = r;
+        a.path = path;
+        res.type = "rect";
+        return res;
+    };
+    R._engine.ellipse = function (vml, x, y, rx, ry) {
+        var res = vml.path(),
+            a = res.attrs;
+        res.X = x - rx;
+        res.Y = y - ry;
+        res.W = rx * 2;
+        res.H = ry * 2;
+        res.type = "ellipse";
+        setFillAndStroke(res, {
+            cx: x,
+            cy: y,
+            rx: rx,
+            ry: ry
+        });
+        return res;
+    };
+    R._engine.circle = function (vml, x, y, r) {
+        var res = vml.path(),
+            a = res.attrs;
+        res.X = x - r;
+        res.Y = y - r;
+        res.W = res.H = r * 2;
+        res.type = "circle";
+        setFillAndStroke(res, {
+            cx: x,
+            cy: y,
+            r: r
+        });
+        return res;
+    };
+    R._engine.image = function (vml, src, x, y, w, h) {
+        var path = R._rectPath(x, y, w, h),
+            res = vml.path(path).attr({stroke: "none"}),
+            a = res.attrs,
+            node = res.node,
+            fill = node.getElementsByTagName(fillString)[0];
+        a.src = src;
+        res.X = a.x = x;
+        res.Y = a.y = y;
+        res.W = a.width = w;
+        res.H = a.height = h;
+        a.path = path;
+        res.type = "image";
+        fill.parentNode == node && node.removeChild(fill);
+        fill.rotate = true;
+        fill.src = src;
+        fill.type = "tile";
+        res._.fillpos = [x, y];
+        res._.fillsize = [w, h];
+        node.appendChild(fill);
+        setCoords(res, 1, 1, 0, 0, 0);
+        return res;
+    };
+    R._engine.text = function (vml, x, y, text) {
+        var el = createNode("shape"),
+            path = createNode("path"),
+            o = createNode("textpath");
+        x = x || 0;
+        y = y || 0;
+        text = text || "";
+        path.v = R.format("m{0},{1}l{2},{1}", round(x * zoom), round(y * zoom), round(x * zoom) + 1);
+        path.textpathok = true;
+        o.string = Str(text);
+        o.on = true;
+        el.style.cssText = cssDot;
+        el.coordsize = zoom + S + zoom;
+        el.coordorigin = "0 0";
+        var p = new Element(el, vml),
+            attr = {
+                fill: "#000",
+                stroke: "none",
+                font: R._availableAttrs.font,
+                text: text
+            };
+        p.shape = el;
+        p.path = path;
+        p.textpath = o;
+        p.type = "text";
+        p.attrs.text = Str(text);
+        p.attrs.x = x;
+        p.attrs.y = y;
+        p.attrs.w = 1;
+        p.attrs.h = 1;
+        setFillAndStroke(p, attr);
+        el.appendChild(o);
+        el.appendChild(path);
+        vml.canvas.appendChild(el);
+        var skew = createNode("skew");
+        skew.on = true;
+        el.appendChild(skew);
+        p.skew = skew;
+        p.transform(E);
+        return p;
+    };
+    R._engine.setSize = function (width, height) {
+        var cs = this.canvas.style;
+        this.width = width;
+        this.height = height;
+        width == +width && (width += "px");
+        height == +height && (height += "px");
+        cs.width = width;
+        cs.height = height;
+        cs.clip = "rect(0 " + width + " " + height + " 0)";
+        if (this._viewBox) {
+            R._engine.setViewBox.apply(this, this._viewBox);
+        }
+        return this;
+    };
+    R._engine.setViewBox = function (x, y, w, h, fit) {
+        R.eve("raphael.setViewBox", this, this._viewBox, [x, y, w, h, fit]);
+        var paperSize = this.getSize(),
+            width = paperSize.width,
+            height = paperSize.height,
+            H, W;
+        if (fit) {
+            H = height / h;
+            W = width / w;
+            if (w * H < width) {
+                x -= (width - w * H) / 2 / H;
+            }
+            if (h * W < height) {
+                y -= (height - h * W) / 2 / W;
+            }
+        }
+        this._viewBox = [x, y, w, h, !!fit];
+        this._viewBoxShift = {
+            dx: -x,
+            dy: -y,
+            scale: paperSize
+        };
+        this.forEach(function (el) {
+            el.transform("...");
+        });
+        return this;
+    };
+    var createNode;
+    R._engine.initWin = function (win) {
+            var doc = win.document;
+            if (doc.styleSheets.length < 31) {
+                doc.createStyleSheet().addRule(".rvml", "behavior:url(#default#VML)");
+            } else {
+                // no more room, add to the existing one
+                // http://msdn.microsoft.com/en-us/library/ms531194%28VS.85%29.aspx
+                doc.styleSheets[0].addRule(".rvml", "behavior:url(#default#VML)");
+            }
+            try {
+                !doc.namespaces.rvml && doc.namespaces.add("rvml", "urn:schemas-microsoft-com:vml");
+                createNode = function (tagName) {
+                    return doc.createElement('<rvml:' + tagName + ' class="rvml">');
+                };
+            } catch (e) {
+                createNode = function (tagName) {
+                    return doc.createElement('<' + tagName + ' xmlns="urn:schemas-microsoft.com:vml" class="rvml">');
+                };
+            }
+        };
+    R._engine.initWin(R._g.win);
+    R._engine.create = function () {
+        var con = R._getContainer.apply(0, arguments),
+            container = con.container,
+            height = con.height,
+            s,
+            width = con.width,
+            x = con.x,
+            y = con.y;
+        if (!container) {
+            throw new Error("VML container not found.");
+        }
+        var res = new R._Paper,
+            c = res.canvas = R._g.doc.createElement("div"),
+            cs = c.style;
+        x = x || 0;
+        y = y || 0;
+        width = width || 512;
+        height = height || 342;
+        res.width = width;
+        res.height = height;
+        width == +width && (width += "px");
+        height == +height && (height += "px");
+        res.coordsize = zoom * 1e3 + S + zoom * 1e3;
+        res.coordorigin = "0 0";
+        res.span = R._g.doc.createElement("span");
+        res.span.style.cssText = "position:absolute;left:-9999em;top:-9999em;padding:0;margin:0;line-height:1;";
+        c.appendChild(res.span);
+        cs.cssText = R.format("top:0;left:0;width:{0};height:{1};display:inline-block;position:relative;clip:rect(0 {0} {1} 0);overflow:hidden", width, height);
+        if (container == 1) {
+            R._g.doc.body.appendChild(c);
+            cs.left = x + "px";
+            cs.top = y + "px";
+            cs.position = "absolute";
+        } else {
+            if (container.firstChild) {
+                container.insertBefore(c, container.firstChild);
+            } else {
+                container.appendChild(c);
+            }
+        }
+        res.renderfix = function () {};
+        return res;
+    };
+    R.prototype.clear = function () {
+        R.eve("raphael.clear", this);
+        this.canvas.innerHTML = E;
+        this.span = R._g.doc.createElement("span");
+        this.span.style.cssText = "position:absolute;left:-9999em;top:-9999em;padding:0;margin:0;line-height:1;display:inline;";
+        this.canvas.appendChild(this.span);
+        this.bottom = this.top = null;
+    };
+    R.prototype.remove = function () {
+        R.eve("raphael.remove", this);
+        this.canvas.parentNode.removeChild(this.canvas);
+        for (var i in this) {
+            this[i] = typeof this[i] == "function" ? R._removedFactory(i) : null;
+        }
+        return true;
+    };
+
+    var setproto = R.st;
+    for (var method in elproto) if (elproto[has](method) && !setproto[has](method)) {
+        setproto[method] = (function (methodname) {
+            return function () {
+                var arg = arguments;
+                return this.forEach(function (el) {
+                    el[methodname].apply(el, arg);
+                });
+            };
+        })(method);
+    }
+})();
+
+    // EXPOSE
+    // SVG and VML are appended just before the EXPOSE line
+    // Even with AMD, Raphael should be defined globally
+    oldRaphael.was ? (g.win.Raphael = R) : (Raphael = R);
+
+    if(typeof exports == "object"){
+        module.exports = R;
+    }
+    return R;
+}));
+
+/* @license
+morris.js v0.5.0
+Copyright 2014 Olly Smith All rights reserved.
+Licensed under the BSD-2-Clause License.
+*/
+
+
+(function() {
+  var $, Morris, minutesSpecHelper, secondsSpecHelper,
+    __slice = [].slice,
+    __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
+    __hasProp = {}.hasOwnProperty,
+    __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
+    __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
+
+  Morris = window.Morris = {};
+
+  $ = jQuery;
+
+  Morris.EventEmitter = (function() {
+    function EventEmitter() {}
+
+    EventEmitter.prototype.on = function(name, handler) {
+      if (this.handlers == null) {
+        this.handlers = {};
+      }
+      if (this.handlers[name] == null) {
+        this.handlers[name] = [];
+      }
+      this.handlers[name].push(handler);
+      return this;
+    };
+
+    EventEmitter.prototype.fire = function() {
+      var args, handler, name, _i, _len, _ref, _results;
+      name = arguments[0], args = 2 <= arguments.length ? __slice.call(arguments, 1) : [];
+      if ((this.handlers != null) && (this.handlers[name] != null)) {
+        _ref = this.handlers[name];
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          handler = _ref[_i];
+          _results.push(handler.apply(null, args));
+        }
+        return _results;
+      }
+    };
+
+    return EventEmitter;
+
+  })();
+
+  Morris.commas = function(num) {
+    var absnum, intnum, ret, strabsnum;
+    if (num != null) {
+      ret = num < 0 ? "-" : "";
+      absnum = Math.abs(num);
+      intnum = Math.floor(absnum).toFixed(0);
+      ret += intnum.replace(/(?=(?:\d{3})+$)(?!^)/g, ',');
+      strabsnum = absnum.toString();
+      if (strabsnum.length > intnum.length) {
+        ret += strabsnum.slice(intnum.length);
+      }
+      return ret;
+    } else {
+      return '-';
+    }
+  };
+
+  Morris.pad2 = function(number) {
+    return (number < 10 ? '0' : '') + number;
+  };
+
+  Morris.Grid = (function(_super) {
+    __extends(Grid, _super);
+
+    function Grid(options) {
+      this.resizeHandler = __bind(this.resizeHandler, this);
+      var _this = this;
+      if (typeof options.element === 'string') {
+        this.el = $(document.getElementById(options.element));
+      } else {
+        this.el = $(options.element);
+      }
+      if ((this.el == null) || this.el.length === 0) {
+        throw new Error("Graph container element not found");
+      }
+      if (this.el.css('position') === 'static') {
+        this.el.css('position', 'relative');
+      }
+      this.options = $.extend({}, this.gridDefaults, this.defaults || {}, options);
+      if (typeof this.options.units === 'string') {
+        this.options.postUnits = options.units;
+      }
+      this.raphael = new Raphael(this.el[0]);
+      this.elementWidth = null;
+      this.elementHeight = null;
+      this.dirty = false;
+      this.selectFrom = null;
+      if (this.init) {
+        this.init();
+      }
+      this.setData(this.options.data);
+      this.el.bind('mousemove', function(evt) {
+        var left, offset, right, width, x;
+        offset = _this.el.offset();
+        x = evt.pageX - offset.left;
+        if (_this.selectFrom) {
+          left = _this.data[_this.hitTest(Math.min(x, _this.selectFrom))]._x;
+          right = _this.data[_this.hitTest(Math.max(x, _this.selectFrom))]._x;
+          width = right - left;
+          return _this.selectionRect.attr({
+            x: left,
+            width: width
+          });
+        } else {
+          return _this.fire('hovermove', x, evt.pageY - offset.top);
+        }
+      });
+      this.el.bind('mouseleave', function(evt) {
+        if (_this.selectFrom) {
+          _this.selectionRect.hide();
+          _this.selectFrom = null;
+        }
+        return _this.fire('hoverout');
+      });
+      this.el.bind('touchstart touchmove touchend', function(evt) {
+        var offset, touch;
+        touch = evt.originalEvent.touches[0] || evt.originalEvent.changedTouches[0];
+        offset = _this.el.offset();
+        return _this.fire('hovermove', touch.pageX - offset.left, touch.pageY - offset.top);
+      });
+      this.el.bind('click', function(evt) {
+        var offset;
+        offset = _this.el.offset();
+        return _this.fire('gridclick', evt.pageX - offset.left, evt.pageY - offset.top);
+      });
+      if (this.options.rangeSelect) {
+        this.selectionRect = this.raphael.rect(0, 0, 0, this.el.innerHeight()).attr({
+          fill: this.options.rangeSelectColor,
+          stroke: false
+        }).toBack().hide();
+        this.el.bind('mousedown', function(evt) {
+          var offset;
+          offset = _this.el.offset();
+          return _this.startRange(evt.pageX - offset.left);
+        });
+        this.el.bind('mouseup', function(evt) {
+          var offset;
+          offset = _this.el.offset();
+          _this.endRange(evt.pageX - offset.left);
+          return _this.fire('hovermove', evt.pageX - offset.left, evt.pageY - offset.top);
+        });
+      }
+      if (this.options.resize) {
+        $(window).bind('resize', function(evt) {
+          if (_this.timeoutId != null) {
+            window.clearTimeout(_this.timeoutId);
+          }
+          return _this.timeoutId = window.setTimeout(_this.resizeHandler, 100);
+        });
+      }
+      this.el.css('-webkit-tap-highlight-color', 'rgba(0,0,0,0)');
+      if (this.postInit) {
+        this.postInit();
+      }
+    }
+
+    Grid.prototype.gridDefaults = {
+      dateFormat: null,
+      axes: true,
+      grid: true,
+      gridLineColor: '#aaa',
+      gridStrokeWidth: 0.5,
+      gridTextColor: '#888',
+      gridTextSize: 12,
+      gridTextFamily: 'sans-serif',
+      gridTextWeight: 'normal',
+      hideHover: false,
+      yLabelFormat: null,
+      xLabelAngle: 0,
+      numLines: 5,
+      padding: 25,
+      parseTime: true,
+      postUnits: '',
+      preUnits: '',
+      ymax: 'auto',
+      ymin: 'auto 0',
+      goals: [],
+      goalStrokeWidth: 1.0,
+      goalLineColors: ['#666633', '#999966', '#cc6666', '#663333'],
+      events: [],
+      eventStrokeWidth: 1.0,
+      eventLineColors: ['#005a04', '#ccffbb', '#3a5f0b', '#005502'],
+      rangeSelect: null,
+      rangeSelectColor: '#eef',
+      resize: false
+    };
+
+    Grid.prototype.setData = function(data, redraw) {
+      var e, idx, index, maxGoal, minGoal, ret, row, step, total, y, ykey, ymax, ymin, yval, _ref;
+      if (redraw == null) {
+        redraw = true;
+      }
+      this.options.data = data;
+      if ((data == null) || data.length === 0) {
+        this.data = [];
+        this.raphael.clear();
+        if (this.hover != null) {
+          this.hover.hide();
+        }
+        return;
+      }
+      ymax = this.cumulative ? 0 : null;
+      ymin = this.cumulative ? 0 : null;
+      if (this.options.goals.length > 0) {
+        minGoal = Math.min.apply(Math, this.options.goals);
+        maxGoal = Math.max.apply(Math, this.options.goals);
+        ymin = ymin != null ? Math.min(ymin, minGoal) : minGoal;
+        ymax = ymax != null ? Math.max(ymax, maxGoal) : maxGoal;
+      }
+      this.data = (function() {
+        var _i, _len, _results;
+        _results = [];
+        for (index = _i = 0, _len = data.length; _i < _len; index = ++_i) {
+          row = data[index];
+          ret = {
+            src: row
+          };
+          ret.label = row[this.options.xkey];
+          if (this.options.parseTime) {
+            ret.x = Morris.parseDate(ret.label);
+            if (this.options.dateFormat) {
+              ret.label = this.options.dateFormat(ret.x);
+            } else if (typeof ret.label === 'number') {
+              ret.label = new Date(ret.label).toString();
+            }
+          } else {
+            ret.x = index;
+            if (this.options.xLabelFormat) {
+              ret.label = this.options.xLabelFormat(ret);
+            }
+          }
+          total = 0;
+          ret.y = (function() {
+            var _j, _len1, _ref, _results1;
+            _ref = this.options.ykeys;
+            _results1 = [];
+            for (idx = _j = 0, _len1 = _ref.length; _j < _len1; idx = ++_j) {
+              ykey = _ref[idx];
+              yval = row[ykey];
+              if (typeof yval === 'string') {
+                yval = parseFloat(yval);
+              }
+              if ((yval != null) && typeof yval !== 'number') {
+                yval = null;
+              }
+              if (yval != null) {
+                if (this.cumulative) {
+                  total += yval;
+                } else {
+                  if (ymax != null) {
+                    ymax = Math.max(yval, ymax);
+                    ymin = Math.min(yval, ymin);
+                  } else {
+                    ymax = ymin = yval;
+                  }
+                }
+              }
+              if (this.cumulative && (total != null)) {
+                ymax = Math.max(total, ymax);
+                ymin = Math.min(total, ymin);
+              }
+              _results1.push(yval);
+            }
+            return _results1;
+          }).call(this);
+          _results.push(ret);
+        }
+        return _results;
+      }).call(this);
+      if (this.options.parseTime) {
+        this.data = this.data.sort(function(a, b) {
+          return (a.x > b.x) - (b.x > a.x);
+        });
+      }
+      this.xmin = this.data[0].x;
+      this.xmax = this.data[this.data.length - 1].x;
+      this.events = [];
+      if (this.options.events.length > 0) {
+        if (this.options.parseTime) {
+          this.events = (function() {
+            var _i, _len, _ref, _results;
+            _ref = this.options.events;
+            _results = [];
+            for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+              e = _ref[_i];
+              _results.push(Morris.parseDate(e));
+            }
+            return _results;
+          }).call(this);
+        } else {
+          this.events = this.options.events;
+        }
+        this.xmax = Math.max(this.xmax, Math.max.apply(Math, this.events));
+        this.xmin = Math.min(this.xmin, Math.min.apply(Math, this.events));
+      }
+      if (this.xmin === this.xmax) {
+        this.xmin -= 1;
+        this.xmax += 1;
+      }
+      this.ymin = this.yboundary('min', ymin);
+      this.ymax = this.yboundary('max', ymax);
+      if (this.ymin === this.ymax) {
+        if (ymin) {
+          this.ymin -= 1;
+        }
+        this.ymax += 1;
+      }
+      if (((_ref = this.options.axes) === true || _ref === 'both' || _ref === 'y') || this.options.grid === true) {
+        if (this.options.ymax === this.gridDefaults.ymax && this.options.ymin === this.gridDefaults.ymin) {
+          this.grid = this.autoGridLines(this.ymin, this.ymax, this.options.numLines);
+          this.ymin = Math.min(this.ymin, this.grid[0]);
+          this.ymax = Math.max(this.ymax, this.grid[this.grid.length - 1]);
+        } else {
+          step = (this.ymax - this.ymin) / (this.options.numLines - 1);
+          this.grid = (function() {
+            var _i, _ref1, _ref2, _results;
+            _results = [];
+            for (y = _i = _ref1 = this.ymin, _ref2 = this.ymax; step > 0 ? _i <= _ref2 : _i >= _ref2; y = _i += step) {
+              _results.push(y);
+            }
+            return _results;
+          }).call(this);
+        }
+      }
+      this.dirty = true;
+      if (redraw) {
+        return this.redraw();
+      }
+    };
+
+    Grid.prototype.yboundary = function(boundaryType, currentValue) {
+      var boundaryOption, suggestedValue;
+      boundaryOption = this.options["y" + boundaryType];
+      if (typeof boundaryOption === 'string') {
+        if (boundaryOption.slice(0, 4) === 'auto') {
+          if (boundaryOption.length > 5) {
+            suggestedValue = parseInt(boundaryOption.slice(5), 10);
+            if (currentValue == null) {
+              return suggestedValue;
+            }
+            return Math[boundaryType](currentValue, suggestedValue);
+          } else {
+            if (currentValue != null) {
+              return currentValue;
+            } else {
+              return 0;
+            }
+          }
+        } else {
+          return parseInt(boundaryOption, 10);
+        }
+      } else {
+        return boundaryOption;
+      }
+    };
+
+    Grid.prototype.autoGridLines = function(ymin, ymax, nlines) {
+      var gmax, gmin, grid, smag, span, step, unit, y, ymag;
+      span = ymax - ymin;
+      ymag = Math.floor(Math.log(span) / Math.log(10));
+      unit = Math.pow(10, ymag);
+      gmin = Math.floor(ymin / unit) * unit;
+      gmax = Math.ceil(ymax / unit) * unit;
+      step = (gmax - gmin) / (nlines - 1);
+      if (unit === 1 && step > 1 && Math.ceil(step) !== step) {
+        step = Math.ceil(step);
+        gmax = gmin + step * (nlines - 1);
+      }
+      if (gmin < 0 && gmax > 0) {
+        gmin = Math.floor(ymin / step) * step;
+        gmax = Math.ceil(ymax / step) * step;
+      }
+      if (step < 1) {
+        smag = Math.floor(Math.log(step) / Math.log(10));
+        grid = (function() {
+          var _i, _results;
+          _results = [];
+          for (y = _i = gmin; step > 0 ? _i <= gmax : _i >= gmax; y = _i += step) {
+            _results.push(parseFloat(y.toFixed(1 - smag)));
+          }
+          return _results;
+        })();
+      } else {
+        grid = (function() {
+          var _i, _results;
+          _results = [];
+          for (y = _i = gmin; step > 0 ? _i <= gmax : _i >= gmax; y = _i += step) {
+            _results.push(y);
+          }
+          return _results;
+        })();
+      }
+      return grid;
+    };
+
+    Grid.prototype._calc = function() {
+      var bottomOffsets, gridLine, h, i, w, yLabelWidths, _ref, _ref1;
+      w = this.el.width();
+      h = this.el.height();
+      if (this.elementWidth !== w || this.elementHeight !== h || this.dirty) {
+        this.elementWidth = w;
+        this.elementHeight = h;
+        this.dirty = false;
+        this.left = this.options.padding;
+        this.right = this.elementWidth - this.options.padding;
+        this.top = this.options.padding;
+        this.bottom = this.elementHeight - this.options.padding;
+        if ((_ref = this.options.axes) === true || _ref === 'both' || _ref === 'y') {
+          yLabelWidths = (function() {
+            var _i, _len, _ref1, _results;
+            _ref1 = this.grid;
+            _results = [];
+            for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+              gridLine = _ref1[_i];
+              _results.push(this.measureText(this.yAxisFormat(gridLine)).width);
+            }
+            return _results;
+          }).call(this);
+          this.left += Math.max.apply(Math, yLabelWidths);
+        }
+        if ((_ref1 = this.options.axes) === true || _ref1 === 'both' || _ref1 === 'x') {
+          bottomOffsets = (function() {
+            var _i, _ref2, _results;
+            _results = [];
+            for (i = _i = 0, _ref2 = this.data.length; 0 <= _ref2 ? _i < _ref2 : _i > _ref2; i = 0 <= _ref2 ? ++_i : --_i) {
+              _results.push(this.measureText(this.data[i].text, -this.options.xLabelAngle).height);
+            }
+            return _results;
+          }).call(this);
+          this.bottom -= Math.max.apply(Math, bottomOffsets);
+        }
+        this.width = Math.max(1, this.right - this.left);
+        this.height = Math.max(1, this.bottom - this.top);
+        this.dx = this.width / (this.xmax - this.xmin);
+        this.dy = this.height / (this.ymax - this.ymin);
+        if (this.calc) {
+          return this.calc();
+        }
+      }
+    };
+
+    Grid.prototype.transY = function(y) {
+      return this.bottom - (y - this.ymin) * this.dy;
+    };
+
+    Grid.prototype.transX = function(x) {
+      if (this.data.length === 1) {
+        return (this.left + this.right) / 2;
+      } else {
+        return this.left + (x - this.xmin) * this.dx;
+      }
+    };
+
+    Grid.prototype.redraw = function() {
+      this.raphael.clear();
+      this._calc();
+      this.drawGrid();
+      this.drawGoals();
+      this.drawEvents();
+      if (this.draw) {
+        return this.draw();
+      }
+    };
+
+    Grid.prototype.measureText = function(text, angle) {
+      var ret, tt;
+      if (angle == null) {
+        angle = 0;
+      }
+      tt = this.raphael.text(100, 100, text).attr('font-size', this.options.gridTextSize).attr('font-family', this.options.gridTextFamily).attr('font-weight', this.options.gridTextWeight).rotate(angle);
+      ret = tt.getBBox();
+      tt.remove();
+      return ret;
+    };
+
+    Grid.prototype.yAxisFormat = function(label) {
+      return this.yLabelFormat(label);
+    };
+
+    Grid.prototype.yLabelFormat = function(label) {
+      if (typeof this.options.yLabelFormat === 'function') {
+        return this.options.yLabelFormat(label);
+      } else {
+        return "" + this.options.preUnits + (Morris.commas(label)) + this.options.postUnits;
+      }
+    };
+
+    Grid.prototype.drawGrid = function() {
+      var lineY, y, _i, _len, _ref, _ref1, _ref2, _results;
+      if (this.options.grid === false && ((_ref = this.options.axes) !== true && _ref !== 'both' && _ref !== 'y')) {
+        return;
+      }
+      _ref1 = this.grid;
+      _results = [];
+      for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+        lineY = _ref1[_i];
+        y = this.transY(lineY);
+        if ((_ref2 = this.options.axes) === true || _ref2 === 'both' || _ref2 === 'y') {
+          this.drawYAxisLabel(this.left - this.options.padding / 2, y, this.yAxisFormat(lineY));
+        }
+        if (this.options.grid) {
+          _results.push(this.drawGridLine("M" + this.left + "," + y + "H" + (this.left + this.width)));
+        } else {
+          _results.push(void 0);
+        }
+      }
+      return _results;
+    };
+
+    Grid.prototype.drawGoals = function() {
+      var color, goal, i, _i, _len, _ref, _results;
+      _ref = this.options.goals;
+      _results = [];
+      for (i = _i = 0, _len = _ref.length; _i < _len; i = ++_i) {
+        goal = _ref[i];
+        color = this.options.goalLineColors[i % this.options.goalLineColors.length];
+        _results.push(this.drawGoal(goal, color));
+      }
+      return _results;
+    };
+
+    Grid.prototype.drawEvents = function() {
+      var color, event, i, _i, _len, _ref, _results;
+      _ref = this.events;
+      _results = [];
+      for (i = _i = 0, _len = _ref.length; _i < _len; i = ++_i) {
+        event = _ref[i];
+        color = this.options.eventLineColors[i % this.options.eventLineColors.length];
+        _results.push(this.drawEvent(event, color));
+      }
+      return _results;
+    };
+
+    Grid.prototype.drawGoal = function(goal, color) {
+      return this.raphael.path("M" + this.left + "," + (this.transY(goal)) + "H" + this.right).attr('stroke', color).attr('stroke-width', this.options.goalStrokeWidth);
+    };
+
+    Grid.prototype.drawEvent = function(event, color) {
+      return this.raphael.path("M" + (this.transX(event)) + "," + this.bottom + "V" + this.top).attr('stroke', color).attr('stroke-width', this.options.eventStrokeWidth);
+    };
+
+    Grid.prototype.drawYAxisLabel = function(xPos, yPos, text) {
+      return this.raphael.text(xPos, yPos, text).attr('font-size', this.options.gridTextSize).attr('font-family', this.options.gridTextFamily).attr('font-weight', this.options.gridTextWeight).attr('fill', this.options.gridTextColor).attr('text-anchor', 'end');
+    };
+
+    Grid.prototype.drawGridLine = function(path) {
+      return this.raphael.path(path).attr('stroke', this.options.gridLineColor).attr('stroke-width', this.options.gridStrokeWidth);
+    };
+
+    Grid.prototype.startRange = function(x) {
+      this.hover.hide();
+      this.selectFrom = x;
+      return this.selectionRect.attr({
+        x: x,
+        width: 0
+      }).show();
+    };
+
+    Grid.prototype.endRange = function(x) {
+      var end, start;
+      if (this.selectFrom) {
+        start = Math.min(this.selectFrom, x);
+        end = Math.max(this.selectFrom, x);
+        this.options.rangeSelect.call(this.el, {
+          start: this.data[this.hitTest(start)].x,
+          end: this.data[this.hitTest(end)].x
+        });
+        return this.selectFrom = null;
+      }
+    };
+
+    Grid.prototype.resizeHandler = function() {
+      this.timeoutId = null;
+      this.raphael.setSize(this.el.width(), this.el.height());
+      return this.redraw();
+    };
+
+    return Grid;
+
+  })(Morris.EventEmitter);
+
+  Morris.parseDate = function(date) {
+    var isecs, m, msecs, n, o, offsetmins, p, q, r, ret, secs;
+    if (typeof date === 'number') {
+      return date;
+    }
+    m = date.match(/^(\d+) Q(\d)$/);
+    n = date.match(/^(\d+)-(\d+)$/);
+    o = date.match(/^(\d+)-(\d+)-(\d+)$/);
+    p = date.match(/^(\d+) W(\d+)$/);
+    q = date.match(/^(\d+)-(\d+)-(\d+)[ T](\d+):(\d+)(Z|([+-])(\d\d):?(\d\d))?$/);
+    r = date.match(/^(\d+)-(\d+)-(\d+)[ T](\d+):(\d+):(\d+(\.\d+)?)(Z|([+-])(\d\d):?(\d\d))?$/);
+    if (m) {
+      return new Date(parseInt(m[1], 10), parseInt(m[2], 10) * 3 - 1, 1).getTime();
+    } else if (n) {
+      return new Date(parseInt(n[1], 10), parseInt(n[2], 10) - 1, 1).getTime();
+    } else if (o) {
+      return new Date(parseInt(o[1], 10), parseInt(o[2], 10) - 1, parseInt(o[3], 10)).getTime();
+    } else if (p) {
+      ret = new Date(parseInt(p[1], 10), 0, 1);
+      if (ret.getDay() !== 4) {
+        ret.setMonth(0, 1 + ((4 - ret.getDay()) + 7) % 7);
+      }
+      return ret.getTime() + parseInt(p[2], 10) * 604800000;
+    } else if (q) {
+      if (!q[6]) {
+        return new Date(parseInt(q[1], 10), parseInt(q[2], 10) - 1, parseInt(q[3], 10), parseInt(q[4], 10), parseInt(q[5], 10)).getTime();
+      } else {
+        offsetmins = 0;
+        if (q[6] !== 'Z') {
+          offsetmins = parseInt(q[8], 10) * 60 + parseInt(q[9], 10);
+          if (q[7] === '+') {
+            offsetmins = 0 - offsetmins;
+          }
+        }
+        return Date.UTC(parseInt(q[1], 10), parseInt(q[2], 10) - 1, parseInt(q[3], 10), parseInt(q[4], 10), parseInt(q[5], 10) + offsetmins);
+      }
+    } else if (r) {
+      secs = parseFloat(r[6]);
+      isecs = Math.floor(secs);
+      msecs = Math.round((secs - isecs) * 1000);
+      if (!r[8]) {
+        return new Date(parseInt(r[1], 10), parseInt(r[2], 10) - 1, parseInt(r[3], 10), parseInt(r[4], 10), parseInt(r[5], 10), isecs, msecs).getTime();
+      } else {
+        offsetmins = 0;
+        if (r[8] !== 'Z') {
+          offsetmins = parseInt(r[10], 10) * 60 + parseInt(r[11], 10);
+          if (r[9] === '+') {
+            offsetmins = 0 - offsetmins;
+          }
+        }
+        return Date.UTC(parseInt(r[1], 10), parseInt(r[2], 10) - 1, parseInt(r[3], 10), parseInt(r[4], 10), parseInt(r[5], 10) + offsetmins, isecs, msecs);
+      }
+    } else {
+      return new Date(parseInt(date, 10), 0, 1).getTime();
+    }
+  };
+
+  Morris.Hover = (function() {
+    Hover.defaults = {
+      "class": 'morris-hover morris-default-style'
+    };
+
+    function Hover(options) {
+      if (options == null) {
+        options = {};
+      }
+      this.options = $.extend({}, Morris.Hover.defaults, options);
+      this.el = $("<div class='" + this.options["class"] + "'></div>");
+      this.el.hide();
+      this.options.parent.append(this.el);
+    }
+
+    Hover.prototype.update = function(html, x, y) {
+      if (!html) {
+        return this.hide();
+      } else {
+        this.html(html);
+        this.show();
+        return this.moveTo(x, y);
+      }
+    };
+
+    Hover.prototype.html = function(content) {
+      return this.el.html(content);
+    };
+
+    Hover.prototype.moveTo = function(x, y) {
+      var hoverHeight, hoverWidth, left, parentHeight, parentWidth, top;
+      parentWidth = this.options.parent.innerWidth();
+      parentHeight = this.options.parent.innerHeight();
+      hoverWidth = this.el.outerWidth();
+      hoverHeight = this.el.outerHeight();
+      left = Math.min(Math.max(0, x - hoverWidth / 2), parentWidth - hoverWidth);
+      if (y != null) {
+        top = y - hoverHeight - 10;
+        if (top < 0) {
+          top = y + 10;
+          if (top + hoverHeight > parentHeight) {
+            top = parentHeight / 2 - hoverHeight / 2;
+          }
+        }
+      } else {
+        top = parentHeight / 2 - hoverHeight / 2;
+      }
+      return this.el.css({
+        left: left + "px",
+        top: parseInt(top) + "px"
+      });
+    };
+
+    Hover.prototype.show = function() {
+      return this.el.show();
+    };
+
+    Hover.prototype.hide = function() {
+      return this.el.hide();
+    };
+
+    return Hover;
+
+  })();
+
+  Morris.Line = (function(_super) {
+    __extends(Line, _super);
+
+    function Line(options) {
+      this.hilight = __bind(this.hilight, this);
+      this.onHoverOut = __bind(this.onHoverOut, this);
+      this.onHoverMove = __bind(this.onHoverMove, this);
+      this.onGridClick = __bind(this.onGridClick, this);
+      if (!(this instanceof Morris.Line)) {
+        return new Morris.Line(options);
+      }
+      Line.__super__.constructor.call(this, options);
+    }
+
+    Line.prototype.init = function() {
+      if (this.options.hideHover !== 'always') {
+        this.hover = new Morris.Hover({
+          parent: this.el
+        });
+        this.on('hovermove', this.onHoverMove);
+        this.on('hoverout', this.onHoverOut);
+        return this.on('gridclick', this.onGridClick);
+      }
+    };
+
+    Line.prototype.defaults = {
+      lineWidth: 3,
+      pointSize: 4,
+      lineColors: ['#0b62a4', '#7A92A3', '#4da74d', '#afd8f8', '#edc240', '#cb4b4b', '#9440ed'],
+      pointStrokeWidths: [1],
+      pointStrokeColors: ['#ffffff'],
+      pointFillColors: [],
+      smooth: true,
+      xLabels: 'auto',
+      xLabelFormat: null,
+      xLabelMargin: 24,
+      hideHover: false
+    };
+
+    Line.prototype.calc = function() {
+      this.calcPoints();
+      return this.generatePaths();
+    };
+
+    Line.prototype.calcPoints = function() {
+      var row, y, _i, _len, _ref, _results;
+      _ref = this.data;
+      _results = [];
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        row = _ref[_i];
+        row._x = this.transX(row.x);
+        row._y = (function() {
+          var _j, _len1, _ref1, _results1;
+          _ref1 = row.y;
+          _results1 = [];
+          for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
+            y = _ref1[_j];
+            if (y != null) {
+              _results1.push(this.transY(y));
+            } else {
+              _results1.push(y);
+            }
+          }
+          return _results1;
+        }).call(this);
+        _results.push(row._ymax = Math.min.apply(Math, [this.bottom].concat((function() {
+          var _j, _len1, _ref1, _results1;
+          _ref1 = row._y;
+          _results1 = [];
+          for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
+            y = _ref1[_j];
+            if (y != null) {
+              _results1.push(y);
+            }
+          }
+          return _results1;
+        })())));
+      }
+      return _results;
+    };
+
+    Line.prototype.hitTest = function(x) {
+      var index, r, _i, _len, _ref;
+      if (this.data.length === 0) {
+        return null;
+      }
+      _ref = this.data.slice(1);
+      for (index = _i = 0, _len = _ref.length; _i < _len; index = ++_i) {
+        r = _ref[index];
+        if (x < (r._x + this.data[index]._x) / 2) {
+          break;
+        }
+      }
+      return index;
+    };
+
+    Line.prototype.onGridClick = function(x, y) {
+      var index;
+      index = this.hitTest(x);
+      return this.fire('click', index, this.data[index].src, x, y);
+    };
+
+    Line.prototype.onHoverMove = function(x, y) {
+      var index;
+      index = this.hitTest(x);
+      return this.displayHoverForRow(index);
+    };
+
+    Line.prototype.onHoverOut = function() {
+      if (this.options.hideHover !== false) {
+        return this.displayHoverForRow(null);
+      }
+    };
+
+    Line.prototype.displayHoverForRow = function(index) {
+      var _ref;
+      if (index != null) {
+        (_ref = this.hover).update.apply(_ref, this.hoverContentForRow(index));
+        return this.hilight(index);
+      } else {
+        this.hover.hide();
+        return this.hilight();
+      }
+    };
+
+    Line.prototype.hoverContentForRow = function(index) {
+      var content, j, row, y, _i, _len, _ref;
+      row = this.data[index];
+      content = "<div class='morris-hover-row-label'>" + row.label + "</div>";
+      _ref = row.y;
+      for (j = _i = 0, _len = _ref.length; _i < _len; j = ++_i) {
+        y = _ref[j];
+        content += "<div class='morris-hover-point' style='color: " + (this.colorFor(row, j, 'label')) + "'>\n  " + this.options.labels[j] + ":\n  " + (this.yLabelFormat(y)) + "\n</div>";
+      }
+      if (typeof this.options.hoverCallback === 'function') {
+        content = this.options.hoverCallback(index, this.options, content, row.src);
+      }
+      return [content, row._x, row._ymax];
+    };
+
+    Line.prototype.generatePaths = function() {
+      var coords, i, r, smooth;
+      return this.paths = (function() {
+        var _i, _ref, _ref1, _results;
+        _results = [];
+        for (i = _i = 0, _ref = this.options.ykeys.length; 0 <= _ref ? _i < _ref : _i > _ref; i = 0 <= _ref ? ++_i : --_i) {
+          smooth = typeof this.options.smooth === "boolean" ? this.options.smooth : (_ref1 = this.options.ykeys[i], __indexOf.call(this.options.smooth, _ref1) >= 0);
+          coords = (function() {
+            var _j, _len, _ref2, _results1;
+            _ref2 = this.data;
+            _results1 = [];
+            for (_j = 0, _len = _ref2.length; _j < _len; _j++) {
+              r = _ref2[_j];
+              if (r._y[i] !== void 0) {
+                _results1.push({
+                  x: r._x,
+                  y: r._y[i]
+                });
+              }
+            }
+            return _results1;
+          }).call(this);
+          if (coords.length > 1) {
+            _results.push(Morris.Line.createPath(coords, smooth, this.bottom));
+          } else {
+            _results.push(null);
+          }
+        }
+        return _results;
+      }).call(this);
+    };
+
+    Line.prototype.draw = function() {
+      var _ref;
+      if ((_ref = this.options.axes) === true || _ref === 'both' || _ref === 'x') {
+        this.drawXAxis();
+      }
+      this.drawSeries();
+      if (this.options.hideHover === false) {
+        return this.displayHoverForRow(this.data.length - 1);
+      }
+    };
+
+    Line.prototype.drawXAxis = function() {
+      var drawLabel, l, labels, prevAngleMargin, prevLabelMargin, row, ypos, _i, _len, _results,
+        _this = this;
+      ypos = this.bottom + this.options.padding / 2;
+      prevLabelMargin = null;
+      prevAngleMargin = null;
+      drawLabel = function(labelText, xpos) {
+        var label, labelBox, margin, offset, textBox;
+        label = _this.drawXAxisLabel(_this.transX(xpos), ypos, labelText);
+        textBox = label.getBBox();
+        label.transform("r" + (-_this.options.xLabelAngle));
+        labelBox = label.getBBox();
+        label.transform("t0," + (labelBox.height / 2) + "...");
+        if (_this.options.xLabelAngle !== 0) {
+          offset = -0.5 * textBox.width * Math.cos(_this.options.xLabelAngle * Math.PI / 180.0);
+          label.transform("t" + offset + ",0...");
+        }
+        labelBox = label.getBBox();
+        if (((prevLabelMargin == null) || prevLabelMargin >= labelBox.x + labelBox.width || (prevAngleMargin != null) && prevAngleMargin >= labelBox.x) && labelBox.x >= 0 && (labelBox.x + labelBox.width) < _this.el.width()) {
+          if (_this.options.xLabelAngle !== 0) {
+            margin = 1.25 * _this.options.gridTextSize / Math.sin(_this.options.xLabelAngle * Math.PI / 180.0);
+            prevAngleMargin = labelBox.x - margin;
+          }
+          return prevLabelMargin = labelBox.x - _this.options.xLabelMargin;
+        } else {
+          return label.remove();
+        }
+      };
+      if (this.options.parseTime) {
+        if (this.data.length === 1 && this.options.xLabels === 'auto') {
+          labels = [[this.data[0].label, this.data[0].x]];
+        } else {
+          labels = Morris.labelSeries(this.xmin, this.xmax, this.width, this.options.xLabels, this.options.xLabelFormat);
+        }
+      } else {
+        labels = (function() {
+          var _i, _len, _ref, _results;
+          _ref = this.data;
+          _results = [];
+          for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+            row = _ref[_i];
+            _results.push([row.label, row.x]);
+          }
+          return _results;
+        }).call(this);
+      }
+      labels.reverse();
+      _results = [];
+      for (_i = 0, _len = labels.length; _i < _len; _i++) {
+        l = labels[_i];
+        _results.push(drawLabel(l[0], l[1]));
+      }
+      return _results;
+    };
+
+    Line.prototype.drawSeries = function() {
+      var i, _i, _j, _ref, _ref1, _results;
+      this.seriesPoints = [];
+      for (i = _i = _ref = this.options.ykeys.length - 1; _ref <= 0 ? _i <= 0 : _i >= 0; i = _ref <= 0 ? ++_i : --_i) {
+        this._drawLineFor(i);
+      }
+      _results = [];
+      for (i = _j = _ref1 = this.options.ykeys.length - 1; _ref1 <= 0 ? _j <= 0 : _j >= 0; i = _ref1 <= 0 ? ++_j : --_j) {
+        _results.push(this._drawPointFor(i));
+      }
+      return _results;
+    };
+
+    Line.prototype._drawPointFor = function(index) {
+      var circle, row, _i, _len, _ref, _results;
+      this.seriesPoints[index] = [];
+      _ref = this.data;
+      _results = [];
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        row = _ref[_i];
+        circle = null;
+        if (row._y[index] != null) {
+          circle = this.drawLinePoint(row._x, row._y[index], this.colorFor(row, index, 'point'), index);
+        }
+        _results.push(this.seriesPoints[index].push(circle));
+      }
+      return _results;
+    };
+
+    Line.prototype._drawLineFor = function(index) {
+      var path;
+      path = this.paths[index];
+      if (path !== null) {
+        return this.drawLinePath(path, this.colorFor(null, index, 'line'), index);
+      }
+    };
+
+    Line.createPath = function(coords, smooth, bottom) {
+      var coord, g, grads, i, ix, lg, path, prevCoord, x1, x2, y1, y2, _i, _len;
+      path = "";
+      if (smooth) {
+        grads = Morris.Line.gradients(coords);
+      }
+      prevCoord = {
+        y: null
+      };
+      for (i = _i = 0, _len = coords.length; _i < _len; i = ++_i) {
+        coord = coords[i];
+        if (coord.y != null) {
+          if (prevCoord.y != null) {
+            if (smooth) {
+              g = grads[i];
+              lg = grads[i - 1];
+              ix = (coord.x - prevCoord.x) / 4;
+              x1 = prevCoord.x + ix;
+              y1 = Math.min(bottom, prevCoord.y + ix * lg);
+              x2 = coord.x - ix;
+              y2 = Math.min(bottom, coord.y - ix * g);
+              path += "C" + x1 + "," + y1 + "," + x2 + "," + y2 + "," + coord.x + "," + coord.y;
+            } else {
+              path += "L" + coord.x + "," + coord.y;
+            }
+          } else {
+            if (!smooth || (grads[i] != null)) {
+              path += "M" + coord.x + "," + coord.y;
+            }
+          }
+        }
+        prevCoord = coord;
+      }
+      return path;
+    };
+
+    Line.gradients = function(coords) {
+      var coord, grad, i, nextCoord, prevCoord, _i, _len, _results;
+      grad = function(a, b) {
+        return (a.y - b.y) / (a.x - b.x);
+      };
+      _results = [];
+      for (i = _i = 0, _len = coords.length; _i < _len; i = ++_i) {
+        coord = coords[i];
+        if (coord.y != null) {
+          nextCoord = coords[i + 1] || {
+            y: null
+          };
+          prevCoord = coords[i - 1] || {
+            y: null
+          };
+          if ((prevCoord.y != null) && (nextCoord.y != null)) {
+            _results.push(grad(prevCoord, nextCoord));
+          } else if (prevCoord.y != null) {
+            _results.push(grad(prevCoord, coord));
+          } else if (nextCoord.y != null) {
+            _results.push(grad(coord, nextCoord));
+          } else {
+            _results.push(null);
+          }
+        } else {
+          _results.push(null);
+        }
+      }
+      return _results;
+    };
+
+    Line.prototype.hilight = function(index) {
+      var i, _i, _j, _ref, _ref1;
+      if (this.prevHilight !== null && this.prevHilight !== index) {
+        for (i = _i = 0, _ref = this.seriesPoints.length - 1; 0 <= _ref ? _i <= _ref : _i >= _ref; i = 0 <= _ref ? ++_i : --_i) {
+          if (this.seriesPoints[i][this.prevHilight]) {
+            this.seriesPoints[i][this.prevHilight].animate(this.pointShrinkSeries(i));
+          }
+        }
+      }
+      if (index !== null && this.prevHilight !== index) {
+        for (i = _j = 0, _ref1 = this.seriesPoints.length - 1; 0 <= _ref1 ? _j <= _ref1 : _j >= _ref1; i = 0 <= _ref1 ? ++_j : --_j) {
+          if (this.seriesPoints[i][index]) {
+            this.seriesPoints[i][index].animate(this.pointGrowSeries(i));
+          }
+        }
+      }
+      return this.prevHilight = index;
+    };
+
+    Line.prototype.colorFor = function(row, sidx, type) {
+      if (typeof this.options.lineColors === 'function') {
+        return this.options.lineColors.call(this, row, sidx, type);
+      } else if (type === 'point') {
+        return this.options.pointFillColors[sidx % this.options.pointFillColors.length] || this.options.lineColors[sidx % this.options.lineColors.length];
+      } else {
+        return this.options.lineColors[sidx % this.options.lineColors.length];
+      }
+    };
+
+    Line.prototype.drawXAxisLabel = function(xPos, yPos, text) {
+      return this.raphael.text(xPos, yPos, text).attr('font-size', this.options.gridTextSize).attr('font-family', this.options.gridTextFamily).attr('font-weight', this.options.gridTextWeight).attr('fill', this.options.gridTextColor);
+    };
+
+    Line.prototype.drawLinePath = function(path, lineColor, lineIndex) {
+      return this.raphael.path(path).attr('stroke', lineColor).attr('stroke-width', this.lineWidthForSeries(lineIndex));
+    };
+
+    Line.prototype.drawLinePoint = function(xPos, yPos, pointColor, lineIndex) {
+      return this.raphael.circle(xPos, yPos, this.pointSizeForSeries(lineIndex)).attr('fill', pointColor).attr('stroke-width', this.pointStrokeWidthForSeries(lineIndex)).attr('stroke', this.pointStrokeColorForSeries(lineIndex));
+    };
+
+    Line.prototype.pointStrokeWidthForSeries = function(index) {
+      return this.options.pointStrokeWidths[index % this.options.pointStrokeWidths.length];
+    };
+
+    Line.prototype.pointStrokeColorForSeries = function(index) {
+      return this.options.pointStrokeColors[index % this.options.pointStrokeColors.length];
+    };
+
+    Line.prototype.lineWidthForSeries = function(index) {
+      if (this.options.lineWidth instanceof Array) {
+        return this.options.lineWidth[index % this.options.lineWidth.length];
+      } else {
+        return this.options.lineWidth;
+      }
+    };
+
+    Line.prototype.pointSizeForSeries = function(index) {
+      if (this.options.pointSize instanceof Array) {
+        return this.options.pointSize[index % this.options.pointSize.length];
+      } else {
+        return this.options.pointSize;
+      }
+    };
+
+    Line.prototype.pointGrowSeries = function(index) {
+      return Raphael.animation({
+        r: this.pointSizeForSeries(index) + 3
+      }, 25, 'linear');
+    };
+
+    Line.prototype.pointShrinkSeries = function(index) {
+      return Raphael.animation({
+        r: this.pointSizeForSeries(index)
+      }, 25, 'linear');
+    };
+
+    return Line;
+
+  })(Morris.Grid);
+
+  Morris.labelSeries = function(dmin, dmax, pxwidth, specName, xLabelFormat) {
+    var d, d0, ddensity, name, ret, s, spec, t, _i, _len, _ref;
+    ddensity = 200 * (dmax - dmin) / pxwidth;
+    d0 = new Date(dmin);
+    spec = Morris.LABEL_SPECS[specName];
+    if (spec === void 0) {
+      _ref = Morris.AUTO_LABEL_ORDER;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        name = _ref[_i];
+        s = Morris.LABEL_SPECS[name];
+        if (ddensity >= s.span) {
+          spec = s;
+          break;
+        }
+      }
+    }
+    if (spec === void 0) {
+      spec = Morris.LABEL_SPECS["second"];
+    }
+    if (xLabelFormat) {
+      spec = $.extend({}, spec, {
+        fmt: xLabelFormat
+      });
+    }
+    d = spec.start(d0);
+    ret = [];
+    while ((t = d.getTime()) <= dmax) {
+      if (t >= dmin) {
+        ret.push([spec.fmt(d), t]);
+      }
+      spec.incr(d);
+    }
+    return ret;
+  };
+
+  minutesSpecHelper = function(interval) {
+    return {
+      span: interval * 60 * 1000,
+      start: function(d) {
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours());
+      },
+      fmt: function(d) {
+        return "" + (Morris.pad2(d.getHours())) + ":" + (Morris.pad2(d.getMinutes()));
+      },
+      incr: function(d) {
+        return d.setUTCMinutes(d.getUTCMinutes() + interval);
+      }
+    };
+  };
+
+  secondsSpecHelper = function(interval) {
+    return {
+      span: interval * 1000,
+      start: function(d) {
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
+      },
+      fmt: function(d) {
+        return "" + (Morris.pad2(d.getHours())) + ":" + (Morris.pad2(d.getMinutes())) + ":" + (Morris.pad2(d.getSeconds()));
+      },
+      incr: function(d) {
+        return d.setUTCSeconds(d.getUTCSeconds() + interval);
+      }
+    };
+  };
+
+  Morris.LABEL_SPECS = {
+    "decade": {
+      span: 172800000000,
+      start: function(d) {
+        return new Date(d.getFullYear() - d.getFullYear() % 10, 0, 1);
+      },
+      fmt: function(d) {
+        return "" + (d.getFullYear());
+      },
+      incr: function(d) {
+        return d.setFullYear(d.getFullYear() + 10);
+      }
+    },
+    "year": {
+      span: 17280000000,
+      start: function(d) {
+        return new Date(d.getFullYear(), 0, 1);
+      },
+      fmt: function(d) {
+        return "" + (d.getFullYear());
+      },
+      incr: function(d) {
+        return d.setFullYear(d.getFullYear() + 1);
+      }
+    },
+    "month": {
+      span: 2419200000,
+      start: function(d) {
+        return new Date(d.getFullYear(), d.getMonth(), 1);
+      },
+      fmt: function(d) {
+        return "" + (d.getFullYear()) + "-" + (Morris.pad2(d.getMonth() + 1));
+      },
+      incr: function(d) {
+        return d.setMonth(d.getMonth() + 1);
+      }
+    },
+    "week": {
+      span: 604800000,
+      start: function(d) {
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      },
+      fmt: function(d) {
+        return "" + (d.getFullYear()) + "-" + (Morris.pad2(d.getMonth() + 1)) + "-" + (Morris.pad2(d.getDate()));
+      },
+      incr: function(d) {
+        return d.setDate(d.getDate() + 7);
+      }
+    },
+    "day": {
+      span: 86400000,
+      start: function(d) {
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      },
+      fmt: function(d) {
+        return "" + (d.getFullYear()) + "-" + (Morris.pad2(d.getMonth() + 1)) + "-" + (Morris.pad2(d.getDate()));
+      },
+      incr: function(d) {
+        return d.setDate(d.getDate() + 1);
+      }
+    },
+    "hour": minutesSpecHelper(60),
+    "30min": minutesSpecHelper(30),
+    "15min": minutesSpecHelper(15),
+    "10min": minutesSpecHelper(10),
+    "5min": minutesSpecHelper(5),
+    "minute": minutesSpecHelper(1),
+    "30sec": secondsSpecHelper(30),
+    "15sec": secondsSpecHelper(15),
+    "10sec": secondsSpecHelper(10),
+    "5sec": secondsSpecHelper(5),
+    "second": secondsSpecHelper(1)
+  };
+
+  Morris.AUTO_LABEL_ORDER = ["decade", "year", "month", "week", "day", "hour", "30min", "15min", "10min", "5min", "minute", "30sec", "15sec", "10sec", "5sec", "second"];
+
+  Morris.Area = (function(_super) {
+    var areaDefaults;
+
+    __extends(Area, _super);
+
+    areaDefaults = {
+      fillOpacity: 'auto',
+      behaveLikeLine: false
+    };
+
+    function Area(options) {
+      var areaOptions;
+      if (!(this instanceof Morris.Area)) {
+        return new Morris.Area(options);
+      }
+      areaOptions = $.extend({}, areaDefaults, options);
+      this.cumulative = !areaOptions.behaveLikeLine;
+      if (areaOptions.fillOpacity === 'auto') {
+        areaOptions.fillOpacity = areaOptions.behaveLikeLine ? .8 : 1;
+      }
+      Area.__super__.constructor.call(this, areaOptions);
+    }
+
+    Area.prototype.calcPoints = function() {
+      var row, total, y, _i, _len, _ref, _results;
+      _ref = this.data;
+      _results = [];
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        row = _ref[_i];
+        row._x = this.transX(row.x);
+        total = 0;
+        row._y = (function() {
+          var _j, _len1, _ref1, _results1;
+          _ref1 = row.y;
+          _results1 = [];
+          for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
+            y = _ref1[_j];
+            if (this.options.behaveLikeLine) {
+              _results1.push(this.transY(y));
+            } else {
+              total += y || 0;
+              _results1.push(this.transY(total));
+            }
+          }
+          return _results1;
+        }).call(this);
+        _results.push(row._ymax = Math.max.apply(Math, row._y));
+      }
+      return _results;
+    };
+
+    Area.prototype.drawSeries = function() {
+      var i, range, _i, _j, _k, _len, _ref, _ref1, _results, _results1, _results2;
+      this.seriesPoints = [];
+      if (this.options.behaveLikeLine) {
+        range = (function() {
+          _results = [];
+          for (var _i = 0, _ref = this.options.ykeys.length - 1; 0 <= _ref ? _i <= _ref : _i >= _ref; 0 <= _ref ? _i++ : _i--){ _results.push(_i); }
+          return _results;
+        }).apply(this);
+      } else {
+        range = (function() {
+          _results1 = [];
+          for (var _j = _ref1 = this.options.ykeys.length - 1; _ref1 <= 0 ? _j <= 0 : _j >= 0; _ref1 <= 0 ? _j++ : _j--){ _results1.push(_j); }
+          return _results1;
+        }).apply(this);
+      }
+      _results2 = [];
+      for (_k = 0, _len = range.length; _k < _len; _k++) {
+        i = range[_k];
+        this._drawFillFor(i);
+        this._drawLineFor(i);
+        _results2.push(this._drawPointFor(i));
+      }
+      return _results2;
+    };
+
+    Area.prototype._drawFillFor = function(index) {
+      var path;
+      path = this.paths[index];
+      if (path !== null) {
+        path = path + ("L" + (this.transX(this.xmax)) + "," + this.bottom + "L" + (this.transX(this.xmin)) + "," + this.bottom + "Z");
+        return this.drawFilledPath(path, this.fillForSeries(index));
+      }
+    };
+
+    Area.prototype.fillForSeries = function(i) {
+      var color;
+      color = Raphael.rgb2hsl(this.colorFor(this.data[i], i, 'line'));
+      return Raphael.hsl(color.h, this.options.behaveLikeLine ? color.s * 0.9 : color.s * 0.75, Math.min(0.98, this.options.behaveLikeLine ? color.l * 1.2 : color.l * 1.25));
+    };
+
+    Area.prototype.drawFilledPath = function(path, fill) {
+      return this.raphael.path(path).attr('fill', fill).attr('fill-opacity', this.options.fillOpacity).attr('stroke', 'none');
+    };
+
+    return Area;
+
+  })(Morris.Line);
+
+  Morris.Bar = (function(_super) {
+    __extends(Bar, _super);
+
+    function Bar(options) {
+      this.onHoverOut = __bind(this.onHoverOut, this);
+      this.onHoverMove = __bind(this.onHoverMove, this);
+      this.onGridClick = __bind(this.onGridClick, this);
+      if (!(this instanceof Morris.Bar)) {
+        return new Morris.Bar(options);
+      }
+      Bar.__super__.constructor.call(this, $.extend({}, options, {
+        parseTime: false
+      }));
+    }
+
+    Bar.prototype.init = function() {
+      this.cumulative = this.options.stacked;
+      if (this.options.hideHover !== 'always') {
+        this.hover = new Morris.Hover({
+          parent: this.el
+        });
+        this.on('hovermove', this.onHoverMove);
+        this.on('hoverout', this.onHoverOut);
+        return this.on('gridclick', this.onGridClick);
+      }
+    };
+
+    Bar.prototype.defaults = {
+      barSizeRatio: 0.75,
+      barGap: 3,
+      barColors: ['#0b62a4', '#7a92a3', '#4da74d', '#afd8f8', '#edc240', '#cb4b4b', '#9440ed'],
+      barOpacity: 1.0,
+      barRadius: [0, 0, 0, 0],
+      xLabelMargin: 50
+    };
+
+    Bar.prototype.calc = function() {
+      var _ref;
+      this.calcBars();
+      if (this.options.hideHover === false) {
+        return (_ref = this.hover).update.apply(_ref, this.hoverContentForRow(this.data.length - 1));
+      }
+    };
+
+    Bar.prototype.calcBars = function() {
+      var idx, row, y, _i, _len, _ref, _results;
+      _ref = this.data;
+      _results = [];
+      for (idx = _i = 0, _len = _ref.length; _i < _len; idx = ++_i) {
+        row = _ref[idx];
+        row._x = this.left + this.width * (idx + 0.5) / this.data.length;
+        _results.push(row._y = (function() {
+          var _j, _len1, _ref1, _results1;
+          _ref1 = row.y;
+          _results1 = [];
+          for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
+            y = _ref1[_j];
+            if (y != null) {
+              _results1.push(this.transY(y));
+            } else {
+              _results1.push(null);
+            }
+          }
+          return _results1;
+        }).call(this));
+      }
+      return _results;
+    };
+
+    Bar.prototype.draw = function() {
+      var _ref;
+      if ((_ref = this.options.axes) === true || _ref === 'both' || _ref === 'x') {
+        this.drawXAxis();
+      }
+      return this.drawSeries();
+    };
+
+    Bar.prototype.drawXAxis = function() {
+      var i, label, labelBox, margin, offset, prevAngleMargin, prevLabelMargin, row, textBox, ypos, _i, _ref, _results;
+      ypos = this.bottom + (this.options.xAxisLabelTopPadding || this.options.padding / 2);
+      prevLabelMargin = null;
+      prevAngleMargin = null;
+      _results = [];
+      for (i = _i = 0, _ref = this.data.length; 0 <= _ref ? _i < _ref : _i > _ref; i = 0 <= _ref ? ++_i : --_i) {
+        row = this.data[this.data.length - 1 - i];
+        label = this.drawXAxisLabel(row._x, ypos, row.label);
+        textBox = label.getBBox();
+        label.transform("r" + (-this.options.xLabelAngle));
+        labelBox = label.getBBox();
+        label.transform("t0," + (labelBox.height / 2) + "...");
+        if (this.options.xLabelAngle !== 0) {
+          offset = -0.5 * textBox.width * Math.cos(this.options.xLabelAngle * Math.PI / 180.0);
+          label.transform("t" + offset + ",0...");
+        }
+        if (((prevLabelMargin == null) || prevLabelMargin >= labelBox.x + labelBox.width || (prevAngleMargin != null) && prevAngleMargin >= labelBox.x) && labelBox.x >= 0 && (labelBox.x + labelBox.width) < this.el.width()) {
+          if (this.options.xLabelAngle !== 0) {
+            margin = 1.25 * this.options.gridTextSize / Math.sin(this.options.xLabelAngle * Math.PI / 180.0);
+            prevAngleMargin = labelBox.x - margin;
+          }
+          _results.push(prevLabelMargin = labelBox.x - this.options.xLabelMargin);
+        } else {
+          _results.push(label.remove());
+        }
+      }
+      return _results;
+    };
+
+    Bar.prototype.drawSeries = function() {
+      var barWidth, bottom, groupWidth, idx, lastTop, left, leftPadding, numBars, row, sidx, size, spaceLeft, top, ypos, zeroPos;
+      groupWidth = this.width / this.options.data.length;
+      numBars = this.options.stacked ? 1 : this.options.ykeys.length;
+      barWidth = (groupWidth * this.options.barSizeRatio - this.options.barGap * (numBars - 1)) / numBars;
+      if (this.options.barSize) {
+        barWidth = Math.min(barWidth, this.options.barSize);
+      }
+      spaceLeft = groupWidth - barWidth * numBars - this.options.barGap * (numBars - 1);
+      leftPadding = spaceLeft / 2;
+      zeroPos = this.ymin <= 0 && this.ymax >= 0 ? this.transY(0) : null;
+      return this.bars = (function() {
+        var _i, _len, _ref, _results;
+        _ref = this.data;
+        _results = [];
+        for (idx = _i = 0, _len = _ref.length; _i < _len; idx = ++_i) {
+          row = _ref[idx];
+          lastTop = 0;
+          _results.push((function() {
+            var _j, _len1, _ref1, _results1;
+            _ref1 = row._y;
+            _results1 = [];
+            for (sidx = _j = 0, _len1 = _ref1.length; _j < _len1; sidx = ++_j) {
+              ypos = _ref1[sidx];
+              if (ypos !== null) {
+                if (zeroPos) {
+                  top = Math.min(ypos, zeroPos);
+                  bottom = Math.max(ypos, zeroPos);
+                } else {
+                  top = ypos;
+                  bottom = this.bottom;
+                }
+                left = this.left + idx * groupWidth + leftPadding;
+                if (!this.options.stacked) {
+                  left += sidx * (barWidth + this.options.barGap);
+                }
+                size = bottom - top;
+                if (this.options.verticalGridCondition && this.options.verticalGridCondition(row.x)) {
+                  this.drawBar(this.left + idx * groupWidth, this.top, groupWidth, Math.abs(this.top - this.bottom), this.options.verticalGridColor, this.options.verticalGridOpacity, this.options.barRadius);
+                }
+                if (this.options.stacked) {
+                  top -= lastTop;
+                }
+                this.drawBar(left, top, barWidth, size, this.colorFor(row, sidx, 'bar'), this.options.barOpacity, this.options.barRadius);
+                _results1.push(lastTop += size);
+              } else {
+                _results1.push(null);
+              }
+            }
+            return _results1;
+          }).call(this));
+        }
+        return _results;
+      }).call(this);
+    };
+
+    Bar.prototype.colorFor = function(row, sidx, type) {
+      var r, s;
+      if (typeof this.options.barColors === 'function') {
+        r = {
+          x: row.x,
+          y: row.y[sidx],
+          label: row.label
+        };
+        s = {
+          index: sidx,
+          key: this.options.ykeys[sidx],
+          label: this.options.labels[sidx]
+        };
+        return this.options.barColors.call(this, r, s, type);
+      } else {
+        return this.options.barColors[sidx % this.options.barColors.length];
+      }
+    };
+
+    Bar.prototype.hitTest = function(x) {
+      if (this.data.length === 0) {
+        return null;
+      }
+      x = Math.max(Math.min(x, this.right), this.left);
+      return Math.min(this.data.length - 1, Math.floor((x - this.left) / (this.width / this.data.length)));
+    };
+
+    Bar.prototype.onGridClick = function(x, y) {
+      var index;
+      index = this.hitTest(x);
+      return this.fire('click', index, this.data[index].src, x, y);
+    };
+
+    Bar.prototype.onHoverMove = function(x, y) {
+      var index, _ref;
+      index = this.hitTest(x);
+      return (_ref = this.hover).update.apply(_ref, this.hoverContentForRow(index));
+    };
+
+    Bar.prototype.onHoverOut = function() {
+      if (this.options.hideHover !== false) {
+        return this.hover.hide();
+      }
+    };
+
+    Bar.prototype.hoverContentForRow = function(index) {
+      var content, j, row, x, y, _i, _len, _ref;
+      row = this.data[index];
+      content = "<div class='morris-hover-row-label'>" + row.label + "</div>";
+      _ref = row.y;
+      for (j = _i = 0, _len = _ref.length; _i < _len; j = ++_i) {
+        y = _ref[j];
+        content += "<div class='morris-hover-point' style='color: " + (this.colorFor(row, j, 'label')) + "'>\n  " + this.options.labels[j] + ":\n  " + (this.yLabelFormat(y)) + "\n</div>";
+      }
+      if (typeof this.options.hoverCallback === 'function') {
+        content = this.options.hoverCallback(index, this.options, content, row.src);
+      }
+      x = this.left + (index + 0.5) * this.width / this.data.length;
+      return [content, x];
+    };
+
+    Bar.prototype.drawXAxisLabel = function(xPos, yPos, text) {
+      var label;
+      return label = this.raphael.text(xPos, yPos, text).attr('font-size', this.options.gridTextSize).attr('font-family', this.options.gridTextFamily).attr('font-weight', this.options.gridTextWeight).attr('fill', this.options.gridTextColor);
+    };
+
+    Bar.prototype.drawBar = function(xPos, yPos, width, height, barColor, opacity, radiusArray) {
+      var maxRadius, path;
+      maxRadius = Math.max.apply(Math, radiusArray);
+      if (maxRadius === 0 || maxRadius > height) {
+        path = this.raphael.rect(xPos, yPos, width, height);
+      } else {
+        path = this.raphael.path(this.roundedRect(xPos, yPos, width, height, radiusArray));
+      }
+      return path.attr('fill', barColor).attr('fill-opacity', opacity).attr('stroke', 'none');
+    };
+
+    Bar.prototype.roundedRect = function(x, y, w, h, r) {
+      if (r == null) {
+        r = [0, 0, 0, 0];
+      }
+      return ["M", x, r[0] + y, "Q", x, y, x + r[0], y, "L", x + w - r[1], y, "Q", x + w, y, x + w, y + r[1], "L", x + w, y + h - r[2], "Q", x + w, y + h, x + w - r[2], y + h, "L", x + r[3], y + h, "Q", x, y + h, x, y + h - r[3], "Z"];
+    };
+
+    return Bar;
+
+  })(Morris.Grid);
+
+  Morris.Donut = (function(_super) {
+    __extends(Donut, _super);
+
+    Donut.prototype.defaults = {
+      colors: ['#0B62A4', '#3980B5', '#679DC6', '#95BBD7', '#B0CCE1', '#095791', '#095085', '#083E67', '#052C48', '#042135'],
+      backgroundColor: '#FFFFFF',
+      labelColor: '#000000',
+      formatter: Morris.commas,
+      resize: false
+    };
+
+    function Donut(options) {
+      this.resizeHandler = __bind(this.resizeHandler, this);
+      this.select = __bind(this.select, this);
+      this.click = __bind(this.click, this);
+      var _this = this;
+      if (!(this instanceof Morris.Donut)) {
+        return new Morris.Donut(options);
+      }
+      this.options = $.extend({}, this.defaults, options);
+      if (typeof options.element === 'string') {
+        this.el = $(document.getElementById(options.element));
+      } else {
+        this.el = $(options.element);
+      }
+      if (this.el === null || this.el.length === 0) {
+        throw new Error("Graph placeholder not found.");
+      }
+      if (options.data === void 0 || options.data.length === 0) {
+        return;
+      }
+      this.raphael = new Raphael(this.el[0]);
+      if (this.options.resize) {
+        $(window).bind('resize', function(evt) {
+          if (_this.timeoutId != null) {
+            window.clearTimeout(_this.timeoutId);
+          }
+          return _this.timeoutId = window.setTimeout(_this.resizeHandler, 100);
+        });
+      }
+      this.setData(options.data);
+    }
+
+    Donut.prototype.redraw = function() {
+      var C, cx, cy, i, idx, last, max_value, min, next, seg, total, value, w, _i, _j, _k, _len, _len1, _len2, _ref, _ref1, _ref2, _results;
+      this.raphael.clear();
+      cx = this.el.width() / 2;
+      cy = this.el.height() / 2;
+      w = (Math.min(cx, cy) - 10) / 3;
+      total = 0;
+      _ref = this.values;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        value = _ref[_i];
+        total += value;
+      }
+      min = 5 / (2 * w);
+      C = 1.9999 * Math.PI - min * this.data.length;
+      last = 0;
+      idx = 0;
+      this.segments = [];
+      _ref1 = this.values;
+      for (i = _j = 0, _len1 = _ref1.length; _j < _len1; i = ++_j) {
+        value = _ref1[i];
+        next = last + min + C * (value / total);
+        seg = new Morris.DonutSegment(cx, cy, w * 2, w, last, next, this.data[i].color || this.options.colors[idx % this.options.colors.length], this.options.backgroundColor, idx, this.raphael);
+        seg.render();
+        this.segments.push(seg);
+        seg.on('hover', this.select);
+        seg.on('click', this.click);
+        last = next;
+        idx += 1;
+      }
+      this.text1 = this.drawEmptyDonutLabel(cx, cy - 10, this.options.labelColor, 15, 800);
+      this.text2 = this.drawEmptyDonutLabel(cx, cy + 10, this.options.labelColor, 14);
+      max_value = Math.max.apply(Math, this.values);
+      idx = 0;
+      _ref2 = this.values;
+      _results = [];
+      for (_k = 0, _len2 = _ref2.length; _k < _len2; _k++) {
+        value = _ref2[_k];
+        if (value === max_value) {
+          this.select(idx);
+          break;
+        }
+        _results.push(idx += 1);
+      }
+      return _results;
+    };
+
+    Donut.prototype.setData = function(data) {
+      var row;
+      this.data = data;
+      this.values = (function() {
+        var _i, _len, _ref, _results;
+        _ref = this.data;
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          row = _ref[_i];
+          _results.push(parseFloat(row.value));
+        }
+        return _results;
+      }).call(this);
+      return this.redraw();
+    };
+
+    Donut.prototype.click = function(idx) {
+      return this.fire('click', idx, this.data[idx]);
+    };
+
+    Donut.prototype.select = function(idx) {
+      var row, s, segment, _i, _len, _ref;
+      _ref = this.segments;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        s = _ref[_i];
+        s.deselect();
+      }
+      segment = this.segments[idx];
+      segment.select();
+      row = this.data[idx];
+      return this.setLabels(row.label, this.options.formatter(row.value, row));
+    };
+
+    Donut.prototype.setLabels = function(label1, label2) {
+      var inner, maxHeightBottom, maxHeightTop, maxWidth, text1bbox, text1scale, text2bbox, text2scale;
+      inner = (Math.min(this.el.width() / 2, this.el.height() / 2) - 10) * 2 / 3;
+      maxWidth = 1.8 * inner;
+      maxHeightTop = inner / 2;
+      maxHeightBottom = inner / 3;
+      this.text1.attr({
+        text: label1,
+        transform: ''
+      });
+      text1bbox = this.text1.getBBox();
+      text1scale = Math.min(maxWidth / text1bbox.width, maxHeightTop / text1bbox.height);
+      this.text1.attr({
+        transform: "S" + text1scale + "," + text1scale + "," + (text1bbox.x + text1bbox.width / 2) + "," + (text1bbox.y + text1bbox.height)
+      });
+      this.text2.attr({
+        text: label2,
+        transform: ''
+      });
+      text2bbox = this.text2.getBBox();
+      text2scale = Math.min(maxWidth / text2bbox.width, maxHeightBottom / text2bbox.height);
+      return this.text2.attr({
+        transform: "S" + text2scale + "," + text2scale + "," + (text2bbox.x + text2bbox.width / 2) + "," + text2bbox.y
+      });
+    };
+
+    Donut.prototype.drawEmptyDonutLabel = function(xPos, yPos, color, fontSize, fontWeight) {
+      var text;
+      text = this.raphael.text(xPos, yPos, '').attr('font-size', fontSize).attr('fill', color);
+      if (fontWeight != null) {
+        text.attr('font-weight', fontWeight);
+      }
+      return text;
+    };
+
+    Donut.prototype.resizeHandler = function() {
+      this.timeoutId = null;
+      this.raphael.setSize(this.el.width(), this.el.height());
+      return this.redraw();
+    };
+
+    return Donut;
+
+  })(Morris.EventEmitter);
+
+  Morris.DonutSegment = (function(_super) {
+    __extends(DonutSegment, _super);
+
+    function DonutSegment(cx, cy, inner, outer, p0, p1, color, backgroundColor, index, raphael) {
+      this.cx = cx;
+      this.cy = cy;
+      this.inner = inner;
+      this.outer = outer;
+      this.color = color;
+      this.backgroundColor = backgroundColor;
+      this.index = index;
+      this.raphael = raphael;
+      this.deselect = __bind(this.deselect, this);
+      this.select = __bind(this.select, this);
+      this.sin_p0 = Math.sin(p0);
+      this.cos_p0 = Math.cos(p0);
+      this.sin_p1 = Math.sin(p1);
+      this.cos_p1 = Math.cos(p1);
+      this.is_long = (p1 - p0) > Math.PI ? 1 : 0;
+      this.path = this.calcSegment(this.inner + 3, this.inner + this.outer - 5);
+      this.selectedPath = this.calcSegment(this.inner + 3, this.inner + this.outer);
+      this.hilight = this.calcArc(this.inner);
+    }
+
+    DonutSegment.prototype.calcArcPoints = function(r) {
+      return [this.cx + r * this.sin_p0, this.cy + r * this.cos_p0, this.cx + r * this.sin_p1, this.cy + r * this.cos_p1];
+    };
+
+    DonutSegment.prototype.calcSegment = function(r1, r2) {
+      var ix0, ix1, iy0, iy1, ox0, ox1, oy0, oy1, _ref, _ref1;
+      _ref = this.calcArcPoints(r1), ix0 = _ref[0], iy0 = _ref[1], ix1 = _ref[2], iy1 = _ref[3];
+      _ref1 = this.calcArcPoints(r2), ox0 = _ref1[0], oy0 = _ref1[1], ox1 = _ref1[2], oy1 = _ref1[3];
+      return ("M" + ix0 + "," + iy0) + ("A" + r1 + "," + r1 + ",0," + this.is_long + ",0," + ix1 + "," + iy1) + ("L" + ox1 + "," + oy1) + ("A" + r2 + "," + r2 + ",0," + this.is_long + ",1," + ox0 + "," + oy0) + "Z";
+    };
+
+    DonutSegment.prototype.calcArc = function(r) {
+      var ix0, ix1, iy0, iy1, _ref;
+      _ref = this.calcArcPoints(r), ix0 = _ref[0], iy0 = _ref[1], ix1 = _ref[2], iy1 = _ref[3];
+      return ("M" + ix0 + "," + iy0) + ("A" + r + "," + r + ",0," + this.is_long + ",0," + ix1 + "," + iy1);
+    };
+
+    DonutSegment.prototype.render = function() {
+      var _this = this;
+      this.arc = this.drawDonutArc(this.hilight, this.color);
+      return this.seg = this.drawDonutSegment(this.path, this.color, this.backgroundColor, function() {
+        return _this.fire('hover', _this.index);
+      }, function() {
+        return _this.fire('click', _this.index);
+      });
+    };
+
+    DonutSegment.prototype.drawDonutArc = function(path, color) {
+      return this.raphael.path(path).attr({
+        stroke: color,
+        'stroke-width': 2,
+        opacity: 0
+      });
+    };
+
+    DonutSegment.prototype.drawDonutSegment = function(path, fillColor, strokeColor, hoverFunction, clickFunction) {
+      return this.raphael.path(path).attr({
+        fill: fillColor,
+        stroke: strokeColor,
+        'stroke-width': 3
+      }).hover(hoverFunction).click(clickFunction);
+    };
+
+    DonutSegment.prototype.select = function() {
+      if (!this.selected) {
+        this.seg.animate({
+          path: this.selectedPath
+        }, 150, '<>');
+        this.arc.animate({
+          opacity: 1
+        }, 150, '<>');
+        return this.selected = true;
+      }
+    };
+
+    DonutSegment.prototype.deselect = function() {
+      if (this.selected) {
+        this.seg.animate({
+          path: this.path
+        }, 150, '<>');
+        this.arc.animate({
+          opacity: 0
+        }, 150, '<>');
+        return this.selected = false;
+      }
+    };
+
+    return DonutSegment;
+
+  })(Morris.EventEmitter);
+
+}).call(this);
+
 /*!
  * mustache.js - Logic-less {{mustache}} templates with JavaScript
  * http://github.com/janl/mustache.js
@@ -15352,3 +37034,7954 @@ if (typeof jQuery === 'undefined') {
   mustache.Writer = Writer;
 
 }));
+
+//Button Trigger
+(function( $ ){
+  var $this = new Object();    
+  var methods = {
+     init : function( options ) {      
+        $this =  $.extend({}, this, methods); 
+        $this.searching = false;
+        $this.o = new Object();
+  
+        var defaultOptions = {
+           overlaySelector: '.md-overlay',
+           closeSelector: '.md-close',
+           classAddAfterOpen: 'md-show',
+           modalAttr: 'data-modal',
+           perspectiveClass: 'md-perspective',
+           perspectiveSetClass: 'md-setperspective',
+           afterOpen: function(button, modal) {
+            //do your stuff
+           },
+           afterClose: function(button, modal) {
+            //do your suff
+           }
+        };
+        
+        $this.o = $.extend({}, defaultOptions, options);
+        $this.n = new Object();
+       
+       
+        var overlay = $($this.o.overlaySelector);
+        $(this).click(function() {
+        	var modal = $('#' + $(this).attr($this.o.modalAttr)),
+        		close = $($this.o.closeSelector, modal);
+          var el = $(this);       	
+      		$(modal).addClass($this.o.classAddAfterOpen);
+      		/* overlay.removeEventListener( 'click', removeModalHandler );
+      		overlay.addEventListener( 'click', removeModalHandler ); */
+          $(overlay).on('click', function () {
+             removeModalHandler();
+             $this.afterClose(el, modal);
+             $(overlay).off('click');
+          });
+      		if( $(el).hasClass($this.o.perspectiveSetClass) ) {
+      			setTimeout( function() {
+      				$(document.documentElement).addClass($this.o.perspectiveClass);
+      			}, 25 );
+      		}
+          
+          $this.afterOpen(el, modal);
+        	setTimeout( function() {
+            modal.css({'perspective':'none'});
+            
+            //3D Blur Bug Fix
+            if(modal.height() % 2 != 0){modal.css({'height':modal.height() + 1});}
+            
+          }, 500 ); 
+          
+        	function removeModal( hasPerspective ) {
+        		$(modal).removeClass($this.o.classAddAfterOpen);
+             modal.css({'perspective':'1300px'});
+        		if( hasPerspective ) {
+        			$(document.documentElement).removeClass($this.o.perspectiveClass);
+        		}
+        	}
+        
+        	function removeModalHandler() {
+        		removeModal($(el).hasClass($this.o.perspectiveSetClass)); 
+        	}
+        
+        	$(close).on( 'click', function( ev ) {
+        		ev.stopPropagation();
+        		removeModalHandler();
+            $this.afterClose(el, modal);
+        	});
+        
+        });
+       
+     },
+     afterOpen: function (button, modal) {
+        $this.o.afterOpen(button, modal);
+     },
+     afterClose: function (button, modal) {
+        $this.o.afterClose(button, modal);  
+     }
+  };
+
+  $.fn.modalEffects = function( method ) {
+    if ( methods[method] ) {
+      return methods[method].apply( this, Array.prototype.slice.call( arguments, 1 ));
+    } else if ( typeof method === 'object' || ! method ) {
+      return methods.init.apply( this, arguments );
+    } else {
+      $.error( 'Method ' +  method + ' does not exist on jQuery.modalEffects' );
+    }    
+  
+  };
+	function is_touch_device(){
+		return !!("ontouchstart" in window) ? 1 : 0;
+	}
+})( jQuery );
+
+//Nifty Modal
+;(function($) {
+ 
+    $.fn.niftyModal = function(method) {
+ 
+        var defaults = {
+           overlaySelector: '.md-overlay',
+           closeSelector: '.md-close',
+           classAddAfterOpen: 'md-show',
+           modalAttr: 'data-modal',
+           perspectiveClass: 'md-perspective',
+           perspectiveSetClass: 'md-setperspective',
+           afterOpen: function(modal) {
+            //do your stuff
+           },
+           afterClose: function(modal) {
+            //do your suff
+           }
+        }
+ 
+        var config = {}
+ 
+        var methods = {
+ 
+          init : function(options) {
+              return this.each(function() {
+                  config = $.extend({}, defaults, options);
+                  var modal = $(this);
+                  
+                  //Show modal
+                  helpers.showModal(modal);
+                  
+              });
+          },
+
+          toggle: function(options) {
+            return this.each(function() {
+              config = $.extend({}, defaults, options);
+              var modal = $(this);
+              if(modal.hasClass(config.classAddAfterOpen)){
+                helpers.removeModal(modal);
+              }else{
+                helpers.showModal(modal);
+              }
+            });
+          },
+
+          show: function(options) {
+            config = $.extend({}, defaults, options);
+            return this.each(function() {
+              helpers.showModal($(this));
+            });
+          },
+
+          hide: function(options) {
+            config = $.extend({}, defaults, options);
+            return this.each(function() {
+              helpers.removeModal($(this));  
+            });            
+          }
+        }
+ 
+        var helpers = {
+ 
+          removeModal: function(mod) {
+            mod.removeClass(config.classAddAfterOpen);
+            mod.css({'perspective':'1300px'});
+            mod.trigger('hide');
+          },
+          
+          showModal: function(mod){
+            var overlay = $(config.overlaySelector);
+            var close = $(config.closeSelector, mod);
+            mod.addClass(config.classAddAfterOpen);
+            
+            //Overlay Click Event
+            overlay.on('click', function () {
+               helpers.removeModal(mod);
+               config.afterClose(mod);
+               overlay.off('click');
+            });
+            
+            //Fire after open event
+            config.afterOpen(mod);
+            setTimeout( function() {
+              mod.css({'perspective':'none'});
+              
+              //3D Blur Bug Fix
+              if(modal.height() % 2 != 0){modal.css({'height':modal.height() + 1});}
+
+            }, 500 ); 
+            
+            //Close Event
+            close.on( 'click', function( ev ) {
+              ev.stopPropagation();
+              helpers.removeModal(mod);
+              config.afterClose(mod);
+            });
+            
+            mod.trigger('show');
+          }
+ 
+        }
+ 
+        if (methods[method]) {
+            return methods[method].apply(this, Array.prototype.slice.call(arguments, 1));
+        } else if (typeof method === 'object' || !method) {
+            return methods.init.apply(this, arguments);
+        } else {
+            $.error( 'Method "' +  method + '" does not exist in niftyModal plugin!');
+        }
+ 
+    }
+ 
+})(jQuery);
+
+$(document).ready(function(){
+  $(".md-trigger").modalEffects();
+});
+/*! Copyright (c) 2011 Piotr Rochala (http://rocha.la)
+ * Dual licensed under the MIT (http://www.opensource.org/licenses/mit-license.php)
+ * and GPL (http://www.opensource.org/licenses/gpl-license.php) licenses.
+ *
+ * Version: 1.3.6
+ *
+ */
+(function(e){e.fn.extend({slimScroll:function(g){var a=e.extend({width:"auto",height:"250px",size:"7px",color:"#000",position:"right",distance:"1px",start:"top",opacity:.4,alwaysVisible:!1,disableFadeOut:!1,railVisible:!1,railColor:"#333",railOpacity:.2,railDraggable:!0,railClass:"slimScrollRail",barClass:"slimScrollBar",wrapperClass:"slimScrollDiv",allowPageScroll:!1,wheelStep:20,touchScrollStep:200,borderRadius:"7px",railBorderRadius:"7px"},g);this.each(function(){function v(d){if(r){d=d||window.event;
+var c=0;d.wheelDelta&&(c=-d.wheelDelta/120);d.detail&&(c=d.detail/3);e(d.target||d.srcTarget||d.srcElement).closest("."+a.wrapperClass).is(b.parent())&&m(c,!0);d.preventDefault&&!k&&d.preventDefault();k||(d.returnValue=!1)}}function m(d,e,g){k=!1;var f=d,h=b.outerHeight()-c.outerHeight();e&&(f=parseInt(c.css("top"))+d*parseInt(a.wheelStep)/100*c.outerHeight(),f=Math.min(Math.max(f,0),h),f=0<d?Math.ceil(f):Math.floor(f),c.css({top:f+"px"}));l=parseInt(c.css("top"))/(b.outerHeight()-c.outerHeight());
+f=l*(b[0].scrollHeight-b.outerHeight());g&&(f=d,d=f/b[0].scrollHeight*b.outerHeight(),d=Math.min(Math.max(d,0),h),c.css({top:d+"px"}));b.scrollTop(f);b.trigger("slimscrolling",~~f);w();p()}function x(){u=Math.max(b.outerHeight()/b[0].scrollHeight*b.outerHeight(),30);c.css({height:u+"px"});var a=u==b.outerHeight()?"none":"block";c.css({display:a})}function w(){x();clearTimeout(B);l==~~l?(k=a.allowPageScroll,C!=l&&b.trigger("slimscroll",0==~~l?"top":"bottom")):k=!1;C=l;u>=b.outerHeight()?k=!0:(c.stop(!0,
+!0).fadeIn("fast"),a.railVisible&&h.stop(!0,!0).fadeIn("fast"))}function p(){a.alwaysVisible||(B=setTimeout(function(){a.disableFadeOut&&r||y||z||(c.fadeOut("slow"),h.fadeOut("slow"))},1E3))}var r,y,z,B,A,u,l,C,k=!1,b=e(this);if(b.parent().hasClass(a.wrapperClass)){var n=b.scrollTop(),c=b.closest("."+a.barClass),h=b.closest("."+a.railClass);x();if(e.isPlainObject(g)){if("height"in g&&"auto"==g.height){b.parent().css("height","auto");b.css("height","auto");var q=b.parent().parent().height();b.parent().css("height",
+q);b.css("height",q)}if("scrollTo"in g)n=parseInt(a.scrollTo);else if("scrollBy"in g)n+=parseInt(a.scrollBy);else if("destroy"in g){c.remove();h.remove();b.unwrap();return}m(n,!1,!0)}}else if(!(e.isPlainObject(g)&&"destroy"in g)){a.height="auto"==a.height?b.parent().height():a.height;n=e("<div></div>").addClass(a.wrapperClass).css({position:"relative",overflow:"hidden",width:a.width,height:a.height});b.css({overflow:"hidden",width:a.width,height:a.height});var h=e("<div></div>").addClass(a.railClass).css({width:a.size,
+height:"100%",position:"absolute",top:0,display:a.alwaysVisible&&a.railVisible?"block":"none","border-radius":a.railBorderRadius,background:a.railColor,opacity:a.railOpacity,zIndex:90}),c=e("<div></div>").addClass(a.barClass).css({background:a.color,width:a.size,position:"absolute",top:0,opacity:a.opacity,display:a.alwaysVisible?"block":"none","border-radius":a.borderRadius,BorderRadius:a.borderRadius,MozBorderRadius:a.borderRadius,WebkitBorderRadius:a.borderRadius,zIndex:99}),q="right"==a.position?
+{right:a.distance}:{left:a.distance};h.css(q);c.css(q);b.wrap(n);b.parent().append(c);b.parent().append(h);a.railDraggable&&c.bind("mousedown",function(a){var b=e(document);z=!0;t=parseFloat(c.css("top"));pageY=a.pageY;b.bind("mousemove.slimscroll",function(a){currTop=t+a.pageY-pageY;c.css("top",currTop);m(0,c.position().top,!1)});b.bind("mouseup.slimscroll",function(a){z=!1;p();b.unbind(".slimscroll")});return!1}).bind("selectstart.slimscroll",function(a){a.stopPropagation();a.preventDefault();return!1});
+h.hover(function(){w()},function(){p()});c.hover(function(){y=!0},function(){y=!1});b.hover(function(){r=!0;w();p()},function(){r=!1;p()});b.bind("touchstart",function(a,b){a.originalEvent.touches.length&&(A=a.originalEvent.touches[0].pageY)});b.bind("touchmove",function(b){k||b.originalEvent.preventDefault();b.originalEvent.touches.length&&(m((A-b.originalEvent.touches[0].pageY)/a.touchScrollStep,!0),A=b.originalEvent.touches[0].pageY)});x();"bottom"===a.start?(c.css({top:b.outerHeight()-c.outerHeight()}),
+m(0,!0)):"top"!==a.start&&(m(e(a.start).position().top,null,!0),a.alwaysVisible||c.hide());window.addEventListener?(this.addEventListener("DOMMouseScroll",v,!1),this.addEventListener("mousewheel",v,!1)):document.attachEvent("onmousewheel",v)}});return this}});e.fn.extend({slimscroll:e.fn.slimScroll})})(jQuery);
+(function() {
+  var SELECTOR, addEventListener, clickEvent, numberRegExp, sortable, touchDevice, trimRegExp;
+
+  SELECTOR = 'table[data-sortable]';
+
+  numberRegExp = /^-?[£$¤]?[\d,.]+%?$/;
+
+  trimRegExp = /^\s+|\s+$/g;
+
+  touchDevice = 'ontouchstart' in document.documentElement;
+
+  clickEvent = touchDevice ? 'touchstart' : 'click';
+
+  addEventListener = function(el, event, handler) {
+    if (el.addEventListener != null) {
+      return el.addEventListener(event, handler, false);
+    } else {
+      return el.attachEvent("on" + event, handler);
+    }
+  };
+
+  sortable = {
+    init: function(options) {
+      var table, tables, _i, _len, _results;
+      if (options == null) {
+        options = {};
+      }
+      if (options.selector == null) {
+        options.selector = SELECTOR;
+      }
+      tables = document.querySelectorAll(options.selector);
+      _results = [];
+      for (_i = 0, _len = tables.length; _i < _len; _i++) {
+        table = tables[_i];
+        _results.push(sortable.initTable(table));
+      }
+      return _results;
+    },
+    initTable: function(table) {
+      var i, th, ths, _i, _len, _ref;
+      if (((_ref = table.tHead) != null ? _ref.rows.length : void 0) !== 1) {
+        return;
+      }
+      if (table.getAttribute('data-sortable-initialized') === 'true') {
+        return;
+      }
+      table.setAttribute('data-sortable-initialized', 'true');
+      ths = table.querySelectorAll('th');
+      for (i = _i = 0, _len = ths.length; _i < _len; i = ++_i) {
+        th = ths[i];
+        if (th.getAttribute('data-sortable') !== 'false') {
+          sortable.setupClickableTH(table, th, i);
+        }
+      }
+      return table;
+    },
+    setupClickableTH: function(table, th, i) {
+      var type;
+      type = sortable.getColumnType(table, i);
+      return addEventListener(th, clickEvent, function(e) {
+        var newSortedDirection, row, rowArray, rowArrayObject, sorted, sortedDirection, tBody, ths, _i, _j, _k, _len, _len1, _len2, _ref, _results;
+        sorted = this.getAttribute('data-sorted') === 'true';
+        sortedDirection = this.getAttribute('data-sorted-direction');
+        if (sorted) {
+          newSortedDirection = sortedDirection === 'ascending' ? 'descending' : 'ascending';
+        } else {
+          newSortedDirection = type.defaultSortDirection;
+        }
+        ths = this.parentNode.querySelectorAll('th');
+        for (_i = 0, _len = ths.length; _i < _len; _i++) {
+          th = ths[_i];
+          th.setAttribute('data-sorted', 'false');
+          th.removeAttribute('data-sorted-direction');
+        }
+        this.setAttribute('data-sorted', 'true');
+        this.setAttribute('data-sorted-direction', newSortedDirection);
+        tBody = table.tBodies[0];
+        rowArray = [];
+        _ref = tBody.rows;
+        for (_j = 0, _len1 = _ref.length; _j < _len1; _j++) {
+          row = _ref[_j];
+          rowArray.push([sortable.getNodeValue(row.cells[i]), row]);
+        }
+        if (sorted) {
+          rowArray.reverse();
+        } else {
+          rowArray.sort(type.compare);
+        }
+        _results = [];
+        for (_k = 0, _len2 = rowArray.length; _k < _len2; _k++) {
+          rowArrayObject = rowArray[_k];
+          _results.push(tBody.appendChild(rowArrayObject[1]));
+        }
+        return _results;
+      });
+    },
+    getColumnType: function(table, i) {
+      var row, text, _i, _len, _ref;
+      _ref = table.tBodies[0].rows;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        row = _ref[_i];
+        text = sortable.getNodeValue(row.cells[i]);
+        if (text !== '') {
+          if (text.match(numberRegExp)) {
+            return sortable.types.numeric;
+          }
+          if (!isNaN(Date.parse(text))) {
+            return sortable.types.date;
+          }
+        }
+      }
+      return sortable.types.alpha;
+    },
+    getNodeValue: function(node) {
+      if (!node) {
+        return '';
+      }
+      if (node.getAttribute('data-value') !== null) {
+        return node.getAttribute('data-value');
+      }
+      if (typeof node.innerText !== 'undefined') {
+        return node.innerText.replace(trimRegExp, '');
+      }
+      return node.textContent.replace(trimRegExp, '');
+    },
+    types: {
+      numeric: {
+        defaultSortDirection: 'descending',
+        compare: function(a, b) {
+          var aa, bb;
+          aa = parseFloat(a[0].replace(/[^0-9.-]/g, ''), 10);
+          bb = parseFloat(b[0].replace(/[^0-9.-]/g, ''), 10);
+          if (isNaN(aa)) {
+            aa = 0;
+          }
+          if (isNaN(bb)) {
+            bb = 0;
+          }
+          return bb - aa;
+        }
+      },
+      alpha: {
+        defaultSortDirection: 'ascending',
+        compare: function(a, b) {
+          return a[0].localeCompare(b[0]);
+        }
+      },
+      date: {
+        defaultSortDirection: 'ascending',
+        compare: function(a, b) {
+          var aa, bb;
+          aa = Date.parse(a[0]);
+          bb = Date.parse(b[0]);
+          if (isNaN(aa)) {
+            aa = 0;
+          }
+          if (isNaN(bb)) {
+            bb = 0;
+          }
+          return aa - bb;
+        }
+      }
+    }
+  };
+
+  setTimeout(sortable.init, 0);
+
+  window.Sortable = sortable;
+
+}).call(this);
+
+/**
+ * Super simple wysiwyg editor on Bootstrap v0.6.7
+ * http://summernote.org/
+ *
+ * summernote.js
+ * Copyright 2013-2015 Alan Hong. and other contributors
+ * summernote may be freely distributed under the MIT license./
+ *
+ * Date: 2015-05-17T06:58Z
+ */
+(function (factory) {
+  /* global define */
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module.
+    define(['jquery'], factory);
+  } else {
+    // Browser globals: jQuery
+    factory(window.jQuery);
+  }
+}(function ($) {
+  
+
+
+  if (!Array.prototype.reduce) {
+    /**
+     * Array.prototype.reduce polyfill
+     *
+     * @param {Function} callback
+     * @param {Value} [initialValue]
+     * @return {Value}
+     *
+     * @see http://goo.gl/WNriQD
+     */
+    Array.prototype.reduce = function (callback) {
+      var t = Object(this), len = t.length >>> 0, k = 0, value;
+      if (arguments.length === 2) {
+        value = arguments[1];
+      } else {
+        while (k < len && !(k in t)) {
+          k++;
+        }
+        if (k >= len) {
+          throw new TypeError('Reduce of empty array with no initial value');
+        }
+        value = t[k++];
+      }
+      for (; k < len; k++) {
+        if (k in t) {
+          value = callback(value, t[k], k, t);
+        }
+      }
+      return value;
+    };
+  }
+
+  if ('function' !== typeof Array.prototype.filter) {
+    /**
+     * Array.prototype.filter polyfill
+     *
+     * @param {Function} func
+     * @return {Array}
+     *
+     * @see http://goo.gl/T1KFnq
+     */
+    Array.prototype.filter = function (func) {
+      var t = Object(this), len = t.length >>> 0;
+
+      var res = [];
+      var thisArg = arguments.length >= 2 ? arguments[1] : void 0;
+      for (var i = 0; i < len; i++) {
+        if (i in t) {
+          var val = t[i];
+          if (func.call(thisArg, val, i, t)) {
+            res.push(val);
+          }
+        }
+      }
+  
+      return res;
+    };
+  }
+
+  var isSupportAmd = typeof define === 'function' && define.amd;
+
+  /**
+   * returns whether font is installed or not.
+   *
+   * @param {String} fontName
+   * @return {Boolean}
+   */
+  var isFontInstalled = function (fontName) {
+    var testFontName = fontName === 'Comic Sans MS' ? 'Courier New' : 'Comic Sans MS';
+    var $tester = $('<div>').css({
+      position: 'absolute',
+      left: '-9999px',
+      top: '-9999px',
+      fontSize: '200px'
+    }).text('mmmmmmmmmwwwwwww').appendTo(document.body);
+
+    var originalWidth = $tester.css('fontFamily', testFontName).width();
+    var width = $tester.css('fontFamily', fontName + ',' + testFontName).width();
+
+    $tester.remove();
+
+    return originalWidth !== width;
+  };
+
+  var userAgent = navigator.userAgent;
+
+  /**
+   * @class core.agent
+   *
+   * Object which check platform and agent
+   *
+   * @singleton
+   * @alternateClassName agent
+   */
+  var agent = {
+    /** @property {Boolean} [isMac=false] true if this agent is Mac  */
+    isMac: navigator.appVersion.indexOf('Mac') > -1,
+    /** @property {Boolean} [isMSIE=false] true if this agent is a Internet Explorer  */
+    isMSIE: /MSIE|Trident/i.test(userAgent),
+    /** @property {Boolean} [isFF=false] true if this agent is a Firefox  */
+    isFF: /firefox/i.test(userAgent),
+    isWebkit: /webkit/i.test(userAgent),
+    /** @property {Boolean} [isSafari=false] true if this agent is a Safari  */
+    isSafari: /safari/i.test(userAgent),
+    /** @property {String} jqueryVersion current jQuery version string  */
+    jqueryVersion: parseFloat($.fn.jquery),
+    isSupportAmd: isSupportAmd,
+    hasCodeMirror: isSupportAmd ? require.specified('CodeMirror') : !!window.CodeMirror,
+    isFontInstalled: isFontInstalled,
+    isW3CRangeSupport: !!document.createRange
+  };
+
+  /**
+   * @class core.func
+   *
+   * func utils (for high-order func's arg)
+   *
+   * @singleton
+   * @alternateClassName func
+   */
+  var func = (function () {
+    var eq = function (itemA) {
+      return function (itemB) {
+        return itemA === itemB;
+      };
+    };
+
+    var eq2 = function (itemA, itemB) {
+      return itemA === itemB;
+    };
+
+    var peq2 = function (propName) {
+      return function (itemA, itemB) {
+        return itemA[propName] === itemB[propName];
+      };
+    };
+
+    var ok = function () {
+      return true;
+    };
+
+    var fail = function () {
+      return false;
+    };
+
+    var not = function (f) {
+      return function () {
+        return !f.apply(f, arguments);
+      };
+    };
+
+    var and = function (fA, fB) {
+      return function (item) {
+        return fA(item) && fB(item);
+      };
+    };
+
+    var self = function (a) {
+      return a;
+    };
+
+    var idCounter = 0;
+
+    /**
+     * generate a globally-unique id
+     *
+     * @param {String} [prefix]
+     */
+    var uniqueId = function (prefix) {
+      var id = ++idCounter + '';
+      return prefix ? prefix + id : id;
+    };
+
+    /**
+     * returns bnd (bounds) from rect
+     *
+     * - IE Compatability Issue: http://goo.gl/sRLOAo
+     * - Scroll Issue: http://goo.gl/sNjUc
+     *
+     * @param {Rect} rect
+     * @return {Object} bounds
+     * @return {Number} bounds.top
+     * @return {Number} bounds.left
+     * @return {Number} bounds.width
+     * @return {Number} bounds.height
+     */
+    var rect2bnd = function (rect) {
+      var $document = $(document);
+      return {
+        top: rect.top + $document.scrollTop(),
+        left: rect.left + $document.scrollLeft(),
+        width: rect.right - rect.left,
+        height: rect.bottom - rect.top
+      };
+    };
+
+    /**
+     * returns a copy of the object where the keys have become the values and the values the keys.
+     * @param {Object} obj
+     * @return {Object}
+     */
+    var invertObject = function (obj) {
+      var inverted = {};
+      for (var key in obj) {
+        if (obj.hasOwnProperty(key)) {
+          inverted[obj[key]] = key;
+        }
+      }
+      return inverted;
+    };
+
+    /**
+     * @param {String} namespace
+     * @param {String} [prefix]
+     * @return {String}
+     */
+    var namespaceToCamel = function (namespace, prefix) {
+      prefix = prefix || '';
+      return prefix + namespace.split('.').map(function (name) {
+        return name.substring(0, 1).toUpperCase() + name.substring(1);
+      }).join('');
+    };
+
+    return {
+      eq: eq,
+      eq2: eq2,
+      peq2: peq2,
+      ok: ok,
+      fail: fail,
+      self: self,
+      not: not,
+      and: and,
+      uniqueId: uniqueId,
+      rect2bnd: rect2bnd,
+      invertObject: invertObject,
+      namespaceToCamel: namespaceToCamel
+    };
+  })();
+
+  /**
+   * @class core.list
+   *
+   * list utils
+   *
+   * @singleton
+   * @alternateClassName list
+   */
+  var list = (function () {
+    /**
+     * returns the first item of an array.
+     *
+     * @param {Array} array
+     */
+    var head = function (array) {
+      return array[0];
+    };
+
+    /**
+     * returns the last item of an array.
+     *
+     * @param {Array} array
+     */
+    var last = function (array) {
+      return array[array.length - 1];
+    };
+
+    /**
+     * returns everything but the last entry of the array.
+     *
+     * @param {Array} array
+     */
+    var initial = function (array) {
+      return array.slice(0, array.length - 1);
+    };
+
+    /**
+     * returns the rest of the items in an array.
+     *
+     * @param {Array} array
+     */
+    var tail = function (array) {
+      return array.slice(1);
+    };
+
+    /**
+     * returns item of array
+     */
+    var find = function (array, pred) {
+      for (var idx = 0, len = array.length; idx < len; idx ++) {
+        var item = array[idx];
+        if (pred(item)) {
+          return item;
+        }
+      }
+    };
+
+    /**
+     * returns true if all of the values in the array pass the predicate truth test.
+     */
+    var all = function (array, pred) {
+      for (var idx = 0, len = array.length; idx < len; idx ++) {
+        if (!pred(array[idx])) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    /**
+     * returns true if the value is present in the list.
+     */
+    var contains = function (array, item) {
+      return $.inArray(item, array) !== -1;
+    };
+
+    /**
+     * get sum from a list
+     *
+     * @param {Array} array - array
+     * @param {Function} fn - iterator
+     */
+    var sum = function (array, fn) {
+      fn = fn || func.self;
+      return array.reduce(function (memo, v) {
+        return memo + fn(v);
+      }, 0);
+    };
+  
+    /**
+     * returns a copy of the collection with array type.
+     * @param {Collection} collection - collection eg) node.childNodes, ...
+     */
+    var from = function (collection) {
+      var result = [], idx = -1, length = collection.length;
+      while (++idx < length) {
+        result[idx] = collection[idx];
+      }
+      return result;
+    };
+  
+    /**
+     * cluster elements by predicate function.
+     *
+     * @param {Array} array - array
+     * @param {Function} fn - predicate function for cluster rule
+     * @param {Array[]}
+     */
+    var clusterBy = function (array, fn) {
+      if (!array.length) { return []; }
+      var aTail = tail(array);
+      return aTail.reduce(function (memo, v) {
+        var aLast = last(memo);
+        if (fn(last(aLast), v)) {
+          aLast[aLast.length] = v;
+        } else {
+          memo[memo.length] = [v];
+        }
+        return memo;
+      }, [[head(array)]]);
+    };
+  
+    /**
+     * returns a copy of the array with all falsy values removed
+     *
+     * @param {Array} array - array
+     * @param {Function} fn - predicate function for cluster rule
+     */
+    var compact = function (array) {
+      var aResult = [];
+      for (var idx = 0, len = array.length; idx < len; idx ++) {
+        if (array[idx]) { aResult.push(array[idx]); }
+      }
+      return aResult;
+    };
+
+    /**
+     * produces a duplicate-free version of the array
+     *
+     * @param {Array} array
+     */
+    var unique = function (array) {
+      var results = [];
+
+      for (var idx = 0, len = array.length; idx < len; idx ++) {
+        if (!contains(results, array[idx])) {
+          results.push(array[idx]);
+        }
+      }
+
+      return results;
+    };
+
+    /**
+     * returns next item.
+     * @param {Array} array
+     */
+    var next = function (array, item) {
+      var idx = array.indexOf(item);
+      if (idx === -1) { return null; }
+
+      return array[idx + 1];
+    };
+
+    /**
+     * returns prev item.
+     * @param {Array} array
+     */
+    var prev = function (array, item) {
+      var idx = array.indexOf(item);
+      if (idx === -1) { return null; }
+
+      return array[idx - 1];
+    };
+
+  
+    return { head: head, last: last, initial: initial, tail: tail,
+             prev: prev, next: next, find: find, contains: contains,
+             all: all, sum: sum, from: from,
+             clusterBy: clusterBy, compact: compact, unique: unique };
+  })();
+
+
+  var NBSP_CHAR = String.fromCharCode(160);
+  var ZERO_WIDTH_NBSP_CHAR = '\ufeff';
+
+  /**
+   * @class core.dom
+   *
+   * Dom functions
+   *
+   * @singleton
+   * @alternateClassName dom
+   */
+  var dom = (function () {
+    /**
+     * @method isEditable
+     *
+     * returns whether node is `note-editable` or not.
+     *
+     * @param {Node} node
+     * @return {Boolean}
+     */
+    var isEditable = function (node) {
+      return node && $(node).hasClass('note-editable');
+    };
+
+    /**
+     * @method isControlSizing
+     *
+     * returns whether node is `note-control-sizing` or not.
+     *
+     * @param {Node} node
+     * @return {Boolean}
+     */
+    var isControlSizing = function (node) {
+      return node && $(node).hasClass('note-control-sizing');
+    };
+
+    /**
+     * @method  buildLayoutInfo
+     *
+     * build layoutInfo from $editor(.note-editor)
+     *
+     * @param {jQuery} $editor
+     * @return {Object}
+     * @return {Function} return.editor
+     * @return {Node} return.dropzone
+     * @return {Node} return.toolbar
+     * @return {Node} return.editable
+     * @return {Node} return.codable
+     * @return {Node} return.popover
+     * @return {Node} return.handle
+     * @return {Node} return.dialog
+     */
+    var buildLayoutInfo = function ($editor) {
+      var makeFinder;
+
+      // air mode
+      if ($editor.hasClass('note-air-editor')) {
+        var id = list.last($editor.attr('id').split('-'));
+        makeFinder = function (sIdPrefix) {
+          return function () { return $(sIdPrefix + id); };
+        };
+
+        return {
+          editor: function () { return $editor; },
+          holder : function () { return $editor.data('holder'); },
+          editable: function () { return $editor; },
+          popover: makeFinder('#note-popover-'),
+          handle: makeFinder('#note-handle-'),
+          dialog: makeFinder('#note-dialog-')
+        };
+
+        // frame mode
+      } else {
+        makeFinder = function (sClassName) {
+          return function () { return $editor.find(sClassName); };
+        };
+        return {
+          editor: function () { return $editor; },
+          holder : function () { return $editor.data('holder'); },
+          dropzone: makeFinder('.note-dropzone'),
+          toolbar: makeFinder('.note-toolbar'),
+          editable: makeFinder('.note-editable'),
+          codable: makeFinder('.note-codable'),
+          statusbar: makeFinder('.note-statusbar'),
+          popover: makeFinder('.note-popover'),
+          handle: makeFinder('.note-handle'),
+          dialog: makeFinder('.note-dialog')
+        };
+      }
+    };
+
+    /**
+     * returns makeLayoutInfo from editor's descendant node.
+     *
+     * @private
+     * @param {Node} descendant
+     * @return {Object}
+     */
+    var makeLayoutInfo = function (descendant) {
+      var $target = $(descendant).closest('.note-editor, .note-air-editor, .note-air-layout');
+
+      if (!$target.length) {
+        return null;
+      }
+
+      var $editor;
+      if ($target.is('.note-editor, .note-air-editor')) {
+        $editor = $target;
+      } else {
+        $editor = $('#note-editor-' + list.last($target.attr('id').split('-')));
+      }
+
+      return buildLayoutInfo($editor);
+    };
+
+    /**
+     * @method makePredByNodeName
+     *
+     * returns predicate which judge whether nodeName is same
+     *
+     * @param {String} nodeName
+     * @return {Function}
+     */
+    var makePredByNodeName = function (nodeName) {
+      nodeName = nodeName.toUpperCase();
+      return function (node) {
+        return node && node.nodeName.toUpperCase() === nodeName;
+      };
+    };
+
+    /**
+     * @method isText
+     *
+     *
+     *
+     * @param {Node} node
+     * @return {Boolean} true if node's type is text(3)
+     */
+    var isText = function (node) {
+      return node && node.nodeType === 3;
+    };
+
+    /**
+     * ex) br, col, embed, hr, img, input, ...
+     * @see http://www.w3.org/html/wg/drafts/html/master/syntax.html#void-elements
+     */
+    var isVoid = function (node) {
+      return node && /^BR|^IMG|^HR/.test(node.nodeName.toUpperCase());
+    };
+
+    var isPara = function (node) {
+      if (isEditable(node)) {
+        return false;
+      }
+
+      // Chrome(v31.0), FF(v25.0.1) use DIV for paragraph
+      return node && /^DIV|^P|^LI|^H[1-7]/.test(node.nodeName.toUpperCase());
+    };
+
+    var isLi = makePredByNodeName('LI');
+
+    var isPurePara = function (node) {
+      return isPara(node) && !isLi(node);
+    };
+
+    var isTable = makePredByNodeName('TABLE');
+
+    var isInline = function (node) {
+      return !isBodyContainer(node) &&
+             !isList(node) &&
+             !isPara(node) &&
+             !isTable(node) &&
+             !isBlockquote(node);
+    };
+
+    var isList = function (node) {
+      return node && /^UL|^OL/.test(node.nodeName.toUpperCase());
+    };
+
+    var isCell = function (node) {
+      return node && /^TD|^TH/.test(node.nodeName.toUpperCase());
+    };
+
+    var isBlockquote = makePredByNodeName('BLOCKQUOTE');
+
+    var isBodyContainer = function (node) {
+      return isCell(node) || isBlockquote(node) || isEditable(node);
+    };
+
+    var isAnchor = makePredByNodeName('A');
+
+    var isParaInline = function (node) {
+      return isInline(node) && !!ancestor(node, isPara);
+    };
+
+    var isBodyInline = function (node) {
+      return isInline(node) && !ancestor(node, isPara);
+    };
+
+    var isBody = makePredByNodeName('BODY');
+
+    /**
+     * returns whether nodeB is closest sibling of nodeA
+     *
+     * @param {Node} nodeA
+     * @param {Node} nodeB
+     * @return {Boolean}
+     */
+    var isClosestSibling = function (nodeA, nodeB) {
+      return nodeA.nextSibling === nodeB ||
+             nodeA.previousSibling === nodeB;
+    };
+
+    /**
+     * returns array of closest siblings with node
+     *
+     * @param {Node} node
+     * @param {function} [pred] - predicate function
+     * @return {Node[]}
+     */
+    var withClosestSiblings = function (node, pred) {
+      pred = pred || func.ok;
+
+      var siblings = [];
+      if (node.previousSibling && pred(node.previousSibling)) {
+        siblings.push(node.previousSibling);
+      }
+      siblings.push(node);
+      if (node.nextSibling && pred(node.nextSibling)) {
+        siblings.push(node.nextSibling);
+      }
+      return siblings;
+    };
+
+    /**
+     * blank HTML for cursor position
+     * - [workaround] for MSIE IE doesn't works with bogus br
+     */
+    var blankHTML = agent.isMSIE ? '&nbsp;' : '<br>';
+
+    /**
+     * @method nodeLength
+     *
+     * returns #text's text size or element's childNodes size
+     *
+     * @param {Node} node
+     */
+    var nodeLength = function (node) {
+      if (isText(node)) {
+        return node.nodeValue.length;
+      }
+
+      return node.childNodes.length;
+    };
+
+    /**
+     * returns whether node is empty or not.
+     *
+     * @param {Node} node
+     * @return {Boolean}
+     */
+    var isEmpty = function (node) {
+      var len = nodeLength(node);
+
+      if (len === 0) {
+        return true;
+      } else if (!isText(node) && len === 1 && node.innerHTML === blankHTML) {
+        // ex) <p><br></p>, <span><br></span>
+        return true;
+      } else if (list.all(node.childNodes, isText) && node.innerHTML === '') {
+        // ex) <p></p>, <span></span>
+        return true;
+      }
+
+      return false;
+    };
+
+    /**
+     * padding blankHTML if node is empty (for cursor position)
+     */
+    var paddingBlankHTML = function (node) {
+      if (!isVoid(node) && !nodeLength(node)) {
+        node.innerHTML = blankHTML;
+      }
+    };
+
+    /**
+     * find nearest ancestor predicate hit
+     *
+     * @param {Node} node
+     * @param {Function} pred - predicate function
+     */
+    var ancestor = function (node, pred) {
+      while (node) {
+        if (pred(node)) { return node; }
+        if (isEditable(node)) { break; }
+
+        node = node.parentNode;
+      }
+      return null;
+    };
+
+    /**
+     * find nearest ancestor only single child blood line and predicate hit
+     *
+     * @param {Node} node
+     * @param {Function} pred - predicate function
+     */
+    var singleChildAncestor = function (node, pred) {
+      node = node.parentNode;
+
+      while (node) {
+        if (nodeLength(node) !== 1) { break; }
+        if (pred(node)) { return node; }
+        if (isEditable(node)) { break; }
+
+        node = node.parentNode;
+      }
+      return null;
+    };
+
+    /**
+     * returns new array of ancestor nodes (until predicate hit).
+     *
+     * @param {Node} node
+     * @param {Function} [optional] pred - predicate function
+     */
+    var listAncestor = function (node, pred) {
+      pred = pred || func.fail;
+
+      var ancestors = [];
+      ancestor(node, function (el) {
+        if (!isEditable(el)) {
+          ancestors.push(el);
+        }
+
+        return pred(el);
+      });
+      return ancestors;
+    };
+
+    /**
+     * find farthest ancestor predicate hit
+     */
+    var lastAncestor = function (node, pred) {
+      var ancestors = listAncestor(node);
+      return list.last(ancestors.filter(pred));
+    };
+
+    /**
+     * returns common ancestor node between two nodes.
+     *
+     * @param {Node} nodeA
+     * @param {Node} nodeB
+     */
+    var commonAncestor = function (nodeA, nodeB) {
+      var ancestors = listAncestor(nodeA);
+      for (var n = nodeB; n; n = n.parentNode) {
+        if ($.inArray(n, ancestors) > -1) { return n; }
+      }
+      return null; // difference document area
+    };
+
+    /**
+     * listing all previous siblings (until predicate hit).
+     *
+     * @param {Node} node
+     * @param {Function} [optional] pred - predicate function
+     */
+    var listPrev = function (node, pred) {
+      pred = pred || func.fail;
+
+      var nodes = [];
+      while (node) {
+        if (pred(node)) { break; }
+        nodes.push(node);
+        node = node.previousSibling;
+      }
+      return nodes;
+    };
+
+    /**
+     * listing next siblings (until predicate hit).
+     *
+     * @param {Node} node
+     * @param {Function} [pred] - predicate function
+     */
+    var listNext = function (node, pred) {
+      pred = pred || func.fail;
+
+      var nodes = [];
+      while (node) {
+        if (pred(node)) { break; }
+        nodes.push(node);
+        node = node.nextSibling;
+      }
+      return nodes;
+    };
+
+    /**
+     * listing descendant nodes
+     *
+     * @param {Node} node
+     * @param {Function} [pred] - predicate function
+     */
+    var listDescendant = function (node, pred) {
+      var descendents = [];
+      pred = pred || func.ok;
+
+      // start DFS(depth first search) with node
+      (function fnWalk(current) {
+        if (node !== current && pred(current)) {
+          descendents.push(current);
+        }
+        for (var idx = 0, len = current.childNodes.length; idx < len; idx++) {
+          fnWalk(current.childNodes[idx]);
+        }
+      })(node);
+
+      return descendents;
+    };
+
+    /**
+     * wrap node with new tag.
+     *
+     * @param {Node} node
+     * @param {Node} tagName of wrapper
+     * @return {Node} - wrapper
+     */
+    var wrap = function (node, wrapperName) {
+      var parent = node.parentNode;
+      var wrapper = $('<' + wrapperName + '>')[0];
+
+      parent.insertBefore(wrapper, node);
+      wrapper.appendChild(node);
+
+      return wrapper;
+    };
+
+    /**
+     * insert node after preceding
+     *
+     * @param {Node} node
+     * @param {Node} preceding - predicate function
+     */
+    var insertAfter = function (node, preceding) {
+      var next = preceding.nextSibling, parent = preceding.parentNode;
+      if (next) {
+        parent.insertBefore(node, next);
+      } else {
+        parent.appendChild(node);
+      }
+      return node;
+    };
+
+    /**
+     * append elements.
+     *
+     * @param {Node} node
+     * @param {Collection} aChild
+     */
+    var appendChildNodes = function (node, aChild) {
+      $.each(aChild, function (idx, child) {
+        node.appendChild(child);
+      });
+      return node;
+    };
+
+    /**
+     * returns whether boundaryPoint is left edge or not.
+     *
+     * @param {BoundaryPoint} point
+     * @return {Boolean}
+     */
+    var isLeftEdgePoint = function (point) {
+      return point.offset === 0;
+    };
+
+    /**
+     * returns whether boundaryPoint is right edge or not.
+     *
+     * @param {BoundaryPoint} point
+     * @return {Boolean}
+     */
+    var isRightEdgePoint = function (point) {
+      return point.offset === nodeLength(point.node);
+    };
+
+    /**
+     * returns whether boundaryPoint is edge or not.
+     *
+     * @param {BoundaryPoint} point
+     * @return {Boolean}
+     */
+    var isEdgePoint = function (point) {
+      return isLeftEdgePoint(point) || isRightEdgePoint(point);
+    };
+
+    /**
+     * returns wheter node is left edge of ancestor or not.
+     *
+     * @param {Node} node
+     * @param {Node} ancestor
+     * @return {Boolean}
+     */
+    var isLeftEdgeOf = function (node, ancestor) {
+      while (node && node !== ancestor) {
+        if (position(node) !== 0) {
+          return false;
+        }
+        node = node.parentNode;
+      }
+
+      return true;
+    };
+
+    /**
+     * returns whether node is right edge of ancestor or not.
+     *
+     * @param {Node} node
+     * @param {Node} ancestor
+     * @return {Boolean}
+     */
+    var isRightEdgeOf = function (node, ancestor) {
+      while (node && node !== ancestor) {
+        if (position(node) !== nodeLength(node.parentNode) - 1) {
+          return false;
+        }
+        node = node.parentNode;
+      }
+
+      return true;
+    };
+
+    /**
+     * returns offset from parent.
+     *
+     * @param {Node} node
+     */
+    var position = function (node) {
+      var offset = 0;
+      while ((node = node.previousSibling)) {
+        offset += 1;
+      }
+      return offset;
+    };
+
+    var hasChildren = function (node) {
+      return !!(node && node.childNodes && node.childNodes.length);
+    };
+
+    /**
+     * returns previous boundaryPoint
+     *
+     * @param {BoundaryPoint} point
+     * @param {Boolean} isSkipInnerOffset
+     * @return {BoundaryPoint}
+     */
+    var prevPoint = function (point, isSkipInnerOffset) {
+      var node, offset;
+
+      if (point.offset === 0) {
+        if (isEditable(point.node)) {
+          return null;
+        }
+
+        node = point.node.parentNode;
+        offset = position(point.node);
+      } else if (hasChildren(point.node)) {
+        node = point.node.childNodes[point.offset - 1];
+        offset = nodeLength(node);
+      } else {
+        node = point.node;
+        offset = isSkipInnerOffset ? 0 : point.offset - 1;
+      }
+
+      return {
+        node: node,
+        offset: offset
+      };
+    };
+
+    /**
+     * returns next boundaryPoint
+     *
+     * @param {BoundaryPoint} point
+     * @param {Boolean} isSkipInnerOffset
+     * @return {BoundaryPoint}
+     */
+    var nextPoint = function (point, isSkipInnerOffset) {
+      var node, offset;
+
+      if (nodeLength(point.node) === point.offset) {
+        if (isEditable(point.node)) {
+          return null;
+        }
+
+        node = point.node.parentNode;
+        offset = position(point.node) + 1;
+      } else if (hasChildren(point.node)) {
+        node = point.node.childNodes[point.offset];
+        offset = 0;
+      } else {
+        node = point.node;
+        offset = isSkipInnerOffset ? nodeLength(point.node) : point.offset + 1;
+      }
+
+      return {
+        node: node,
+        offset: offset
+      };
+    };
+
+    /**
+     * returns whether pointA and pointB is same or not.
+     *
+     * @param {BoundaryPoint} pointA
+     * @param {BoundaryPoint} pointB
+     * @return {Boolean}
+     */
+    var isSamePoint = function (pointA, pointB) {
+      return pointA.node === pointB.node && pointA.offset === pointB.offset;
+    };
+
+    /**
+     * returns whether point is visible (can set cursor) or not.
+     * 
+     * @param {BoundaryPoint} point
+     * @return {Boolean}
+     */
+    var isVisiblePoint = function (point) {
+      if (isText(point.node) || !hasChildren(point.node) || isEmpty(point.node)) {
+        return true;
+      }
+
+      var leftNode = point.node.childNodes[point.offset - 1];
+      var rightNode = point.node.childNodes[point.offset];
+      if ((!leftNode || isVoid(leftNode)) && (!rightNode || isVoid(rightNode))) {
+        return true;
+      }
+
+      return false;
+    };
+
+    /**
+     * @method prevPointUtil
+     *
+     * @param {BoundaryPoint} point
+     * @param {Function} pred
+     * @return {BoundaryPoint}
+     */
+    var prevPointUntil = function (point, pred) {
+      while (point) {
+        if (pred(point)) {
+          return point;
+        }
+
+        point = prevPoint(point);
+      }
+
+      return null;
+    };
+
+    /**
+     * @method nextPointUntil
+     *
+     * @param {BoundaryPoint} point
+     * @param {Function} pred
+     * @return {BoundaryPoint}
+     */
+    var nextPointUntil = function (point, pred) {
+      while (point) {
+        if (pred(point)) {
+          return point;
+        }
+
+        point = nextPoint(point);
+      }
+
+      return null;
+    };
+
+    /**
+     * returns whether point has character or not.
+     *
+     * @param {Point} point
+     * @return {Boolean}
+     */
+    var isCharPoint = function (point) {
+      if (!isText(point.node)) {
+        return false;
+      }
+
+      var ch = point.node.nodeValue.charAt(point.offset - 1);
+      return ch && (ch !== ' ' && ch !== NBSP_CHAR);
+    };
+
+    /**
+     * @method walkPoint
+     *
+     * @param {BoundaryPoint} startPoint
+     * @param {BoundaryPoint} endPoint
+     * @param {Function} handler
+     * @param {Boolean} isSkipInnerOffset
+     */
+    var walkPoint = function (startPoint, endPoint, handler, isSkipInnerOffset) {
+      var point = startPoint;
+
+      while (point) {
+        handler(point);
+
+        if (isSamePoint(point, endPoint)) {
+          break;
+        }
+
+        var isSkipOffset = isSkipInnerOffset &&
+                           startPoint.node !== point.node &&
+                           endPoint.node !== point.node;
+        point = nextPoint(point, isSkipOffset);
+      }
+    };
+
+    /**
+     * @method makeOffsetPath
+     *
+     * return offsetPath(array of offset) from ancestor
+     *
+     * @param {Node} ancestor - ancestor node
+     * @param {Node} node
+     */
+    var makeOffsetPath = function (ancestor, node) {
+      var ancestors = listAncestor(node, func.eq(ancestor));
+      return $.map(ancestors, position).reverse();
+    };
+
+    /**
+     * @method fromOffsetPath
+     *
+     * return element from offsetPath(array of offset)
+     *
+     * @param {Node} ancestor - ancestor node
+     * @param {array} offsets - offsetPath
+     */
+    var fromOffsetPath = function (ancestor, offsets) {
+      var current = ancestor;
+      for (var i = 0, len = offsets.length; i < len; i++) {
+        if (current.childNodes.length <= offsets[i]) {
+          current = current.childNodes[current.childNodes.length - 1];
+        } else {
+          current = current.childNodes[offsets[i]];
+        }
+      }
+      return current;
+    };
+
+    /**
+     * @method splitNode
+     *
+     * split element or #text
+     *
+     * @param {BoundaryPoint} point
+     * @param {Object} [options]
+     * @param {Boolean} [options.isSkipPaddingBlankHTML] - default: false
+     * @param {Boolean} [options.isNotSplitEdgePoint] - default: false
+     * @return {Node} right node of boundaryPoint
+     */
+    var splitNode = function (point, options) {
+      var isSkipPaddingBlankHTML = options && options.isSkipPaddingBlankHTML;
+      var isNotSplitEdgePoint = options && options.isNotSplitEdgePoint;
+
+      // edge case
+      if (isEdgePoint(point) && (isText(point.node) || isNotSplitEdgePoint)) {
+        if (isLeftEdgePoint(point)) {
+          return point.node;
+        } else if (isRightEdgePoint(point)) {
+          return point.node.nextSibling;
+        }
+      }
+
+      // split #text
+      if (isText(point.node)) {
+        return point.node.splitText(point.offset);
+      } else {
+        var childNode = point.node.childNodes[point.offset];
+        var clone = insertAfter(point.node.cloneNode(false), point.node);
+        appendChildNodes(clone, listNext(childNode));
+
+        if (!isSkipPaddingBlankHTML) {
+          paddingBlankHTML(point.node);
+          paddingBlankHTML(clone);
+        }
+
+        return clone;
+      }
+    };
+
+    /**
+     * @method splitTree
+     *
+     * split tree by point
+     *
+     * @param {Node} root - split root
+     * @param {BoundaryPoint} point
+     * @param {Object} [options]
+     * @param {Boolean} [options.isSkipPaddingBlankHTML] - default: false
+     * @param {Boolean} [options.isNotSplitEdgePoint] - default: false
+     * @return {Node} right node of boundaryPoint
+     */
+    var splitTree = function (root, point, options) {
+      // ex) [#text, <span>, <p>]
+      var ancestors = listAncestor(point.node, func.eq(root));
+
+      if (!ancestors.length) {
+        return null;
+      } else if (ancestors.length === 1) {
+        return splitNode(point, options);
+      }
+
+      return ancestors.reduce(function (node, parent) {
+        if (node === point.node) {
+          node = splitNode(point, options);
+        }
+
+        return splitNode({
+          node: parent,
+          offset: node ? dom.position(node) : nodeLength(parent)
+        }, options);
+      });
+    };
+
+    /**
+     * split point
+     *
+     * @param {Point} point
+     * @param {Boolean} isInline
+     * @return {Object}
+     */
+    var splitPoint = function (point, isInline) {
+      // find splitRoot, container
+      //  - inline: splitRoot is a child of paragraph
+      //  - block: splitRoot is a child of bodyContainer
+      var pred = isInline ? isPara : isBodyContainer;
+      var ancestors = listAncestor(point.node, pred);
+      var topAncestor = list.last(ancestors) || point.node;
+
+      var splitRoot, container;
+      if (pred(topAncestor)) {
+        splitRoot = ancestors[ancestors.length - 2];
+        container = topAncestor;
+      } else {
+        splitRoot = topAncestor;
+        container = splitRoot.parentNode;
+      }
+
+      // if splitRoot is exists, split with splitTree
+      var pivot = splitRoot && splitTree(splitRoot, point, {
+        isSkipPaddingBlankHTML: isInline,
+        isNotSplitEdgePoint: isInline
+      });
+
+      // if container is point.node, find pivot with point.offset
+      if (!pivot && container === point.node) {
+        pivot = point.node.childNodes[point.offset];
+      }
+
+      return {
+        rightNode: pivot,
+        container: container
+      };
+    };
+
+    var create = function (nodeName) {
+      return document.createElement(nodeName);
+    };
+
+    var createText = function (text) {
+      return document.createTextNode(text);
+    };
+
+    /**
+     * @method remove
+     *
+     * remove node, (isRemoveChild: remove child or not)
+     *
+     * @param {Node} node
+     * @param {Boolean} isRemoveChild
+     */
+    var remove = function (node, isRemoveChild) {
+      if (!node || !node.parentNode) { return; }
+      if (node.removeNode) { return node.removeNode(isRemoveChild); }
+
+      var parent = node.parentNode;
+      if (!isRemoveChild) {
+        var nodes = [];
+        var i, len;
+        for (i = 0, len = node.childNodes.length; i < len; i++) {
+          nodes.push(node.childNodes[i]);
+        }
+
+        for (i = 0, len = nodes.length; i < len; i++) {
+          parent.insertBefore(nodes[i], node);
+        }
+      }
+
+      parent.removeChild(node);
+    };
+
+    /**
+     * @method removeWhile
+     *
+     * @param {Node} node
+     * @param {Function} pred
+     */
+    var removeWhile = function (node, pred) {
+      while (node) {
+        if (isEditable(node) || !pred(node)) {
+          break;
+        }
+
+        var parent = node.parentNode;
+        remove(node);
+        node = parent;
+      }
+    };
+
+    /**
+     * @method replace
+     *
+     * replace node with provided nodeName
+     *
+     * @param {Node} node
+     * @param {String} nodeName
+     * @return {Node} - new node
+     */
+    var replace = function (node, nodeName) {
+      if (node.nodeName.toUpperCase() === nodeName.toUpperCase()) {
+        return node;
+      }
+
+      var newNode = create(nodeName);
+
+      if (node.style.cssText) {
+        newNode.style.cssText = node.style.cssText;
+      }
+
+      appendChildNodes(newNode, list.from(node.childNodes));
+      insertAfter(newNode, node);
+      remove(node);
+
+      return newNode;
+    };
+
+    var isTextarea = makePredByNodeName('TEXTAREA');
+
+    /**
+     * @param {jQuery} $node
+     * @param {Boolean} [stripLinebreaks] - default: false
+     */
+    var value = function ($node, stripLinebreaks) {
+      var val = isTextarea($node[0]) ? $node.val() : $node.html();
+      if (stripLinebreaks) {
+        return val.replace(/[\n\r]/g, '');
+      }
+      return val;
+    };
+
+    /**
+     * @method html
+     *
+     * get the HTML contents of node
+     *
+     * @param {jQuery} $node
+     * @param {Boolean} [isNewlineOnBlock]
+     */
+    var html = function ($node, isNewlineOnBlock) {
+      var markup = value($node);
+
+      if (isNewlineOnBlock) {
+        var regexTag = /<(\/?)(\b(?!!)[^>\s]*)(.*?)(\s*\/?>)/g;
+        markup = markup.replace(regexTag, function (match, endSlash, name) {
+          name = name.toUpperCase();
+          var isEndOfInlineContainer = /^DIV|^TD|^TH|^P|^LI|^H[1-7]/.test(name) &&
+                                       !!endSlash;
+          var isBlockNode = /^BLOCKQUOTE|^TABLE|^TBODY|^TR|^HR|^UL|^OL/.test(name);
+
+          return match + ((isEndOfInlineContainer || isBlockNode) ? '\n' : '');
+        });
+        markup = $.trim(markup);
+      }
+
+      return markup;
+    };
+
+    return {
+      /** @property {String} NBSP_CHAR */
+      NBSP_CHAR: NBSP_CHAR,
+      /** @property {String} ZERO_WIDTH_NBSP_CHAR */
+      ZERO_WIDTH_NBSP_CHAR: ZERO_WIDTH_NBSP_CHAR,
+      /** @property {String} blank */
+      blank: blankHTML,
+      /** @property {String} emptyPara */
+      emptyPara: '<p>' + blankHTML + '</p>',
+      makePredByNodeName: makePredByNodeName,
+      isEditable: isEditable,
+      isControlSizing: isControlSizing,
+      buildLayoutInfo: buildLayoutInfo,
+      makeLayoutInfo: makeLayoutInfo,
+      isText: isText,
+      isVoid: isVoid,
+      isPara: isPara,
+      isPurePara: isPurePara,
+      isInline: isInline,
+      isBlock: func.not(isInline),
+      isBodyInline: isBodyInline,
+      isBody: isBody,
+      isParaInline: isParaInline,
+      isList: isList,
+      isTable: isTable,
+      isCell: isCell,
+      isBlockquote: isBlockquote,
+      isBodyContainer: isBodyContainer,
+      isAnchor: isAnchor,
+      isDiv: makePredByNodeName('DIV'),
+      isLi: isLi,
+      isBR: makePredByNodeName('BR'),
+      isSpan: makePredByNodeName('SPAN'),
+      isB: makePredByNodeName('B'),
+      isU: makePredByNodeName('U'),
+      isS: makePredByNodeName('S'),
+      isI: makePredByNodeName('I'),
+      isImg: makePredByNodeName('IMG'),
+      isTextarea: isTextarea,
+      isEmpty: isEmpty,
+      isEmptyAnchor: func.and(isAnchor, isEmpty),
+      isClosestSibling: isClosestSibling,
+      withClosestSiblings: withClosestSiblings,
+      nodeLength: nodeLength,
+      isLeftEdgePoint: isLeftEdgePoint,
+      isRightEdgePoint: isRightEdgePoint,
+      isEdgePoint: isEdgePoint,
+      isLeftEdgeOf: isLeftEdgeOf,
+      isRightEdgeOf: isRightEdgeOf,
+      prevPoint: prevPoint,
+      nextPoint: nextPoint,
+      isSamePoint: isSamePoint,
+      isVisiblePoint: isVisiblePoint,
+      prevPointUntil: prevPointUntil,
+      nextPointUntil: nextPointUntil,
+      isCharPoint: isCharPoint,
+      walkPoint: walkPoint,
+      ancestor: ancestor,
+      singleChildAncestor: singleChildAncestor,
+      listAncestor: listAncestor,
+      lastAncestor: lastAncestor,
+      listNext: listNext,
+      listPrev: listPrev,
+      listDescendant: listDescendant,
+      commonAncestor: commonAncestor,
+      wrap: wrap,
+      insertAfter: insertAfter,
+      appendChildNodes: appendChildNodes,
+      position: position,
+      hasChildren: hasChildren,
+      makeOffsetPath: makeOffsetPath,
+      fromOffsetPath: fromOffsetPath,
+      splitTree: splitTree,
+      splitPoint: splitPoint,
+      create: create,
+      createText: createText,
+      remove: remove,
+      removeWhile: removeWhile,
+      replace: replace,
+      html: html,
+      value: value
+    };
+  })();
+
+
+  var range = (function () {
+
+    /**
+     * return boundaryPoint from TextRange, inspired by Andy Na's HuskyRange.js
+     *
+     * @param {TextRange} textRange
+     * @param {Boolean} isStart
+     * @return {BoundaryPoint}
+     *
+     * @see http://msdn.microsoft.com/en-us/library/ie/ms535872(v=vs.85).aspx
+     */
+    var textRangeToPoint = function (textRange, isStart) {
+      var container = textRange.parentElement(), offset;
+  
+      var tester = document.body.createTextRange(), prevContainer;
+      var childNodes = list.from(container.childNodes);
+      for (offset = 0; offset < childNodes.length; offset++) {
+        if (dom.isText(childNodes[offset])) {
+          continue;
+        }
+        tester.moveToElementText(childNodes[offset]);
+        if (tester.compareEndPoints('StartToStart', textRange) >= 0) {
+          break;
+        }
+        prevContainer = childNodes[offset];
+      }
+  
+      if (offset !== 0 && dom.isText(childNodes[offset - 1])) {
+        var textRangeStart = document.body.createTextRange(), curTextNode = null;
+        textRangeStart.moveToElementText(prevContainer || container);
+        textRangeStart.collapse(!prevContainer);
+        curTextNode = prevContainer ? prevContainer.nextSibling : container.firstChild;
+  
+        var pointTester = textRange.duplicate();
+        pointTester.setEndPoint('StartToStart', textRangeStart);
+        var textCount = pointTester.text.replace(/[\r\n]/g, '').length;
+  
+        while (textCount > curTextNode.nodeValue.length && curTextNode.nextSibling) {
+          textCount -= curTextNode.nodeValue.length;
+          curTextNode = curTextNode.nextSibling;
+        }
+  
+        /* jshint ignore:start */
+        var dummy = curTextNode.nodeValue; // enforce IE to re-reference curTextNode, hack
+        /* jshint ignore:end */
+  
+        if (isStart && curTextNode.nextSibling && dom.isText(curTextNode.nextSibling) &&
+            textCount === curTextNode.nodeValue.length) {
+          textCount -= curTextNode.nodeValue.length;
+          curTextNode = curTextNode.nextSibling;
+        }
+  
+        container = curTextNode;
+        offset = textCount;
+      }
+  
+      return {
+        cont: container,
+        offset: offset
+      };
+    };
+    
+    /**
+     * return TextRange from boundary point (inspired by google closure-library)
+     * @param {BoundaryPoint} point
+     * @return {TextRange}
+     */
+    var pointToTextRange = function (point) {
+      var textRangeInfo = function (container, offset) {
+        var node, isCollapseToStart;
+  
+        if (dom.isText(container)) {
+          var prevTextNodes = dom.listPrev(container, func.not(dom.isText));
+          var prevContainer = list.last(prevTextNodes).previousSibling;
+          node =  prevContainer || container.parentNode;
+          offset += list.sum(list.tail(prevTextNodes), dom.nodeLength);
+          isCollapseToStart = !prevContainer;
+        } else {
+          node = container.childNodes[offset] || container;
+          if (dom.isText(node)) {
+            return textRangeInfo(node, 0);
+          }
+  
+          offset = 0;
+          isCollapseToStart = false;
+        }
+  
+        return {
+          node: node,
+          collapseToStart: isCollapseToStart,
+          offset: offset
+        };
+      };
+  
+      var textRange = document.body.createTextRange();
+      var info = textRangeInfo(point.node, point.offset);
+  
+      textRange.moveToElementText(info.node);
+      textRange.collapse(info.collapseToStart);
+      textRange.moveStart('character', info.offset);
+      return textRange;
+    };
+    
+    /**
+     * Wrapped Range
+     *
+     * @constructor
+     * @param {Node} sc - start container
+     * @param {Number} so - start offset
+     * @param {Node} ec - end container
+     * @param {Number} eo - end offset
+     */
+    var WrappedRange = function (sc, so, ec, eo) {
+      this.sc = sc;
+      this.so = so;
+      this.ec = ec;
+      this.eo = eo;
+  
+      // nativeRange: get nativeRange from sc, so, ec, eo
+      var nativeRange = function () {
+        if (agent.isW3CRangeSupport) {
+          var w3cRange = document.createRange();
+          w3cRange.setStart(sc, so);
+          w3cRange.setEnd(ec, eo);
+
+          return w3cRange;
+        } else {
+          var textRange = pointToTextRange({
+            node: sc,
+            offset: so
+          });
+
+          textRange.setEndPoint('EndToEnd', pointToTextRange({
+            node: ec,
+            offset: eo
+          }));
+
+          return textRange;
+        }
+      };
+
+      this.getPoints = function () {
+        return {
+          sc: sc,
+          so: so,
+          ec: ec,
+          eo: eo
+        };
+      };
+
+      this.getStartPoint = function () {
+        return {
+          node: sc,
+          offset: so
+        };
+      };
+
+      this.getEndPoint = function () {
+        return {
+          node: ec,
+          offset: eo
+        };
+      };
+
+      /**
+       * select update visible range
+       */
+      this.select = function () {
+        var nativeRng = nativeRange();
+        if (agent.isW3CRangeSupport) {
+          var selection = document.getSelection();
+          if (selection.rangeCount > 0) {
+            selection.removeAllRanges();
+          }
+          selection.addRange(nativeRng);
+        } else {
+          nativeRng.select();
+        }
+        
+        return this;
+      };
+
+      /**
+       * @return {WrappedRange}
+       */
+      this.normalize = function () {
+
+        /**
+         * @param {BoundaryPoint} point
+         * @return {BoundaryPoint}
+         */
+        var getVisiblePoint = function (point) {
+          if (!dom.isVisiblePoint(point)) {
+            if (dom.isLeftEdgePoint(point)) {
+              point = dom.nextPointUntil(point, dom.isVisiblePoint);
+            } else {
+              point = dom.prevPointUntil(point, dom.isVisiblePoint);
+            }
+          }
+          return point;
+        };
+
+        var startPoint = getVisiblePoint(this.getStartPoint());
+        var endPoint = getVisiblePoint(this.getEndPoint());
+
+        return new WrappedRange(
+          startPoint.node,
+          startPoint.offset,
+          endPoint.node,
+          endPoint.offset
+        );
+      };
+
+      /**
+       * returns matched nodes on range
+       *
+       * @param {Function} [pred] - predicate function
+       * @param {Object} [options]
+       * @param {Boolean} [options.includeAncestor]
+       * @param {Boolean} [options.fullyContains]
+       * @return {Node[]}
+       */
+      this.nodes = function (pred, options) {
+        pred = pred || func.ok;
+
+        var includeAncestor = options && options.includeAncestor;
+        var fullyContains = options && options.fullyContains;
+
+        // TODO compare points and sort
+        var startPoint = this.getStartPoint();
+        var endPoint = this.getEndPoint();
+
+        var nodes = [];
+        var leftEdgeNodes = [];
+
+        dom.walkPoint(startPoint, endPoint, function (point) {
+          if (dom.isEditable(point.node)) {
+            return;
+          }
+
+          var node;
+          if (fullyContains) {
+            if (dom.isLeftEdgePoint(point)) {
+              leftEdgeNodes.push(point.node);
+            }
+            if (dom.isRightEdgePoint(point) && list.contains(leftEdgeNodes, point.node)) {
+              node = point.node;
+            }
+          } else if (includeAncestor) {
+            node = dom.ancestor(point.node, pred);
+          } else {
+            node = point.node;
+          }
+
+          if (node && pred(node)) {
+            nodes.push(node);
+          }
+        }, true);
+
+        return list.unique(nodes);
+      };
+
+      /**
+       * returns commonAncestor of range
+       * @return {Element} - commonAncestor
+       */
+      this.commonAncestor = function () {
+        return dom.commonAncestor(sc, ec);
+      };
+
+      /**
+       * returns expanded range by pred
+       *
+       * @param {Function} pred - predicate function
+       * @return {WrappedRange}
+       */
+      this.expand = function (pred) {
+        var startAncestor = dom.ancestor(sc, pred);
+        var endAncestor = dom.ancestor(ec, pred);
+
+        if (!startAncestor && !endAncestor) {
+          return new WrappedRange(sc, so, ec, eo);
+        }
+
+        var boundaryPoints = this.getPoints();
+
+        if (startAncestor) {
+          boundaryPoints.sc = startAncestor;
+          boundaryPoints.so = 0;
+        }
+
+        if (endAncestor) {
+          boundaryPoints.ec = endAncestor;
+          boundaryPoints.eo = dom.nodeLength(endAncestor);
+        }
+
+        return new WrappedRange(
+          boundaryPoints.sc,
+          boundaryPoints.so,
+          boundaryPoints.ec,
+          boundaryPoints.eo
+        );
+      };
+
+      /**
+       * @param {Boolean} isCollapseToStart
+       * @return {WrappedRange}
+       */
+      this.collapse = function (isCollapseToStart) {
+        if (isCollapseToStart) {
+          return new WrappedRange(sc, so, sc, so);
+        } else {
+          return new WrappedRange(ec, eo, ec, eo);
+        }
+      };
+
+      /**
+       * splitText on range
+       */
+      this.splitText = function () {
+        var isSameContainer = sc === ec;
+        var boundaryPoints = this.getPoints();
+
+        if (dom.isText(ec) && !dom.isEdgePoint(this.getEndPoint())) {
+          ec.splitText(eo);
+        }
+
+        if (dom.isText(sc) && !dom.isEdgePoint(this.getStartPoint())) {
+          boundaryPoints.sc = sc.splitText(so);
+          boundaryPoints.so = 0;
+
+          if (isSameContainer) {
+            boundaryPoints.ec = boundaryPoints.sc;
+            boundaryPoints.eo = eo - so;
+          }
+        }
+
+        return new WrappedRange(
+          boundaryPoints.sc,
+          boundaryPoints.so,
+          boundaryPoints.ec,
+          boundaryPoints.eo
+        );
+      };
+
+      /**
+       * delete contents on range
+       * @return {WrappedRange}
+       */
+      this.deleteContents = function () {
+        if (this.isCollapsed()) {
+          return this;
+        }
+
+        var rng = this.splitText();
+        var nodes = rng.nodes(null, {
+          fullyContains: true
+        });
+
+        // find new cursor point
+        var point = dom.prevPointUntil(rng.getStartPoint(), function (point) {
+          return !list.contains(nodes, point.node);
+        });
+
+        var emptyParents = [];
+        $.each(nodes, function (idx, node) {
+          // find empty parents
+          var parent = node.parentNode;
+          if (point.node !== parent && dom.nodeLength(parent) === 1) {
+            emptyParents.push(parent);
+          }
+          dom.remove(node, false);
+        });
+
+        // remove empty parents
+        $.each(emptyParents, function (idx, node) {
+          dom.remove(node, false);
+        });
+
+        return new WrappedRange(
+          point.node,
+          point.offset,
+          point.node,
+          point.offset
+        ).normalize();
+      };
+      
+      /**
+       * makeIsOn: return isOn(pred) function
+       */
+      var makeIsOn = function (pred) {
+        return function () {
+          var ancestor = dom.ancestor(sc, pred);
+          return !!ancestor && (ancestor === dom.ancestor(ec, pred));
+        };
+      };
+  
+      // isOnEditable: judge whether range is on editable or not
+      this.isOnEditable = makeIsOn(dom.isEditable);
+      // isOnList: judge whether range is on list node or not
+      this.isOnList = makeIsOn(dom.isList);
+      // isOnAnchor: judge whether range is on anchor node or not
+      this.isOnAnchor = makeIsOn(dom.isAnchor);
+      // isOnAnchor: judge whether range is on cell node or not
+      this.isOnCell = makeIsOn(dom.isCell);
+
+      /**
+       * @param {Function} pred
+       * @return {Boolean}
+       */
+      this.isLeftEdgeOf = function (pred) {
+        if (!dom.isLeftEdgePoint(this.getStartPoint())) {
+          return false;
+        }
+
+        var node = dom.ancestor(this.sc, pred);
+        return node && dom.isLeftEdgeOf(this.sc, node);
+      };
+
+      /**
+       * returns whether range was collapsed or not
+       */
+      this.isCollapsed = function () {
+        return sc === ec && so === eo;
+      };
+
+      /**
+       * wrap inline nodes which children of body with paragraph
+       *
+       * @return {WrappedRange}
+       */
+      this.wrapBodyInlineWithPara = function () {
+        if (dom.isBodyContainer(sc) && dom.isEmpty(sc)) {
+          sc.innerHTML = dom.emptyPara;
+          return new WrappedRange(sc.firstChild, 0, sc.firstChild, 0);
+        }
+
+        if (dom.isParaInline(sc) || dom.isPara(sc)) {
+          return this.normalize();
+        }
+
+        // find inline top ancestor
+        var topAncestor;
+        if (dom.isInline(sc)) {
+          var ancestors = dom.listAncestor(sc, func.not(dom.isInline));
+          topAncestor = list.last(ancestors);
+          if (!dom.isInline(topAncestor)) {
+            topAncestor = ancestors[ancestors.length - 2] || sc.childNodes[so];
+          }
+        } else {
+          topAncestor = sc.childNodes[so > 0 ? so - 1 : 0];
+        }
+
+        // siblings not in paragraph
+        var inlineSiblings = dom.listPrev(topAncestor, dom.isParaInline).reverse();
+        inlineSiblings = inlineSiblings.concat(dom.listNext(topAncestor.nextSibling, dom.isParaInline));
+
+        // wrap with paragraph
+        if (inlineSiblings.length) {
+          var para = dom.wrap(list.head(inlineSiblings), 'p');
+          dom.appendChildNodes(para, list.tail(inlineSiblings));
+        }
+
+        return this.normalize();
+      };
+
+      /**
+       * insert node at current cursor
+       *
+       * @param {Node} node
+       * @return {Node}
+       */
+      this.insertNode = function (node) {
+        var rng = this.wrapBodyInlineWithPara().deleteContents();
+        var info = dom.splitPoint(rng.getStartPoint(), dom.isInline(node));
+
+        if (info.rightNode) {
+          info.rightNode.parentNode.insertBefore(node, info.rightNode);
+        } else {
+          info.container.appendChild(node);
+        }
+
+        return node;
+      };
+
+      /**
+       * insert html at current cursor
+       */
+      this.pasteHTML = function (markup) {
+        var self = this;
+        var contentsContainer = $('<div></div>').html(markup)[0];
+        var childNodes = list.from(contentsContainer.childNodes);
+
+        this.wrapBodyInlineWithPara().deleteContents();
+
+        return $.map(childNodes.reverse(), function (childNode) {
+          return self.insertNode(childNode);
+        }).reverse();
+      };
+  
+      /**
+       * returns text in range
+       *
+       * @return {String}
+       */
+      this.toString = function () {
+        var nativeRng = nativeRange();
+        return agent.isW3CRangeSupport ? nativeRng.toString() : nativeRng.text;
+      };
+
+      /**
+       * returns range for word before cursor
+       *
+       * @param {Boolean} [findAfter] - find after cursor, default: false
+       * @return {WrappedRange}
+       */
+      this.getWordRange = function (findAfter) {
+        var endPoint = this.getEndPoint();
+
+        if (!dom.isCharPoint(endPoint)) {
+          return this;
+        }
+
+        var startPoint = dom.prevPointUntil(endPoint, function (point) {
+          return !dom.isCharPoint(point);
+        });
+
+        if (findAfter) {
+          endPoint = dom.nextPointUntil(endPoint, function (point) {
+            return !dom.isCharPoint(point);
+          });
+        }
+
+        return new WrappedRange(
+          startPoint.node,
+          startPoint.offset,
+          endPoint.node,
+          endPoint.offset
+        );
+      };
+  
+      /**
+       * create offsetPath bookmark
+       *
+       * @param {Node} editable
+       */
+      this.bookmark = function (editable) {
+        return {
+          s: {
+            path: dom.makeOffsetPath(editable, sc),
+            offset: so
+          },
+          e: {
+            path: dom.makeOffsetPath(editable, ec),
+            offset: eo
+          }
+        };
+      };
+
+      /**
+       * create offsetPath bookmark base on paragraph
+       *
+       * @param {Node[]} paras
+       */
+      this.paraBookmark = function (paras) {
+        return {
+          s: {
+            path: list.tail(dom.makeOffsetPath(list.head(paras), sc)),
+            offset: so
+          },
+          e: {
+            path: list.tail(dom.makeOffsetPath(list.last(paras), ec)),
+            offset: eo
+          }
+        };
+      };
+
+      /**
+       * getClientRects
+       * @return {Rect[]}
+       */
+      this.getClientRects = function () {
+        var nativeRng = nativeRange();
+        return nativeRng.getClientRects();
+      };
+    };
+
+  /**
+   * @class core.range
+   *
+   * Data structure
+   *  * BoundaryPoint: a point of dom tree
+   *  * BoundaryPoints: two boundaryPoints corresponding to the start and the end of the Range
+   *
+   * See to http://www.w3.org/TR/DOM-Level-2-Traversal-Range/ranges.html#Level-2-Range-Position
+   *
+   * @singleton
+   * @alternateClassName range
+   */
+    return {
+      /**
+       * @method
+       * 
+       * create Range Object From arguments or Browser Selection
+       *
+       * @param {Node} sc - start container
+       * @param {Number} so - start offset
+       * @param {Node} ec - end container
+       * @param {Number} eo - end offset
+       * @return {WrappedRange}
+       */
+      create : function (sc, so, ec, eo) {
+        if (!arguments.length) { // from Browser Selection
+          if (agent.isW3CRangeSupport) {
+            var selection = document.getSelection();
+            if (!selection || selection.rangeCount === 0) {
+              return null;
+            } else if (dom.isBody(selection.anchorNode)) {
+              // Firefox: returns entire body as range on initialization. We won't never need it.
+              return null;
+            }
+  
+            var nativeRng = selection.getRangeAt(0);
+            sc = nativeRng.startContainer;
+            so = nativeRng.startOffset;
+            ec = nativeRng.endContainer;
+            eo = nativeRng.endOffset;
+          } else { // IE8: TextRange
+            var textRange = document.selection.createRange();
+            var textRangeEnd = textRange.duplicate();
+            textRangeEnd.collapse(false);
+            var textRangeStart = textRange;
+            textRangeStart.collapse(true);
+  
+            var startPoint = textRangeToPoint(textRangeStart, true),
+            endPoint = textRangeToPoint(textRangeEnd, false);
+
+            // same visible point case: range was collapsed.
+            if (dom.isText(startPoint.node) && dom.isLeftEdgePoint(startPoint) &&
+                dom.isTextNode(endPoint.node) && dom.isRightEdgePoint(endPoint) &&
+                endPoint.node.nextSibling === startPoint.node) {
+              startPoint = endPoint;
+            }
+
+            sc = startPoint.cont;
+            so = startPoint.offset;
+            ec = endPoint.cont;
+            eo = endPoint.offset;
+          }
+        } else if (arguments.length === 2) { //collapsed
+          ec = sc;
+          eo = so;
+        }
+        return new WrappedRange(sc, so, ec, eo);
+      },
+
+      /**
+       * @method 
+       * 
+       * create WrappedRange from node
+       *
+       * @param {Node} node
+       * @return {WrappedRange}
+       */
+      createFromNode: function (node) {
+        var sc = node;
+        var so = 0;
+        var ec = node;
+        var eo = dom.nodeLength(ec);
+
+        // browsers can't target a picture or void node
+        if (dom.isVoid(sc)) {
+          so = dom.listPrev(sc).length - 1;
+          sc = sc.parentNode;
+        }
+        if (dom.isBR(ec)) {
+          eo = dom.listPrev(ec).length - 1;
+          ec = ec.parentNode;
+        } else if (dom.isVoid(ec)) {
+          eo = dom.listPrev(ec).length;
+          ec = ec.parentNode;
+        }
+
+        return this.create(sc, so, ec, eo);
+      },
+
+      /**
+       * create WrappedRange from node after position
+       *
+       * @param {Node} node
+       * @return {WrappedRange}
+       */
+      createFromNodeBefore: function (node) {
+        return this.createFromNode(node).collapse(true);
+      },
+
+      /**
+       * create WrappedRange from node after position
+       *
+       * @param {Node} node
+       * @return {WrappedRange}
+       */
+      createFromNodeAfter: function (node) {
+        return this.createFromNode(node).collapse();
+      },
+
+      /**
+       * @method 
+       * 
+       * create WrappedRange from bookmark
+       *
+       * @param {Node} editable
+       * @param {Object} bookmark
+       * @return {WrappedRange}
+       */
+      createFromBookmark : function (editable, bookmark) {
+        var sc = dom.fromOffsetPath(editable, bookmark.s.path);
+        var so = bookmark.s.offset;
+        var ec = dom.fromOffsetPath(editable, bookmark.e.path);
+        var eo = bookmark.e.offset;
+        return new WrappedRange(sc, so, ec, eo);
+      },
+
+      /**
+       * @method 
+       *
+       * create WrappedRange from paraBookmark
+       *
+       * @param {Object} bookmark
+       * @param {Node[]} paras
+       * @return {WrappedRange}
+       */
+      createFromParaBookmark: function (bookmark, paras) {
+        var so = bookmark.s.offset;
+        var eo = bookmark.e.offset;
+        var sc = dom.fromOffsetPath(list.head(paras), bookmark.s.path);
+        var ec = dom.fromOffsetPath(list.last(paras), bookmark.e.path);
+
+        return new WrappedRange(sc, so, ec, eo);
+      }
+    };
+  })();
+
+  /**
+   * @class defaults 
+   * 
+   * @singleton
+   */
+  var defaults = {
+    /** @property */
+    version: '0.6.7',
+
+    /**
+     * 
+     * for event options, reference to EventHandler.attach
+     * 
+     * @property {Object} options 
+     * @property {String/Number} [options.width=null] set editor width 
+     * @property {String/Number} [options.height=null] set editor height, ex) 300
+     * @property {String/Number} options.minHeight set minimum height of editor
+     * @property {String/Number} options.maxHeight
+     * @property {String/Number} options.focus 
+     * @property {Number} options.tabsize 
+     * @property {Boolean} options.styleWithSpan
+     * @property {Object} options.codemirror
+     * @property {Object} [options.codemirror.mode='text/html']
+     * @property {Object} [options.codemirror.htmlMode=true]
+     * @property {Object} [options.codemirror.lineNumbers=true]
+     * @property {String} [options.lang=en-US] language 'en-US', 'ko-KR', ...
+     * @property {String} [options.direction=null] text direction, ex) 'rtl'
+     * @property {Array} [options.toolbar]
+     * @property {Boolean} [options.airMode=false]
+     * @property {Array} [options.airPopover]
+     * @property {Fucntion} [options.onInit] initialize
+     * @property {Fucntion} [options.onsubmit]
+     */
+    options: {
+      width: null,                  // set editor width
+      height: null,                 // set editor height, ex) 300
+
+      minHeight: null,              // set minimum height of editor
+      maxHeight: null,              // set maximum height of editor
+
+      focus: false,                 // set focus to editable area after initializing summernote
+
+      tabsize: 4,                   // size of tab ex) 2 or 4
+      styleWithSpan: true,          // style with span (Chrome and FF only)
+
+      disableLinkTarget: false,     // hide link Target Checkbox
+      disableDragAndDrop: false,    // disable drag and drop event
+      disableResizeEditor: false,   // disable resizing editor
+
+      shortcuts: true,              // enable keyboard shortcuts
+
+      placeholder: false,           // enable placeholder text
+      prettifyHtml: true,           // enable prettifying html while toggling codeview
+
+      iconPrefix: 'fa fa-',         // prefix for css icon classes
+
+      codemirror: {                 // codemirror options
+        mode: 'text/html',
+        htmlMode: true,
+        lineNumbers: true
+      },
+
+      // language
+      lang: 'en-US',                // language 'en-US', 'ko-KR', ...
+      direction: null,              // text direction, ex) 'rtl'
+
+      // toolbar
+      toolbar: [
+        ['style', ['style']],
+        ['font', ['bold', 'italic', 'underline', 'clear']],
+        // ['font', ['bold', 'italic', 'underline', 'strikethrough', 'superscript', 'subscript', 'clear']],
+        ['fontname', ['fontname']],
+        ['fontsize', ['fontsize']],
+        ['color', ['color']],
+        ['para', ['ul', 'ol', 'paragraph']],
+        ['height', ['height']],
+        ['table', ['table']],
+        ['insert', ['link', 'picture', 'hr']],
+        ['view', ['fullscreen', 'codeview']],
+        ['help', ['help']]
+      ],
+
+      plugin : { },
+
+      // air mode: inline editor
+      airMode: false,
+      // airPopover: [
+      //   ['style', ['style']],
+      //   ['font', ['bold', 'italic', 'underline', 'clear']],
+      //   ['fontname', ['fontname']],
+      //   ['color', ['color']],
+      //   ['para', ['ul', 'ol', 'paragraph']],
+      //   ['height', ['height']],
+      //   ['table', ['table']],
+      //   ['insert', ['link', 'picture']],
+      //   ['help', ['help']]
+      // ],
+      airPopover: [
+        ['color', ['color']],
+        ['font', ['bold', 'underline', 'clear']],
+        ['para', ['ul', 'paragraph']],
+        ['table', ['table']],
+        ['insert', ['link', 'picture']]
+      ],
+
+      // style tag
+      styleTags: ['p', 'blockquote', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
+
+      // default fontName
+      defaultFontName: 'Helvetica Neue',
+
+      // fontName
+      fontNames: [
+        'Arial', 'Arial Black', 'Comic Sans MS', 'Courier New',
+        'Helvetica Neue', 'Helvetica', 'Impact', 'Lucida Grande',
+        'Tahoma', 'Times New Roman', 'Verdana'
+      ],
+      fontNamesIgnoreCheck: [],
+
+      fontSizes: ['8', '9', '10', '11', '12', '14', '18', '24', '36'],
+
+      // pallete colors(n x n)
+      colors: [
+        ['#000000', '#424242', '#636363', '#9C9C94', '#CEC6CE', '#EFEFEF', '#F7F7F7', '#FFFFFF'],
+        ['#FF0000', '#FF9C00', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#9C00FF', '#FF00FF'],
+        ['#F7C6CE', '#FFE7CE', '#FFEFC6', '#D6EFD6', '#CEDEE7', '#CEE7F7', '#D6D6E7', '#E7D6DE'],
+        ['#E79C9C', '#FFC69C', '#FFE79C', '#B5D6A5', '#A5C6CE', '#9CC6EF', '#B5A5D6', '#D6A5BD'],
+        ['#E76363', '#F7AD6B', '#FFD663', '#94BD7B', '#73A5AD', '#6BADDE', '#8C7BC6', '#C67BA5'],
+        ['#CE0000', '#E79439', '#EFC631', '#6BA54A', '#4A7B8C', '#3984C6', '#634AA5', '#A54A7B'],
+        ['#9C0000', '#B56308', '#BD9400', '#397B21', '#104A5A', '#085294', '#311873', '#731842'],
+        ['#630000', '#7B3900', '#846300', '#295218', '#083139', '#003163', '#21104A', '#4A1031']
+      ],
+
+      // lineHeight
+      lineHeights: ['1.0', '1.2', '1.4', '1.5', '1.6', '1.8', '2.0', '3.0'],
+
+      // insertTable max size
+      insertTableMaxSize: {
+        col: 10,
+        row: 10
+      },
+
+      // image
+      maximumImageFileSize: null, // size in bytes, null = no limit
+
+      // callbacks
+      oninit: null,             // initialize
+      onfocus: null,            // editable has focus
+      onblur: null,             // editable out of focus
+      onenter: null,            // enter key pressed
+      onkeyup: null,            // keyup
+      onkeydown: null,          // keydown
+      onImageUpload: null,      // imageUpload
+      onImageUploadError: null, // imageUploadError
+      onMediaDelete: null,      // media delete
+      onToolbarClick: null,
+      onsubmit: null,
+
+      /**
+       * manipulate link address when user create link
+       * @param {String} sLinkUrl
+       * @return {String}
+       */
+      onCreateLink: function (sLinkUrl) {
+        if (sLinkUrl.indexOf('@') !== -1 && sLinkUrl.indexOf(':') === -1) {
+          sLinkUrl =  'mailto:' + sLinkUrl;
+        } else if (sLinkUrl.indexOf('://') === -1) {
+          sLinkUrl = 'http://' + sLinkUrl;
+        }
+
+        return sLinkUrl;
+      },
+
+      keyMap: {
+        pc: {
+          'ENTER': 'insertParagraph',
+          'CTRL+Z': 'undo',
+          'CTRL+Y': 'redo',
+          'TAB': 'tab',
+          'SHIFT+TAB': 'untab',
+          'CTRL+B': 'bold',
+          'CTRL+I': 'italic',
+          'CTRL+U': 'underline',
+          'CTRL+SHIFT+S': 'strikethrough',
+          'CTRL+BACKSLASH': 'removeFormat',
+          'CTRL+SHIFT+L': 'justifyLeft',
+          'CTRL+SHIFT+E': 'justifyCenter',
+          'CTRL+SHIFT+R': 'justifyRight',
+          'CTRL+SHIFT+J': 'justifyFull',
+          'CTRL+SHIFT+NUM7': 'insertUnorderedList',
+          'CTRL+SHIFT+NUM8': 'insertOrderedList',
+          'CTRL+LEFTBRACKET': 'outdent',
+          'CTRL+RIGHTBRACKET': 'indent',
+          'CTRL+NUM0': 'formatPara',
+          'CTRL+NUM1': 'formatH1',
+          'CTRL+NUM2': 'formatH2',
+          'CTRL+NUM3': 'formatH3',
+          'CTRL+NUM4': 'formatH4',
+          'CTRL+NUM5': 'formatH5',
+          'CTRL+NUM6': 'formatH6',
+          'CTRL+ENTER': 'insertHorizontalRule',
+          'CTRL+K': 'showLinkDialog'
+        },
+
+        mac: {
+          'ENTER': 'insertParagraph',
+          'CMD+Z': 'undo',
+          'CMD+SHIFT+Z': 'redo',
+          'TAB': 'tab',
+          'SHIFT+TAB': 'untab',
+          'CMD+B': 'bold',
+          'CMD+I': 'italic',
+          'CMD+U': 'underline',
+          'CMD+SHIFT+S': 'strikethrough',
+          'CMD+BACKSLASH': 'removeFormat',
+          'CMD+SHIFT+L': 'justifyLeft',
+          'CMD+SHIFT+E': 'justifyCenter',
+          'CMD+SHIFT+R': 'justifyRight',
+          'CMD+SHIFT+J': 'justifyFull',
+          'CMD+SHIFT+NUM7': 'insertUnorderedList',
+          'CMD+SHIFT+NUM8': 'insertOrderedList',
+          'CMD+LEFTBRACKET': 'outdent',
+          'CMD+RIGHTBRACKET': 'indent',
+          'CMD+NUM0': 'formatPara',
+          'CMD+NUM1': 'formatH1',
+          'CMD+NUM2': 'formatH2',
+          'CMD+NUM3': 'formatH3',
+          'CMD+NUM4': 'formatH4',
+          'CMD+NUM5': 'formatH5',
+          'CMD+NUM6': 'formatH6',
+          'CMD+ENTER': 'insertHorizontalRule',
+          'CMD+K': 'showLinkDialog'
+        }
+      }
+    },
+
+    // default language: en-US
+    lang: {
+      'en-US': {
+        font: {
+          bold: 'Bold',
+          italic: 'Italic',
+          underline: 'Underline',
+          clear: 'Remove Font Style',
+          height: 'Line Height',
+          name: 'Font Family',
+          strikethrough: 'Strikethrough',
+          subscript: 'Subscript',
+          superscript: 'Superscript',
+          size: 'Font Size'
+        },
+        image: {
+          image: 'Picture',
+          insert: 'Insert Image',
+          resizeFull: 'Resize Full',
+          resizeHalf: 'Resize Half',
+          resizeQuarter: 'Resize Quarter',
+          floatLeft: 'Float Left',
+          floatRight: 'Float Right',
+          floatNone: 'Float None',
+          shapeRounded: 'Shape: Rounded',
+          shapeCircle: 'Shape: Circle',
+          shapeThumbnail: 'Shape: Thumbnail',
+          shapeNone: 'Shape: None',
+          dragImageHere: 'Drag image or text here',
+          dropImage: 'Drop image or Text',
+          selectFromFiles: 'Select from files',
+          maximumFileSize: 'Maximum file size',
+          maximumFileSizeError: 'Maximum file size exceeded.',
+          url: 'Image URL',
+          remove: 'Remove Image'
+        },
+        link: {
+          link: 'Link',
+          insert: 'Insert Link',
+          unlink: 'Unlink',
+          edit: 'Edit',
+          textToDisplay: 'Text to display',
+          url: 'To what URL should this link go?',
+          openInNewWindow: 'Open in new window'
+        },
+        table: {
+          table: 'Table'
+        },
+        hr: {
+          insert: 'Insert Horizontal Rule'
+        },
+        style: {
+          style: 'Style',
+          normal: 'Normal',
+          blockquote: 'Quote',
+          pre: 'Code',
+          h1: 'Header 1',
+          h2: 'Header 2',
+          h3: 'Header 3',
+          h4: 'Header 4',
+          h5: 'Header 5',
+          h6: 'Header 6'
+        },
+        lists: {
+          unordered: 'Unordered list',
+          ordered: 'Ordered list'
+        },
+        options: {
+          help: 'Help',
+          fullscreen: 'Full Screen',
+          codeview: 'Code View'
+        },
+        paragraph: {
+          paragraph: 'Paragraph',
+          outdent: 'Outdent',
+          indent: 'Indent',
+          left: 'Align left',
+          center: 'Align center',
+          right: 'Align right',
+          justify: 'Justify full'
+        },
+        color: {
+          recent: 'Recent Color',
+          more: 'More Color',
+          background: 'Background Color',
+          foreground: 'Foreground Color',
+          transparent: 'Transparent',
+          setTransparent: 'Set transparent',
+          reset: 'Reset',
+          resetToDefault: 'Reset to default'
+        },
+        shortcut: {
+          shortcuts: 'Keyboard shortcuts',
+          close: 'Close',
+          textFormatting: 'Text formatting',
+          action: 'Action',
+          paragraphFormatting: 'Paragraph formatting',
+          documentStyle: 'Document Style',
+          extraKeys: 'Extra keys'
+        },
+        history: {
+          undo: 'Undo',
+          redo: 'Redo'
+        }
+      }
+    }
+  };
+
+  /**
+   * @class core.async
+   *
+   * Async functions which returns `Promise`
+   *
+   * @singleton
+   * @alternateClassName async
+   */
+  var async = (function () {
+    /**
+     * @method readFileAsDataURL
+     *
+     * read contents of file as representing URL
+     *
+     * @param {File} file
+     * @return {Promise} - then: sDataUrl
+     */
+    var readFileAsDataURL = function (file) {
+      return $.Deferred(function (deferred) {
+        $.extend(new FileReader(), {
+          onload: function (e) {
+            var sDataURL = e.target.result;
+            deferred.resolve(sDataURL);
+          },
+          onerror: function () {
+            deferred.reject(this);
+          }
+        }).readAsDataURL(file);
+      }).promise();
+    };
+  
+    /**
+     * @method createImage
+     *
+     * create `<image>` from url string
+     *
+     * @param {String} sUrl
+     * @param {String} filename
+     * @return {Promise} - then: $image
+     */
+    var createImage = function (sUrl, filename) {
+      return $.Deferred(function (deferred) {
+        var $img = $('<img>');
+
+        $img.one('load', function () {
+          $img.off('error abort');
+          deferred.resolve($img);
+        }).one('error abort', function () {
+          $img.off('load').detach();
+          deferred.reject($img);
+        }).css({
+          display: 'none'
+        }).appendTo(document.body).attr({
+          'src': sUrl,
+          'data-filename': filename
+        });
+      }).promise();
+    };
+
+    return {
+      readFileAsDataURL: readFileAsDataURL,
+      createImage: createImage
+    };
+  })();
+
+  /**
+   * @class core.key
+   *
+   * Object for keycodes.
+   *
+   * @singleton
+   * @alternateClassName key
+   */
+  var key = (function () {
+    var keyMap = {
+      'BACKSPACE': 8,
+      'TAB': 9,
+      'ENTER': 13,
+      'SPACE': 32,
+
+      // Number: 0-9
+      'NUM0': 48,
+      'NUM1': 49,
+      'NUM2': 50,
+      'NUM3': 51,
+      'NUM4': 52,
+      'NUM5': 53,
+      'NUM6': 54,
+      'NUM7': 55,
+      'NUM8': 56,
+
+      // Alphabet: a-z
+      'B': 66,
+      'E': 69,
+      'I': 73,
+      'J': 74,
+      'K': 75,
+      'L': 76,
+      'R': 82,
+      'S': 83,
+      'U': 85,
+      'Y': 89,
+      'Z': 90,
+
+      'SLASH': 191,
+      'LEFTBRACKET': 219,
+      'BACKSLASH': 220,
+      'RIGHTBRACKET': 221
+    };
+
+    return {
+      /**
+       * @method isEdit
+       *
+       * @param {Number} keyCode
+       * @return {Boolean}
+       */
+      isEdit: function (keyCode) {
+        return list.contains([8, 9, 13, 32], keyCode);
+      },
+      /**
+       * @method isMove
+       *
+       * @param {Number} keyCode
+       * @return {Boolean}
+       */
+      isMove: function (keyCode) {
+        return list.contains([37, 38, 39, 40], keyCode);
+      },
+      /**
+       * @property {Object} nameFromCode
+       * @property {String} nameFromCode.8 "BACKSPACE"
+       */
+      nameFromCode: func.invertObject(keyMap),
+      code: keyMap
+    };
+  })();
+
+  /**
+   * @class editing.History
+   *
+   * Editor History
+   *
+   */
+  var History = function ($editable) {
+    var stack = [], stackOffset = -1;
+    var editable = $editable[0];
+
+    var makeSnapshot = function () {
+      var rng = range.create();
+      var emptyBookmark = {s: {path: [], offset: 0}, e: {path: [], offset: 0}};
+
+      return {
+        contents: $editable.html(),
+        bookmark: (rng ? rng.bookmark(editable) : emptyBookmark)
+      };
+    };
+
+    var applySnapshot = function (snapshot) {
+      if (snapshot.contents !== null) {
+        $editable.html(snapshot.contents);
+      }
+      if (snapshot.bookmark !== null) {
+        range.createFromBookmark(editable, snapshot.bookmark).select();
+      }
+    };
+
+    /**
+     * undo
+     */
+    this.undo = function () {
+      if (0 < stackOffset) {
+        stackOffset--;
+        applySnapshot(stack[stackOffset]);
+      }
+    };
+
+    /**
+     * redo
+     */
+    this.redo = function () {
+      if (stack.length - 1 > stackOffset) {
+        stackOffset++;
+        applySnapshot(stack[stackOffset]);
+      }
+    };
+
+    /**
+     * recorded undo
+     */
+    this.recordUndo = function () {
+      stackOffset++;
+
+      // Wash out stack after stackOffset
+      if (stack.length > stackOffset) {
+        stack = stack.slice(0, stackOffset);
+      }
+
+      // Create new snapshot and push it to the end
+      stack.push(makeSnapshot());
+    };
+
+    // Create first undo stack
+    this.recordUndo();
+  };
+
+  /**
+   * @class editing.Style
+   *
+   * Style
+   *
+   */
+  var Style = function () {
+    /**
+     * @method jQueryCSS
+     *
+     * [workaround] for old jQuery
+     * passing an array of style properties to .css()
+     * will result in an object of property-value pairs.
+     * (compability with version < 1.9)
+     *
+     * @private
+     * @param  {jQuery} $obj
+     * @param  {Array} propertyNames - An array of one or more CSS properties.
+     * @return {Object}
+     */
+    var jQueryCSS = function ($obj, propertyNames) {
+      if (agent.jqueryVersion < 1.9) {
+        var result = {};
+        $.each(propertyNames, function (idx, propertyName) {
+          result[propertyName] = $obj.css(propertyName);
+        });
+        return result;
+      }
+      return $obj.css.call($obj, propertyNames);
+    };
+
+    /**
+     * paragraph level style
+     *
+     * @param {WrappedRange} rng
+     * @param {Object} styleInfo
+     */
+    this.stylePara = function (rng, styleInfo) {
+      $.each(rng.nodes(dom.isPara, {
+        includeAncestor: true
+      }), function (idx, para) {
+        $(para).css(styleInfo);
+      });
+    };
+
+    /**
+     * insert and returns styleNodes on range.
+     *
+     * @param {WrappedRange} rng
+     * @param {Object} [options] - options for styleNodes
+     * @param {String} [options.nodeName] - default: `SPAN`
+     * @param {Boolean} [options.expandClosestSibling] - default: `false`
+     * @param {Boolean} [options.onlyPartialContains] - default: `false`
+     * @return {Node[]}
+     */
+    this.styleNodes = function (rng, options) {
+      rng = rng.splitText();
+
+      var nodeName = options && options.nodeName || 'SPAN';
+      var expandClosestSibling = !!(options && options.expandClosestSibling);
+      var onlyPartialContains = !!(options && options.onlyPartialContains);
+
+      if (rng.isCollapsed()) {
+        return [rng.insertNode(dom.create(nodeName))];
+      }
+
+      var pred = dom.makePredByNodeName(nodeName);
+      var nodes = $.map(rng.nodes(dom.isText, {
+        fullyContains: true
+      }), function (text) {
+        return dom.singleChildAncestor(text, pred) || dom.wrap(text, nodeName);
+      });
+
+      if (expandClosestSibling) {
+        if (onlyPartialContains) {
+          var nodesInRange = rng.nodes();
+          // compose with partial contains predication
+          pred = func.and(pred, function (node) {
+            return list.contains(nodesInRange, node);
+          });
+        }
+
+        return $.map(nodes, function (node) {
+          var siblings = dom.withClosestSiblings(node, pred);
+          var head = list.head(siblings);
+          var tails = list.tail(siblings);
+          $.each(tails, function (idx, elem) {
+            dom.appendChildNodes(head, elem.childNodes);
+            dom.remove(elem);
+          });
+          return list.head(siblings);
+        });
+      } else {
+        return nodes;
+      }
+    };
+
+    /**
+     * get current style on cursor
+     *
+     * @param {WrappedRange} rng
+     * @param {Node} target - target element on event
+     * @return {Object} - object contains style properties.
+     */
+    this.current = function (rng, target) {
+      var $cont = $(dom.isText(rng.sc) ? rng.sc.parentNode : rng.sc);
+      var properties = ['font-family', 'font-size', 'text-align', 'list-style-type', 'line-height'];
+      var styleInfo = jQueryCSS($cont, properties) || {};
+
+      styleInfo['font-size'] = parseInt(styleInfo['font-size'], 10);
+
+      // document.queryCommandState for toggle state
+      styleInfo['font-bold'] = document.queryCommandState('bold') ? 'bold' : 'normal';
+      styleInfo['font-italic'] = document.queryCommandState('italic') ? 'italic' : 'normal';
+      styleInfo['font-underline'] = document.queryCommandState('underline') ? 'underline' : 'normal';
+      styleInfo['font-strikethrough'] = document.queryCommandState('strikeThrough') ? 'strikethrough' : 'normal';
+      styleInfo['font-superscript'] = document.queryCommandState('superscript') ? 'superscript' : 'normal';
+      styleInfo['font-subscript'] = document.queryCommandState('subscript') ? 'subscript' : 'normal';
+
+      // list-style-type to list-style(unordered, ordered)
+      if (!rng.isOnList()) {
+        styleInfo['list-style'] = 'none';
+      } else {
+        var aOrderedType = ['circle', 'disc', 'disc-leading-zero', 'square'];
+        var isUnordered = $.inArray(styleInfo['list-style-type'], aOrderedType) > -1;
+        styleInfo['list-style'] = isUnordered ? 'unordered' : 'ordered';
+      }
+
+      var para = dom.ancestor(rng.sc, dom.isPara);
+      if (para && para.style['line-height']) {
+        styleInfo['line-height'] = para.style.lineHeight;
+      } else {
+        var lineHeight = parseInt(styleInfo['line-height'], 10) / parseInt(styleInfo['font-size'], 10);
+        styleInfo['line-height'] = lineHeight.toFixed(1);
+      }
+
+      styleInfo.image = dom.isImg(target) && target;
+      styleInfo.anchor = rng.isOnAnchor() && dom.ancestor(rng.sc, dom.isAnchor);
+      styleInfo.ancestors = dom.listAncestor(rng.sc, dom.isEditable);
+      styleInfo.range = rng;
+
+      return styleInfo;
+    };
+  };
+
+
+  /**
+   * @class editing.Bullet
+   *
+   * @alternateClassName Bullet
+   */
+  var Bullet = function () {
+    /**
+     * @method insertOrderedList
+     *
+     * toggle ordered list
+     *
+     * @type command
+     */
+    this.insertOrderedList = function () {
+      this.toggleList('OL');
+    };
+
+    /**
+     * @method insertUnorderedList
+     *
+     * toggle unordered list
+     *
+     * @type command
+     */
+    this.insertUnorderedList = function () {
+      this.toggleList('UL');
+    };
+
+    /**
+     * @method indent
+     *
+     * indent
+     *
+     * @type command
+     */
+    this.indent = function () {
+      var self = this;
+      var rng = range.create().wrapBodyInlineWithPara();
+
+      var paras = rng.nodes(dom.isPara, { includeAncestor: true });
+      var clustereds = list.clusterBy(paras, func.peq2('parentNode'));
+
+      $.each(clustereds, function (idx, paras) {
+        var head = list.head(paras);
+        if (dom.isLi(head)) {
+          self.wrapList(paras, head.parentNode.nodeName);
+        } else {
+          $.each(paras, function (idx, para) {
+            $(para).css('marginLeft', function (idx, val) {
+              return (parseInt(val, 10) || 0) + 25;
+            });
+          });
+        }
+      });
+
+      rng.select();
+    };
+
+    /**
+     * @method outdent
+     *
+     * outdent
+     *
+     * @type command
+     */
+    this.outdent = function () {
+      var self = this;
+      var rng = range.create().wrapBodyInlineWithPara();
+
+      var paras = rng.nodes(dom.isPara, { includeAncestor: true });
+      var clustereds = list.clusterBy(paras, func.peq2('parentNode'));
+
+      $.each(clustereds, function (idx, paras) {
+        var head = list.head(paras);
+        if (dom.isLi(head)) {
+          self.releaseList([paras]);
+        } else {
+          $.each(paras, function (idx, para) {
+            $(para).css('marginLeft', function (idx, val) {
+              val = (parseInt(val, 10) || 0);
+              return val > 25 ? val - 25 : '';
+            });
+          });
+        }
+      });
+
+      rng.select();
+    };
+
+    /**
+     * @method toggleList
+     *
+     * toggle list
+     *
+     * @param {String} listName - OL or UL
+     */
+    this.toggleList = function (listName) {
+      var self = this;
+      var rng = range.create().wrapBodyInlineWithPara();
+
+      var paras = rng.nodes(dom.isPara, { includeAncestor: true });
+      var bookmark = rng.paraBookmark(paras);
+      var clustereds = list.clusterBy(paras, func.peq2('parentNode'));
+
+      // paragraph to list
+      if (list.find(paras, dom.isPurePara)) {
+        var wrappedParas = [];
+        $.each(clustereds, function (idx, paras) {
+          wrappedParas = wrappedParas.concat(self.wrapList(paras, listName));
+        });
+        paras = wrappedParas;
+      // list to paragraph or change list style
+      } else {
+        var diffLists = rng.nodes(dom.isList, {
+          includeAncestor: true
+        }).filter(function (listNode) {
+          return !$.nodeName(listNode, listName);
+        });
+
+        if (diffLists.length) {
+          $.each(diffLists, function (idx, listNode) {
+            dom.replace(listNode, listName);
+          });
+        } else {
+          paras = this.releaseList(clustereds, true);
+        }
+      }
+
+      range.createFromParaBookmark(bookmark, paras).select();
+    };
+
+    /**
+     * @method wrapList
+     *
+     * @param {Node[]} paras
+     * @param {String} listName
+     * @return {Node[]}
+     */
+    this.wrapList = function (paras, listName) {
+      var head = list.head(paras);
+      var last = list.last(paras);
+
+      var prevList = dom.isList(head.previousSibling) && head.previousSibling;
+      var nextList = dom.isList(last.nextSibling) && last.nextSibling;
+
+      var listNode = prevList || dom.insertAfter(dom.create(listName || 'UL'), last);
+
+      // P to LI
+      paras = $.map(paras, function (para) {
+        return dom.isPurePara(para) ? dom.replace(para, 'LI') : para;
+      });
+
+      // append to list(<ul>, <ol>)
+      dom.appendChildNodes(listNode, paras);
+
+      if (nextList) {
+        dom.appendChildNodes(listNode, list.from(nextList.childNodes));
+        dom.remove(nextList);
+      }
+
+      return paras;
+    };
+
+    /**
+     * @method releaseList
+     *
+     * @param {Array[]} clustereds
+     * @param {Boolean} isEscapseToBody
+     * @return {Node[]}
+     */
+    this.releaseList = function (clustereds, isEscapseToBody) {
+      var releasedParas = [];
+
+      $.each(clustereds, function (idx, paras) {
+        var head = list.head(paras);
+        var last = list.last(paras);
+
+        var headList = isEscapseToBody ? dom.lastAncestor(head, dom.isList) :
+                                         head.parentNode;
+        var lastList = headList.childNodes.length > 1 ? dom.splitTree(headList, {
+          node: last.parentNode,
+          offset: dom.position(last) + 1
+        }, {
+          isSkipPaddingBlankHTML: true
+        }) : null;
+
+        var middleList = dom.splitTree(headList, {
+          node: head.parentNode,
+          offset: dom.position(head)
+        }, {
+          isSkipPaddingBlankHTML: true
+        });
+
+        paras = isEscapseToBody ? dom.listDescendant(middleList, dom.isLi) :
+                                  list.from(middleList.childNodes).filter(dom.isLi);
+
+        // LI to P
+        if (isEscapseToBody || !dom.isList(headList.parentNode)) {
+          paras = $.map(paras, function (para) {
+            return dom.replace(para, 'P');
+          });
+        }
+
+        $.each(list.from(paras).reverse(), function (idx, para) {
+          dom.insertAfter(para, headList);
+        });
+
+        // remove empty lists
+        var rootLists = list.compact([headList, middleList, lastList]);
+        $.each(rootLists, function (idx, rootList) {
+          var listNodes = [rootList].concat(dom.listDescendant(rootList, dom.isList));
+          $.each(listNodes.reverse(), function (idx, listNode) {
+            if (!dom.nodeLength(listNode)) {
+              dom.remove(listNode, true);
+            }
+          });
+        });
+
+        releasedParas = releasedParas.concat(paras);
+      });
+
+      return releasedParas;
+    };
+  };
+
+
+  /**
+   * @class editing.Typing
+   *
+   * Typing
+   *
+   */
+  var Typing = function () {
+
+    // a Bullet instance to toggle lists off
+    var bullet = new Bullet();
+
+    /**
+     * insert tab
+     *
+     * @param {jQuery} $editable
+     * @param {WrappedRange} rng
+     * @param {Number} tabsize
+     */
+    this.insertTab = function ($editable, rng, tabsize) {
+      var tab = dom.createText(new Array(tabsize + 1).join(dom.NBSP_CHAR));
+      rng = rng.deleteContents();
+      rng.insertNode(tab, true);
+
+      rng = range.create(tab, tabsize);
+      rng.select();
+    };
+
+    /**
+     * insert paragraph
+     */
+    this.insertParagraph = function () {
+      var rng = range.create();
+
+      // deleteContents on range.
+      rng = rng.deleteContents();
+
+      // Wrap range if it needs to be wrapped by paragraph
+      rng = rng.wrapBodyInlineWithPara();
+
+      // finding paragraph
+      var splitRoot = dom.ancestor(rng.sc, dom.isPara);
+
+      var nextPara;
+      // on paragraph: split paragraph
+      if (splitRoot) {
+        // if it is an empty line with li
+        if (dom.isEmpty(splitRoot) && dom.isLi(splitRoot)) {
+          // disable UL/OL and escape!
+          bullet.toggleList(splitRoot.parentNode.nodeName);
+          return;
+        // if new line has content (not a line break)
+        } else {
+          nextPara = dom.splitTree(splitRoot, rng.getStartPoint());
+
+          var emptyAnchors = dom.listDescendant(splitRoot, dom.isEmptyAnchor);
+          emptyAnchors = emptyAnchors.concat(dom.listDescendant(nextPara, dom.isEmptyAnchor));
+
+          $.each(emptyAnchors, function (idx, anchor) {
+            dom.remove(anchor);
+          });
+        }
+      // no paragraph: insert empty paragraph
+      } else {
+        var next = rng.sc.childNodes[rng.so];
+        nextPara = $(dom.emptyPara)[0];
+        if (next) {
+          rng.sc.insertBefore(nextPara, next);
+        } else {
+          rng.sc.appendChild(nextPara);
+        }
+      }
+
+      range.create(nextPara, 0).normalize().select();
+
+    };
+
+  };
+
+  /**
+   * @class editing.Table
+   *
+   * Table
+   *
+   */
+  var Table = function () {
+    /**
+     * handle tab key
+     *
+     * @param {WrappedRange} rng
+     * @param {Boolean} isShift
+     */
+    this.tab = function (rng, isShift) {
+      var cell = dom.ancestor(rng.commonAncestor(), dom.isCell);
+      var table = dom.ancestor(cell, dom.isTable);
+      var cells = dom.listDescendant(table, dom.isCell);
+
+      var nextCell = list[isShift ? 'prev' : 'next'](cells, cell);
+      if (nextCell) {
+        range.create(nextCell, 0).select();
+      }
+    };
+
+    /**
+     * create empty table element
+     *
+     * @param {Number} rowCount
+     * @param {Number} colCount
+     * @return {Node}
+     */
+    this.createTable = function (colCount, rowCount) {
+      var tds = [], tdHTML;
+      for (var idxCol = 0; idxCol < colCount; idxCol++) {
+        tds.push('<td>' + dom.blank + '</td>');
+      }
+      tdHTML = tds.join('');
+
+      var trs = [], trHTML;
+      for (var idxRow = 0; idxRow < rowCount; idxRow++) {
+        trs.push('<tr>' + tdHTML + '</tr>');
+      }
+      trHTML = trs.join('');
+      return $('<table class="table table-bordered">' + trHTML + '</table>')[0];
+    };
+  };
+
+
+  var KEY_BOGUS = 'bogus';
+
+  /**
+   * @class editing.Editor
+   *
+   * Editor
+   *
+   */
+  var Editor = function (handler) {
+
+    var style = new Style();
+    var table = new Table();
+    var typing = new Typing();
+    var bullet = new Bullet();
+
+    /**
+     * @method createRange
+     *
+     * create range
+     *
+     * @param {jQuery} $editable
+     * @return {WrappedRange}
+     */
+    this.createRange = function ($editable) {
+      this.focus($editable);
+      return range.create();
+    };
+
+    /**
+     * @method saveRange
+     *
+     * save current range
+     *
+     * @param {jQuery} $editable
+     * @param {Boolean} [thenCollapse=false]
+     */
+    this.saveRange = function ($editable, thenCollapse) {
+      this.focus($editable);
+      $editable.data('range', range.create());
+      if (thenCollapse) {
+        range.create().collapse().select();
+      }
+    };
+
+    /**
+     * @method saveRange
+     *
+     * save current node list to $editable.data('childNodes')
+     *
+     * @param {jQuery} $editable
+     */
+    this.saveNode = function ($editable) {
+      // copy child node reference
+      var copy = [];
+      for (var key  = 0, len = $editable[0].childNodes.length; key < len; key++) {
+        copy.push($editable[0].childNodes[key]);
+      }
+      $editable.data('childNodes', copy);
+    };
+
+    /**
+     * @method restoreRange
+     *
+     * restore lately range
+     *
+     * @param {jQuery} $editable
+     */
+    this.restoreRange = function ($editable) {
+      var rng = $editable.data('range');
+      if (rng) {
+        rng.select();
+        this.focus($editable);
+      }
+    };
+
+    /**
+     * @method restoreNode
+     *
+     * restore lately node list
+     *
+     * @param {jQuery} $editable
+     */
+    this.restoreNode = function ($editable) {
+      $editable.html('');
+      var child = $editable.data('childNodes');
+      for (var index = 0, len = child.length; index < len; index++) {
+        $editable[0].appendChild(child[index]);
+      }
+    };
+    /**
+     * @method currentStyle
+     *
+     * current style
+     *
+     * @param {Node} target
+     * @return {Boolean} false if range is no
+     */
+    this.currentStyle = function (target) {
+      var rng = range.create();
+      return rng ? rng.isOnEditable() && style.current(rng, target) : false;
+    };
+
+    var triggerOnBeforeChange = function ($editable) {
+      var $holder = dom.makeLayoutInfo($editable).holder();
+      handler.bindCustomEvent(
+        $holder, $editable.data('callbacks'), 'before.command'
+      )($editable.html(), $editable);
+    };
+
+    var triggerOnChange = function ($editable) {
+      var $holder = dom.makeLayoutInfo($editable).holder();
+      handler.bindCustomEvent(
+        $holder, $editable.data('callbacks'), 'change'
+      )($editable.html(), $editable);
+    };
+
+    /**
+     * @method undo
+     * undo
+     * @param {jQuery} $editable
+     */
+    this.undo = function ($editable) {
+      triggerOnBeforeChange($editable);
+      $editable.data('NoteHistory').undo();
+      triggerOnChange($editable);
+    };
+
+    /**
+     * @method redo
+     * redo
+     * @param {jQuery} $editable
+     */
+    this.redo = function ($editable) {
+      triggerOnBeforeChange($editable);
+      $editable.data('NoteHistory').redo();
+      triggerOnChange($editable);
+    };
+
+    var self = this;
+    /**
+     * @method beforeCommand
+     * before command
+     * @param {jQuery} $editable
+     */
+    var beforeCommand = this.beforeCommand = function ($editable) {
+      triggerOnBeforeChange($editable);
+      // keep focus on editable before command execution
+      self.focus($editable);
+    };
+
+    /**
+     * @method afterCommand
+     * after command
+     * @param {jQuery} $editable
+     * @param {Boolean} isPreventTrigger
+     */
+    var afterCommand = this.afterCommand = function ($editable, isPreventTrigger) {
+      $editable.data('NoteHistory').recordUndo();
+      if (!isPreventTrigger) {
+        triggerOnChange($editable);
+      }
+    };
+
+    /**
+     * @method bold
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method italic
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method underline
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method strikethrough
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method formatBlock
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method superscript
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method subscript
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method justifyLeft
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method justifyCenter
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method justifyRight
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method justifyFull
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method formatBlock
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method removeFormat
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method backColor
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method foreColor
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method insertHorizontalRule
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /**
+     * @method fontName
+     *
+     * change font name
+     *
+     * @param {jQuery} $editable
+     * @param {Mixed} value
+     */
+
+    /* jshint ignore:start */
+    // native commands(with execCommand), generate function for execCommand
+    var commands = ['bold', 'italic', 'underline', 'strikethrough', 'superscript', 'subscript',
+                    'justifyLeft', 'justifyCenter', 'justifyRight', 'justifyFull',
+                    'formatBlock', 'removeFormat',
+                    'backColor', 'foreColor', 'insertHorizontalRule', 'fontName'];
+
+    for (var idx = 0, len = commands.length; idx < len; idx ++) {
+      this[commands[idx]] = (function (sCmd) {
+        return function ($editable, value) {
+          beforeCommand($editable);
+
+          document.execCommand(sCmd, false, value);
+
+          afterCommand($editable, true);
+        };
+      })(commands[idx]);
+    }
+    /* jshint ignore:end */
+
+    /**
+     * @method tab
+     *
+     * handle tab key
+     *
+     * @param {jQuery} $editable
+     * @param {Object} options
+     */
+    this.tab = function ($editable, options) {
+      var rng = this.createRange($editable);
+      if (rng.isCollapsed() && rng.isOnCell()) {
+        table.tab(rng);
+      } else {
+        beforeCommand($editable);
+        typing.insertTab($editable, rng, options.tabsize);
+        afterCommand($editable);
+      }
+    };
+
+    /**
+     * @method untab
+     *
+     * handle shift+tab key
+     *
+     */
+    this.untab = function ($editable) {
+      var rng = this.createRange($editable);
+      if (rng.isCollapsed() && rng.isOnCell()) {
+        table.tab(rng, true);
+      }
+    };
+
+    /**
+     * @method insertParagraph
+     *
+     * insert paragraph
+     *
+     * @param {Node} $editable
+     */
+    this.insertParagraph = function ($editable) {
+      beforeCommand($editable);
+      typing.insertParagraph($editable);
+      afterCommand($editable);
+    };
+
+    /**
+     * @method insertOrderedList
+     *
+     * @param {jQuery} $editable
+     */
+    this.insertOrderedList = function ($editable) {
+      beforeCommand($editable);
+      bullet.insertOrderedList($editable);
+      afterCommand($editable);
+    };
+
+    /**
+     * @param {jQuery} $editable
+     */
+    this.insertUnorderedList = function ($editable) {
+      beforeCommand($editable);
+      bullet.insertUnorderedList($editable);
+      afterCommand($editable);
+    };
+
+    /**
+     * @param {jQuery} $editable
+     */
+    this.indent = function ($editable) {
+      beforeCommand($editable);
+      bullet.indent($editable);
+      afterCommand($editable);
+    };
+
+    /**
+     * @param {jQuery} $editable
+     */
+    this.outdent = function ($editable) {
+      beforeCommand($editable);
+      bullet.outdent($editable);
+      afterCommand($editable);
+    };
+
+    /**
+     * insert image
+     *
+     * @param {jQuery} $editable
+     * @param {String} sUrl
+     */
+    this.insertImage = function ($editable, sUrl, filename) {
+      async.createImage(sUrl, filename).then(function ($image) {
+        beforeCommand($editable);
+        $image.css({
+          display: '',
+          width: Math.min($editable.width(), $image.width())
+        });
+        range.create().insertNode($image[0]);
+        range.createFromNodeAfter($image[0]).select();
+        afterCommand($editable);
+      }).fail(function () {
+        var $holder = dom.makeLayoutInfo($editable).holder();
+        handler.bindCustomEvent(
+          $holder, $editable.data('callbacks'), 'image.upload.error'
+        )();
+      });
+    };
+
+    /**
+     * @method insertNode
+     * insert node
+     * @param {Node} $editable
+     * @param {Node} node
+     */
+    this.insertNode = function ($editable, node) {
+      beforeCommand($editable);
+      range.create().insertNode(node);
+      range.createFromNodeAfter(node).select();
+      afterCommand($editable);
+    };
+
+    /**
+     * insert text
+     * @param {Node} $editable
+     * @param {String} text
+     */
+    this.insertText = function ($editable, text) {
+      beforeCommand($editable);
+      var textNode = range.create().insertNode(dom.createText(text));
+      range.create(textNode, dom.nodeLength(textNode)).select();
+      afterCommand($editable);
+    };
+
+    /**
+     * paste HTML
+     * @param {Node} $editable
+     * @param {String} markup
+     */
+    this.pasteHTML = function ($editable, markup) {
+      beforeCommand($editable);
+      var contents = range.create().pasteHTML(markup);
+      range.createFromNodeAfter(list.last(contents)).select();
+      afterCommand($editable);
+    };
+
+    /**
+     * formatBlock
+     *
+     * @param {jQuery} $editable
+     * @param {String} tagName
+     */
+    this.formatBlock = function ($editable, tagName) {
+      beforeCommand($editable);
+      // [workaround] for MSIE, IE need `<`
+      tagName = agent.isMSIE ? '<' + tagName + '>' : tagName;
+      document.execCommand('FormatBlock', false, tagName);
+      afterCommand($editable);
+    };
+
+    this.formatPara = function ($editable) {
+      beforeCommand($editable);
+      this.formatBlock($editable, 'P');
+      afterCommand($editable);
+    };
+
+    /* jshint ignore:start */
+    for (var idx = 1; idx <= 6; idx ++) {
+      this['formatH' + idx] = function (idx) {
+        return function ($editable) {
+          this.formatBlock($editable, 'H' + idx);
+        };
+      }(idx);
+    };
+    /* jshint ignore:end */
+
+    /**
+     * fontSize
+     *
+     * @param {jQuery} $editable
+     * @param {String} value - px
+     */
+    this.fontSize = function ($editable, value) {
+      var rng = range.create();
+      var isCollapsed = rng.isCollapsed();
+
+      if (isCollapsed) {
+        var spans = style.styleNodes(rng);
+        var firstSpan = list.head(spans);
+
+        $(spans).css({
+          'font-size': value + 'px'
+        });
+
+        // [workaround] added styled bogus span for style
+        //  - also bogus character needed for cursor position
+        if (firstSpan && !dom.nodeLength(firstSpan)) {
+          firstSpan.innerHTML = dom.ZERO_WIDTH_NBSP_CHAR;
+          range.createFromNodeAfter(firstSpan.firstChild).select();
+          $editable.data(KEY_BOGUS, firstSpan);
+        }
+      } else {
+        beforeCommand($editable);
+        $(style.styleNodes(rng)).css({
+          'font-size': value + 'px'
+        });
+        afterCommand($editable);
+      }
+    };
+
+    /**
+     * remove bogus node and character
+     */
+    this.removeBogus = function ($editable) {
+      var bogusNode = $editable.data(KEY_BOGUS);
+      if (!bogusNode) {
+        return;
+      }
+
+      var textNode = list.find(list.from(bogusNode.childNodes), dom.isText);
+
+      var bogusCharIdx = textNode.nodeValue.indexOf(dom.ZERO_WIDTH_NBSP_CHAR);
+      if (bogusCharIdx !== -1) {
+        textNode.deleteData(bogusCharIdx, 1);
+      }
+
+      if (dom.isEmpty(bogusNode)) {
+        dom.remove(bogusNode);
+      }
+
+      $editable.removeData(KEY_BOGUS);
+    };
+
+    /**
+     * lineHeight
+     * @param {jQuery} $editable
+     * @param {String} value
+     */
+    this.lineHeight = function ($editable, value) {
+      beforeCommand($editable);
+      style.stylePara(range.create(), {
+        lineHeight: value
+      });
+      afterCommand($editable);
+    };
+
+    /**
+     * unlink
+     *
+     * @type command
+     *
+     * @param {jQuery} $editable
+     */
+    this.unlink = function ($editable) {
+      var rng = this.createRange();
+      if (rng.isOnAnchor()) {
+        var anchor = dom.ancestor(rng.sc, dom.isAnchor);
+        rng = range.createFromNode(anchor);
+        rng.select();
+
+        beforeCommand($editable);
+        document.execCommand('unlink');
+        afterCommand($editable);
+      }
+    };
+
+    /**
+     * create link (command)
+     *
+     * @param {jQuery} $editable
+     * @param {Object} linkInfo
+     * @param {Object} options
+     */
+    this.createLink = function ($editable, linkInfo, options) {
+      var linkUrl = linkInfo.url;
+      var linkText = linkInfo.text;
+      var isNewWindow = linkInfo.newWindow;
+      var rng = linkInfo.range;
+      var isTextChanged = rng.toString() !== linkText;
+
+      beforeCommand($editable);
+
+      if (options.onCreateLink) {
+        linkUrl = options.onCreateLink(linkUrl);
+      }
+
+      var anchors = [];
+      if (isTextChanged) {
+        // Create a new link when text changed.
+        var anchor = rng.insertNode($('<A>' + linkText + '</A>')[0]);
+        anchors.push(anchor);
+      } else {
+        anchors = style.styleNodes(rng, {
+          nodeName: 'A',
+          expandClosestSibling: true,
+          onlyPartialContains: true
+        });
+      }
+
+      $.each(anchors, function (idx, anchor) {
+        $(anchor).attr('href', linkUrl);
+        if (isNewWindow) {
+          $(anchor).attr('target', '_blank');
+        } else {
+          $(anchor).removeAttr('target');
+        }
+      });
+
+      var startRange = range.createFromNodeBefore(list.head(anchors));
+      var startPoint = startRange.getStartPoint();
+      var endRange = range.createFromNodeAfter(list.last(anchors));
+      var endPoint = endRange.getEndPoint();
+
+      range.create(
+        startPoint.node,
+        startPoint.offset,
+        endPoint.node,
+        endPoint.offset
+      ).select();
+
+      afterCommand($editable);
+    };
+
+    /**
+     * returns link info
+     *
+     * @return {Object}
+     * @return {WrappedRange} return.range
+     * @return {String} return.text
+     * @return {Boolean} [return.isNewWindow=true]
+     * @return {String} [return.url=""]
+     */
+    this.getLinkInfo = function ($editable) {
+      this.focus($editable);
+
+      var rng = range.create().expand(dom.isAnchor);
+
+      // Get the first anchor on range(for edit).
+      var $anchor = $(list.head(rng.nodes(dom.isAnchor)));
+
+      return {
+        range: rng,
+        text: rng.toString(),
+        isNewWindow: $anchor.length ? $anchor.attr('target') === '_blank' : false,
+        url: $anchor.length ? $anchor.attr('href') : ''
+      };
+    };
+
+    /**
+     * setting color
+     *
+     * @param {Node} $editable
+     * @param {Object} sObjColor  color code
+     * @param {String} sObjColor.foreColor foreground color
+     * @param {String} sObjColor.backColor background color
+     */
+    this.color = function ($editable, sObjColor) {
+      var oColor = JSON.parse(sObjColor);
+      var foreColor = oColor.foreColor, backColor = oColor.backColor;
+
+      beforeCommand($editable);
+
+      if (foreColor) { document.execCommand('foreColor', false, foreColor); }
+      if (backColor) { document.execCommand('backColor', false, backColor); }
+
+      afterCommand($editable);
+    };
+
+    /**
+     * insert Table
+     *
+     * @param {Node} $editable
+     * @param {String} sDim dimension of table (ex : "5x5")
+     */
+    this.insertTable = function ($editable, sDim) {
+      var dimension = sDim.split('x');
+      beforeCommand($editable);
+
+      var rng = range.create().deleteContents();
+      rng.insertNode(table.createTable(dimension[0], dimension[1]));
+      afterCommand($editable);
+    };
+
+    /**
+     * float me
+     *
+     * @param {jQuery} $editable
+     * @param {String} value
+     * @param {jQuery} $target
+     */
+    this.floatMe = function ($editable, value, $target) {
+      beforeCommand($editable);
+      $target.css('float', value);
+      afterCommand($editable);
+    };
+
+    /**
+     * change image shape
+     *
+     * @param {jQuery} $editable
+     * @param {String} value css class
+     * @param {Node} $target
+     */
+    this.imageShape = function ($editable, value, $target) {
+      beforeCommand($editable);
+
+      $target.removeClass('img-rounded img-circle img-thumbnail');
+
+      if (value) {
+        $target.addClass(value);
+      }
+
+      afterCommand($editable);
+    };
+
+    /**
+     * resize overlay element
+     * @param {jQuery} $editable
+     * @param {String} value
+     * @param {jQuery} $target - target element
+     */
+    this.resize = function ($editable, value, $target) {
+      beforeCommand($editable);
+
+      $target.css({
+        width: value * 100 + '%',
+        height: ''
+      });
+
+      afterCommand($editable);
+    };
+
+    /**
+     * @param {Position} pos
+     * @param {jQuery} $target - target element
+     * @param {Boolean} [bKeepRatio] - keep ratio
+     */
+    this.resizeTo = function (pos, $target, bKeepRatio) {
+      var imageSize;
+      if (bKeepRatio) {
+        var newRatio = pos.y / pos.x;
+        var ratio = $target.data('ratio');
+        imageSize = {
+          width: ratio > newRatio ? pos.x : pos.y / ratio,
+          height: ratio > newRatio ? pos.x * ratio : pos.y
+        };
+      } else {
+        imageSize = {
+          width: pos.x,
+          height: pos.y
+        };
+      }
+
+      $target.css(imageSize);
+    };
+
+    /**
+     * remove media object
+     *
+     * @param {jQuery} $editable
+     * @param {String} value - dummy argument (for keep interface)
+     * @param {jQuery} $target - target element
+     */
+    this.removeMedia = function ($editable, value, $target) {
+      beforeCommand($editable);
+      $target.detach();
+
+      handler.bindCustomEvent(
+        $(), $editable.data('callbacks'), 'media.delete'
+      )($target, $editable);
+
+      afterCommand($editable);
+    };
+
+    /**
+     * set focus
+     *
+     * @param $editable
+     */
+    this.focus = function ($editable) {
+      $editable.focus();
+
+      // [workaround] for firefox bug http://goo.gl/lVfAaI
+      if (agent.isFF && !range.create().isOnEditable()) {
+        range.createFromNode($editable[0])
+             .normalize()
+             .collapse()
+             .select();
+      }
+    };
+  };
+
+  /**
+   * @class module.Button
+   *
+   * Button
+   */
+  var Button = function () {
+    /**
+     * update button status
+     *
+     * @param {jQuery} $container
+     * @param {Object} styleInfo
+     */
+    this.update = function ($container, styleInfo) {
+      /**
+       * handle dropdown's check mark (for fontname, fontsize, lineHeight).
+       * @param {jQuery} $btn
+       * @param {Number} value
+       */
+      var checkDropdownMenu = function ($btn, value) {
+        $btn.find('.dropdown-menu li a').each(function () {
+          // always compare string to avoid creating another func.
+          var isChecked = ($(this).data('value') + '') === (value + '');
+          this.className = isChecked ? 'checked' : '';
+        });
+      };
+
+      /**
+       * update button state(active or not).
+       *
+       * @private
+       * @param {String} selector
+       * @param {Function} pred
+       */
+      var btnState = function (selector, pred) {
+        var $btn = $container.find(selector);
+        $btn.toggleClass('active', pred());
+      };
+
+      if (styleInfo.image) {
+        var $img = $(styleInfo.image);
+
+        btnState('button[data-event="imageShape"][data-value="img-rounded"]', function () {
+          return $img.hasClass('img-rounded');
+        });
+        btnState('button[data-event="imageShape"][data-value="img-circle"]', function () {
+          return $img.hasClass('img-circle');
+        });
+        btnState('button[data-event="imageShape"][data-value="img-thumbnail"]', function () {
+          return $img.hasClass('img-thumbnail');
+        });
+        btnState('button[data-event="imageShape"]:not([data-value])', function () {
+          return !$img.is('.img-rounded, .img-circle, .img-thumbnail');
+        });
+
+        var imgFloat = $img.css('float');
+        btnState('button[data-event="floatMe"][data-value="left"]', function () {
+          return imgFloat === 'left';
+        });
+        btnState('button[data-event="floatMe"][data-value="right"]', function () {
+          return imgFloat === 'right';
+        });
+        btnState('button[data-event="floatMe"][data-value="none"]', function () {
+          return imgFloat !== 'left' && imgFloat !== 'right';
+        });
+
+        var style = $img.attr('style');
+        btnState('button[data-event="resize"][data-value="1"]', function () {
+          return !!/(^|\s)(max-)?width\s*:\s*100%/.test(style);
+        });
+        btnState('button[data-event="resize"][data-value="0.5"]', function () {
+          return !!/(^|\s)(max-)?width\s*:\s*50%/.test(style);
+        });
+        btnState('button[data-event="resize"][data-value="0.25"]', function () {
+          return !!/(^|\s)(max-)?width\s*:\s*25%/.test(style);
+        });
+        return;
+      }
+
+      // fontname
+      var $fontname = $container.find('.note-fontname');
+      if ($fontname.length) {
+        var selectedFont = styleInfo['font-family'];
+        if (!!selectedFont) {
+
+          var list = selectedFont.split(',');
+          for (var i = 0, len = list.length; i < len; i++) {
+            selectedFont = list[i].replace(/[\'\"]/g, '').replace(/\s+$/, '').replace(/^\s+/, '');
+            if (agent.isFontInstalled(selectedFont)) {
+              break;
+            }
+          }
+          
+          $fontname.find('.note-current-fontname').text(selectedFont);
+          checkDropdownMenu($fontname, selectedFont);
+
+        }
+      }
+
+      // fontsize
+      var $fontsize = $container.find('.note-fontsize');
+      $fontsize.find('.note-current-fontsize').text(styleInfo['font-size']);
+      checkDropdownMenu($fontsize, parseFloat(styleInfo['font-size']));
+
+      // lineheight
+      var $lineHeight = $container.find('.note-height');
+      checkDropdownMenu($lineHeight, parseFloat(styleInfo['line-height']));
+
+      btnState('button[data-event="bold"]', function () {
+        return styleInfo['font-bold'] === 'bold';
+      });
+      btnState('button[data-event="italic"]', function () {
+        return styleInfo['font-italic'] === 'italic';
+      });
+      btnState('button[data-event="underline"]', function () {
+        return styleInfo['font-underline'] === 'underline';
+      });
+      btnState('button[data-event="strikethrough"]', function () {
+        return styleInfo['font-strikethrough'] === 'strikethrough';
+      });
+      btnState('button[data-event="superscript"]', function () {
+        return styleInfo['font-superscript'] === 'superscript';
+      });
+      btnState('button[data-event="subscript"]', function () {
+        return styleInfo['font-subscript'] === 'subscript';
+      });
+      btnState('button[data-event="justifyLeft"]', function () {
+        return styleInfo['text-align'] === 'left' || styleInfo['text-align'] === 'start';
+      });
+      btnState('button[data-event="justifyCenter"]', function () {
+        return styleInfo['text-align'] === 'center';
+      });
+      btnState('button[data-event="justifyRight"]', function () {
+        return styleInfo['text-align'] === 'right';
+      });
+      btnState('button[data-event="justifyFull"]', function () {
+        return styleInfo['text-align'] === 'justify';
+      });
+      btnState('button[data-event="insertUnorderedList"]', function () {
+        return styleInfo['list-style'] === 'unordered';
+      });
+      btnState('button[data-event="insertOrderedList"]', function () {
+        return styleInfo['list-style'] === 'ordered';
+      });
+    };
+
+    /**
+     * update recent color
+     *
+     * @param {Node} button
+     * @param {String} eventName
+     * @param {Mixed} value
+     */
+    this.updateRecentColor = function (button, eventName, value) {
+      var $color = $(button).closest('.note-color');
+      var $recentColor = $color.find('.note-recent-color');
+      var colorInfo = JSON.parse($recentColor.attr('data-value'));
+      colorInfo[eventName] = value;
+      $recentColor.attr('data-value', JSON.stringify(colorInfo));
+      var sKey = eventName === 'backColor' ? 'background-color' : 'color';
+      $recentColor.find('i').css(sKey, value);
+    };
+  };
+
+  /**
+   * @class module.Toolbar
+   *
+   * Toolbar
+   */
+  var Toolbar = function () {
+    var button = new Button();
+
+    this.update = function ($toolbar, styleInfo) {
+      button.update($toolbar, styleInfo);
+    };
+
+    /**
+     * @param {Node} button
+     * @param {String} eventName
+     * @param {String} value
+     */
+    this.updateRecentColor = function (buttonNode, eventName, value) {
+      button.updateRecentColor(buttonNode, eventName, value);
+    };
+
+    /**
+     * activate buttons exclude codeview
+     * @param {jQuery} $toolbar
+     */
+    this.activate = function ($toolbar) {
+      $toolbar.find('button')
+              .not('button[data-event="codeview"]')
+              .removeClass('disabled');
+    };
+
+    /**
+     * deactivate buttons exclude codeview
+     * @param {jQuery} $toolbar
+     */
+    this.deactivate = function ($toolbar) {
+      $toolbar.find('button')
+              .not('button[data-event="codeview"]')
+              .addClass('disabled');
+    };
+
+    /**
+     * @param {jQuery} $container
+     * @param {Boolean} [bFullscreen=false]
+     */
+    this.updateFullscreen = function ($container, bFullscreen) {
+      var $btn = $container.find('button[data-event="fullscreen"]');
+      $btn.toggleClass('active', bFullscreen);
+    };
+
+    /**
+     * @param {jQuery} $container
+     * @param {Boolean} [isCodeview=false]
+     */
+    this.updateCodeview = function ($container, isCodeview) {
+      var $btn = $container.find('button[data-event="codeview"]');
+      $btn.toggleClass('active', isCodeview);
+
+      if (isCodeview) {
+        this.deactivate($container);
+      } else {
+        this.activate($container);
+      }
+    };
+
+    /**
+     * get button in toolbar 
+     *
+     * @param {jQuery} $editable
+     * @param {String} name
+     * @return {jQuery}
+     */
+    this.get = function ($editable, name) {
+      var $toolbar = dom.makeLayoutInfo($editable).toolbar();
+
+      return $toolbar.find('[data-name=' + name + ']');
+    };
+
+    /**
+     * set button state
+     * @param {jQuery} $editable
+     * @param {String} name
+     * @param {Boolean} [isActive=true]
+     */
+    this.setButtonState = function ($editable, name, isActive) {
+      isActive = (isActive === false) ? false : true;
+
+      var $button = this.get($editable, name);
+      $button.toggleClass('active', isActive);
+    };
+  };
+
+  var EDITABLE_PADDING = 24;
+
+  var Statusbar = function () {
+    var $document = $(document);
+
+    this.attach = function (layoutInfo, options) {
+      if (!options.disableResizeEditor) {
+        layoutInfo.statusbar().on('mousedown', hStatusbarMousedown);
+      }
+    };
+
+    /**
+     * `mousedown` event handler on statusbar
+     *
+     * @param {MouseEvent} event
+     */
+    var hStatusbarMousedown = function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      var $editable = dom.makeLayoutInfo(event.target).editable();
+      var editableTop = $editable.offset().top - $document.scrollTop();
+
+      var layoutInfo = dom.makeLayoutInfo(event.currentTarget || event.target);
+      var options = layoutInfo.editor().data('options');
+
+      $document.on('mousemove', function (event) {
+        var nHeight = event.clientY - (editableTop + EDITABLE_PADDING);
+
+        nHeight = (options.minHeight > 0) ? Math.max(nHeight, options.minHeight) : nHeight;
+        nHeight = (options.maxHeight > 0) ? Math.min(nHeight, options.maxHeight) : nHeight;
+
+        $editable.height(nHeight);
+      }).one('mouseup', function () {
+        $document.off('mousemove');
+      });
+    };
+  };
+
+  /**
+   * @class module.Popover
+   *
+   * Popover (http://getbootstrap.com/javascript/#popovers)
+   *
+   */
+  var Popover = function () {
+    var button = new Button();
+
+    /**
+     * returns position from placeholder
+     *
+     * @private
+     * @param {Node} placeholder
+     * @param {Boolean} isAirMode
+     * @return {Object}
+     * @return {Number} return.left
+     * @return {Number} return.top
+     */
+    var posFromPlaceholder = function (placeholder, isAirMode) {
+      var $placeholder = $(placeholder);
+      var pos = isAirMode ? $placeholder.offset() : $placeholder.position();
+      var height = $placeholder.outerHeight(true); // include margin
+
+      // popover below placeholder.
+      return {
+        left: pos.left,
+        top: pos.top + height
+      };
+    };
+
+    /**
+     * show popover
+     *
+     * @private
+     * @param {jQuery} popover
+     * @param {Position} pos
+     */
+    var showPopover = function ($popover, pos) {
+      $popover.css({
+        display: 'block',
+        left: pos.left,
+        top: pos.top
+      });
+    };
+
+    var PX_POPOVER_ARROW_OFFSET_X = 20;
+
+    /**
+     * update current state
+     * @param {jQuery} $popover - popover container
+     * @param {Object} styleInfo - style object
+     * @param {Boolean} isAirMode
+     */
+    this.update = function ($popover, styleInfo, isAirMode) {
+      button.update($popover, styleInfo);
+
+      var $linkPopover = $popover.find('.note-link-popover');
+      if (styleInfo.anchor) {
+        var $anchor = $linkPopover.find('a');
+        var href = $(styleInfo.anchor).attr('href');
+        var target = $(styleInfo.anchor).attr('target');
+        $anchor.attr('href', href).html(href);
+        if (!target) {
+          $anchor.removeAttr('target');
+        } else {
+          $anchor.attr('target', '_blank');
+        }
+        showPopover($linkPopover, posFromPlaceholder(styleInfo.anchor, isAirMode));
+      } else {
+        $linkPopover.hide();
+      }
+
+      var $imagePopover = $popover.find('.note-image-popover');
+      if (styleInfo.image) {
+        showPopover($imagePopover, posFromPlaceholder(styleInfo.image, isAirMode));
+      } else {
+        $imagePopover.hide();
+      }
+
+      var $airPopover = $popover.find('.note-air-popover');
+      if (isAirMode && !styleInfo.range.isCollapsed()) {
+        var rect = list.last(styleInfo.range.getClientRects());
+        if (rect) {
+          var bnd = func.rect2bnd(rect);
+          showPopover($airPopover, {
+            left: Math.max(bnd.left + bnd.width / 2 - PX_POPOVER_ARROW_OFFSET_X, 0),
+            top: bnd.top + bnd.height
+          });
+        }
+      } else {
+        $airPopover.hide();
+      }
+    };
+
+    /**
+     * @param {Node} button
+     * @param {String} eventName
+     * @param {String} value
+     */
+    this.updateRecentColor = function (button, eventName, value) {
+      button.updateRecentColor(button, eventName, value);
+    };
+
+    /**
+     * hide all popovers
+     * @param {jQuery} $popover - popover container
+     */
+    this.hide = function ($popover) {
+      $popover.children().hide();
+    };
+  };
+
+  /**
+   * @class module.Handle
+   *
+   * Handle
+   */
+  var Handle = function (handler) {
+    var $document = $(document);
+
+    /**
+     * `mousedown` event handler on $handle
+     *  - controlSizing: resize image
+     *
+     * @param {MouseEvent} event
+     */
+    var hHandleMousedown = function (event) {
+      if (dom.isControlSizing(event.target)) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        var layoutInfo = dom.makeLayoutInfo(event.target),
+            $handle = layoutInfo.handle(),
+            $popover = layoutInfo.popover(),
+            $editable = layoutInfo.editable(),
+            $editor = layoutInfo.editor();
+
+        var target = $handle.find('.note-control-selection').data('target'),
+            $target = $(target), posStart = $target.offset(),
+            scrollTop = $document.scrollTop();
+
+        var isAirMode = $editor.data('options').airMode;
+
+        $document.on('mousemove', function (event) {
+          handler.invoke('editor.resizeTo', {
+            x: event.clientX - posStart.left,
+            y: event.clientY - (posStart.top - scrollTop)
+          }, $target, !event.shiftKey);
+
+          handler.invoke('handle.update', $handle, {image: target}, isAirMode);
+          handler.invoke('popover.update', $popover, {image: target}, isAirMode);
+        }).one('mouseup', function () {
+          $document.off('mousemove');
+          handler.invoke('editor.afterCommand', $editable);
+        });
+
+        if (!$target.data('ratio')) { // original ratio.
+          $target.data('ratio', $target.height() / $target.width());
+        }
+      }
+    };
+
+    this.attach = function (layoutInfo) {
+      layoutInfo.handle().on('mousedown', hHandleMousedown);
+    };
+
+    /**
+     * update handle
+     * @param {jQuery} $handle
+     * @param {Object} styleInfo
+     * @param {Boolean} isAirMode
+     */
+    this.update = function ($handle, styleInfo, isAirMode) {
+      var $selection = $handle.find('.note-control-selection');
+      if (styleInfo.image) {
+        var $image = $(styleInfo.image);
+        var pos = isAirMode ? $image.offset() : $image.position();
+
+        // include margin
+        var imageSize = {
+          w: $image.outerWidth(true),
+          h: $image.outerHeight(true)
+        };
+
+        $selection.css({
+          display: 'block',
+          left: pos.left,
+          top: pos.top,
+          width: imageSize.w,
+          height: imageSize.h
+        }).data('target', styleInfo.image); // save current image element.
+        var sizingText = imageSize.w + 'x' + imageSize.h;
+        $selection.find('.note-control-selection-info').text(sizingText);
+      } else {
+        $selection.hide();
+      }
+    };
+
+    /**
+     * hide
+     *
+     * @param {jQuery} $handle
+     */
+    this.hide = function ($handle) {
+      $handle.children().hide();
+    };
+  };
+
+  var Fullscreen = function (handler) {
+    var $window = $(window);
+    var $scrollbar = $('html, body');
+
+    /**
+     * toggle fullscreen
+     *
+     * @param {Object} layoutInfo
+     */
+    this.toggle = function (layoutInfo) {
+
+      var $editor = layoutInfo.editor(),
+          $toolbar = layoutInfo.toolbar(),
+          $editable = layoutInfo.editable(),
+          $codable = layoutInfo.codable();
+
+      var resize = function (size) {
+        $editable.css('height', size.h);
+        $codable.css('height', size.h);
+        if ($codable.data('cmeditor')) {
+          $codable.data('cmeditor').setsize(null, size.h);
+        }
+      };
+
+      $editor.toggleClass('fullscreen');
+      var isFullscreen = $editor.hasClass('fullscreen');
+      if (isFullscreen) {
+        $editable.data('orgheight', $editable.css('height'));
+
+        $window.on('resize', function () {
+          resize({
+            h: $window.height() - $toolbar.outerHeight()
+          });
+        }).trigger('resize');
+
+        $scrollbar.css('overflow', 'hidden');
+      } else {
+        $window.off('resize');
+        resize({
+          h: $editable.data('orgheight')
+        });
+        $scrollbar.css('overflow', 'visible');
+      }
+
+      handler.invoke('toolbar.updateFullscreen', $toolbar, isFullscreen);
+    };
+  };
+
+
+  var CodeMirror;
+  if (agent.hasCodeMirror) {
+    if (agent.isSupportAmd) {
+      require(['CodeMirror'], function (cm) {
+        CodeMirror = cm;
+      });
+    } else {
+      CodeMirror = window.CodeMirror;
+    }
+  }
+
+  /**
+   * @class Codeview
+   */
+  var Codeview = function (handler) {
+
+    this.sync = function (layoutInfo) {
+      var isCodeview = handler.invoke('codeview.isActivated', layoutInfo);
+      if (isCodeview && agent.hasCodeMirror) {
+        layoutInfo.codable().data('cmEditor').save();
+      }
+    };
+
+    /**
+     * @param {Object} layoutInfo
+     * @return {Boolean}
+     */
+    this.isActivated = function (layoutInfo) {
+      var $editor = layoutInfo.editor();
+      return $editor.hasClass('codeview');
+    };
+
+    /**
+     * toggle codeview
+     *
+     * @param {Object} layoutInfo
+     */
+    this.toggle = function (layoutInfo) {
+      if (this.isActivated(layoutInfo)) {
+        this.deactivate(layoutInfo);
+      } else {
+        this.activate(layoutInfo);
+      }
+    };
+
+    /**
+     * activate code view
+     *
+     * @param {Object} layoutInfo
+     */
+    this.activate = function (layoutInfo) {
+      var $editor = layoutInfo.editor(),
+          $toolbar = layoutInfo.toolbar(),
+          $editable = layoutInfo.editable(),
+          $codable = layoutInfo.codable(),
+          $popover = layoutInfo.popover(),
+          $handle = layoutInfo.handle();
+
+      var options = $editor.data('options');
+
+      $codable.val(dom.html($editable, options.prettifyHtml));
+      $codable.height($editable.height());
+
+      handler.invoke('toolbar.updateCodeview', $toolbar, true);
+      handler.invoke('popover.hide', $popover);
+      handler.invoke('handle.hide', $handle);
+
+      $editor.addClass('codeview');
+
+      $codable.focus();
+
+      // activate CodeMirror as codable
+      if (agent.hasCodeMirror) {
+        var cmEditor = CodeMirror.fromTextArea($codable[0], options.codemirror);
+
+        // CodeMirror TernServer
+        if (options.codemirror.tern) {
+          var server = new CodeMirror.TernServer(options.codemirror.tern);
+          cmEditor.ternServer = server;
+          cmEditor.on('cursorActivity', function (cm) {
+            server.updateArgHints(cm);
+          });
+        }
+
+        // CodeMirror hasn't Padding.
+        cmEditor.setSize(null, $editable.outerHeight());
+        $codable.data('cmEditor', cmEditor);
+      }
+    };
+
+    /**
+     * deactivate code view
+     *
+     * @param {Object} layoutInfo
+     */
+    this.deactivate = function (layoutInfo) {
+      var $holder = layoutInfo.holder(),
+          $editor = layoutInfo.editor(),
+          $toolbar = layoutInfo.toolbar(),
+          $editable = layoutInfo.editable(),
+          $codable = layoutInfo.codable();
+
+      var options = $editor.data('options');
+
+      // deactivate CodeMirror as codable
+      if (agent.hasCodeMirror) {
+        var cmEditor = $codable.data('cmEditor');
+        $codable.val(cmEditor.getValue());
+        cmEditor.toTextArea();
+      }
+
+      var value = dom.value($codable, options.prettifyHtml) || dom.emptyPara;
+      var isChange = $editable.html() !== value;
+
+      $editable.html(value);
+      $editable.height(options.height ? $codable.height() : 'auto');
+      $editor.removeClass('codeview');
+
+      if (isChange) {
+        handler.bindCustomEvent(
+          $holder, $editable.data('callbacks'), 'change'
+        )($editable.html(), $editable);
+      }
+
+      $editable.focus();
+
+      handler.invoke('toolbar.updateCodeview', $toolbar, false);
+    };
+  };
+
+  var DragAndDrop = function (handler) {
+    var $document = $(document);
+
+    /**
+     * attach Drag and Drop Events
+     *
+     * @param {Object} layoutInfo - layout Informations
+     * @param {Object} options
+     */
+    this.attach = function (layoutInfo, options) {
+      if (options.airMode || options.disableDragAndDrop) {
+        // prevent default drop event
+        $document.on('drop', function (e) {
+          e.preventDefault();
+        });
+      } else {
+        this.attachDragAndDropEvent(layoutInfo, options);
+      }
+    };
+
+    /**
+     * attach Drag and Drop Events
+     *
+     * @param {Object} layoutInfo - layout Informations
+     * @param {Object} options
+     */
+    this.attachDragAndDropEvent = function (layoutInfo, options) {
+      var collection = $(),
+          $editor = layoutInfo.editor(),
+          $dropzone = layoutInfo.dropzone(),
+          $dropzoneMessage = $dropzone.find('.note-dropzone-message');
+
+      // show dropzone on dragenter when dragging a object to document
+      // -but only if the editor is visible, i.e. has a positive width and height
+      $document.on('dragenter', function (e) {
+        var isCodeview = handler.invoke('codeview.isActivated', layoutInfo);
+        var hasEditorSize = $editor.width() > 0 && $editor.height() > 0;
+        if (!isCodeview && !collection.length && hasEditorSize) {
+          $editor.addClass('dragover');
+          $dropzone.width($editor.width());
+          $dropzone.height($editor.height());
+          $dropzoneMessage.text(options.langInfo.image.dragImageHere);
+        }
+        collection = collection.add(e.target);
+      }).on('dragleave', function (e) {
+        collection = collection.not(e.target);
+        if (!collection.length) {
+          $editor.removeClass('dragover');
+        }
+      }).on('drop', function () {
+        collection = $();
+        $editor.removeClass('dragover');
+      });
+
+      // change dropzone's message on hover.
+      $dropzone.on('dragenter', function () {
+        $dropzone.addClass('hover');
+        $dropzoneMessage.text(options.langInfo.image.dropImage);
+      }).on('dragleave', function () {
+        $dropzone.removeClass('hover');
+        $dropzoneMessage.text(options.langInfo.image.dragImageHere);
+      });
+
+      // attach dropImage
+      $dropzone.on('drop', function (event) {
+        event.preventDefault();
+
+        var dataTransfer = event.originalEvent.dataTransfer;
+        var html = dataTransfer.getData('text/html');
+        var text = dataTransfer.getData('text/plain');
+
+        var layoutInfo = dom.makeLayoutInfo(event.currentTarget || event.target);
+
+        if (dataTransfer && dataTransfer.files && dataTransfer.files.length) {
+          layoutInfo.editable().focus();
+          handler.insertImages(layoutInfo, dataTransfer.files);
+        } else if (html) {
+          $(html).each(function () {
+            layoutInfo.editable().focus();
+            handler.invoke('editor.insertNode', layoutInfo.editable(), this);
+          });
+        } else if (text) {
+          layoutInfo.editable().focus();
+          handler.invoke('editor.insertText', layoutInfo.editable(), text);
+        }
+      }).on('dragover', false); // prevent default dragover event
+    };
+  };
+
+  var Clipboard = function (handler) {
+
+    this.attach = function (layoutInfo) {
+      layoutInfo.editable().on('paste', hPasteClipboardImage);
+    };
+
+    /**
+     * paste clipboard image
+     *
+     * @param {Event} event
+     */
+    var hPasteClipboardImage = function (event) {
+      var clipboardData = event.originalEvent.clipboardData;
+      var layoutInfo = dom.makeLayoutInfo(event.currentTarget || event.target);
+      var $editable = layoutInfo.editable();
+
+      if (!clipboardData || !clipboardData.items || !clipboardData.items.length) {
+        var callbacks = $editable.data('callbacks');
+        // only can run if it has onImageUpload method
+        if (!callbacks.onImageUpload) {
+          return;
+        }
+
+        // save cursor
+        handler.invoke('editor.saveNode', $editable);
+        handler.invoke('editor.saveRange', $editable);
+
+        $editable.html('');
+
+        setTimeout(function () {
+          var $img = $editable.find('img');
+
+          // if img is no in clipboard, insert text or dom
+          if (!$img.length || $img[0].src.indexOf('data:') === -1) {
+            var html = $editable.html();
+
+            handler.invoke('editor.restoreNode', $editable);
+            handler.invoke('editor.restoreRange', $editable);
+
+            handler.invoke('editor.focus', $editable);
+            try {
+              handler.invoke('editor.pasteHTML', $editable, html);
+            } catch (ex) {
+              handler.invoke('editor.insertText', $editable, html);
+            }
+            return;
+          }
+
+          var datauri = $img[0].src;
+
+          var data = atob(datauri.split(',')[1]);
+          var array = new Uint8Array(data.length);
+          for (var i = 0; i < data.length; i++) {
+            array[i] = data.charCodeAt(i);
+          }
+
+          var blob = new Blob([array], { type : 'image/png' });
+          blob.name = 'clipboard.png';
+
+          handler.invoke('editor.restoreNode', $editable);
+          handler.invoke('editor.restoreRange', $editable);
+          handler.insertImages(layoutInfo, [blob]);
+
+          handler.invoke('editor.afterCommand', $editable);
+        }, 0);
+
+        return;
+      }
+
+      var item = list.head(clipboardData.items);
+      var isClipboardImage = item.kind === 'file' && item.type.indexOf('image/') !== -1;
+
+      if (isClipboardImage) {
+        handler.insertImages(layoutInfo, [item.getAsFile()]);
+      }
+
+      handler.invoke('editor.afterCommand', $editable);
+    };
+  };
+
+  var LinkDialog = function (handler) {
+
+    /**
+     * toggle button status
+     *
+     * @private
+     * @param {jQuery} $btn
+     * @param {Boolean} isEnable
+     */
+    var toggleBtn = function ($btn, isEnable) {
+      $btn.toggleClass('disabled', !isEnable);
+      $btn.attr('disabled', !isEnable);
+    };
+
+    /**
+     * bind enter key
+     *
+     * @private
+     * @param {jQuery} $input
+     * @param {jQuery} $btn
+     */
+    var bindEnterKey = function ($input, $btn) {
+      $input.on('keypress', function (event) {
+        if (event.keyCode === key.code.ENTER) {
+          $btn.trigger('click');
+        }
+      });
+    };
+
+    /**
+     * Show link dialog and set event handlers on dialog controls.
+     *
+     * @param {jQuery} $editable
+     * @param {jQuery} $dialog
+     * @param {Object} linkInfo
+     * @return {Promise}
+     */
+    this.showLinkDialog = function ($editable, $dialog, linkInfo) {
+      return $.Deferred(function (deferred) {
+        var $linkDialog = $dialog.find('.note-link-dialog');
+
+        var $linkText = $linkDialog.find('.note-link-text'),
+        $linkUrl = $linkDialog.find('.note-link-url'),
+        $linkBtn = $linkDialog.find('.note-link-btn'),
+        $openInNewWindow = $linkDialog.find('input[type=checkbox]');
+
+        $linkDialog.one('shown.bs.modal', function () {
+          $linkText.val(linkInfo.text);
+
+          $linkText.on('input', function () {
+            toggleBtn($linkBtn, $linkText.val() && $linkUrl.val());
+            // if linktext was modified by keyup,
+            // stop cloning text from linkUrl
+            linkInfo.text = $linkText.val();
+          });
+
+          // if no url was given, copy text to url
+          if (!linkInfo.url) {
+            linkInfo.url = linkInfo.text;
+            toggleBtn($linkBtn, linkInfo.text);
+          }
+
+          $linkUrl.on('input', function () {
+            toggleBtn($linkBtn, $linkText.val() && $linkUrl.val());
+            // display same link on `Text to display` input
+            // when create a new link
+            if (!linkInfo.text) {
+              $linkText.val($linkUrl.val());
+            }
+          }).val(linkInfo.url).trigger('focus').trigger('select');
+
+          bindEnterKey($linkUrl, $linkBtn);
+          bindEnterKey($linkText, $linkBtn);
+
+          $openInNewWindow.prop('checked', linkInfo.newWindow);
+
+          $linkBtn.one('click', function (event) {
+            event.preventDefault();
+
+            deferred.resolve({
+              range: linkInfo.range,
+              url: $linkUrl.val(),
+              text: $linkText.val(),
+              newWindow: $openInNewWindow.is(':checked')
+            });
+            $linkDialog.modal('hide');
+          });
+        }).one('hidden.bs.modal', function () {
+          // detach events
+          $linkText.off('input keypress');
+          $linkUrl.off('input keypress');
+          $linkBtn.off('click');
+
+          if (deferred.state() === 'pending') {
+            deferred.reject();
+          }
+        }).modal('show');
+      }).promise();
+    };
+
+    /**
+     * @param {Object} layoutInfo
+     */
+    this.show = function (layoutInfo) {
+      var $editor = layoutInfo.editor(),
+          $dialog = layoutInfo.dialog(),
+          $editable = layoutInfo.editable(),
+          $popover = layoutInfo.popover(),
+          linkInfo = handler.invoke('editor.getLinkInfo', $editable);
+
+      var options = $editor.data('options');
+
+      handler.invoke('editor.saveRange', $editable);
+      this.showLinkDialog($editable, $dialog, linkInfo).then(function (linkInfo) {
+        handler.invoke('editor.restoreRange', $editable);
+        handler.invoke('editor.createLink', $editable, linkInfo, options);
+        // hide popover after creating link
+        handler.invoke('popover.hide', $popover);
+      }).fail(function () {
+        handler.invoke('editor.restoreRange', $editable);
+      });
+    };
+  };
+
+  var ImageDialog = function (handler) {
+    /**
+     * toggle button status
+     *
+     * @private
+     * @param {jQuery} $btn
+     * @param {Boolean} isEnable
+     */
+    var toggleBtn = function ($btn, isEnable) {
+      $btn.toggleClass('disabled', !isEnable);
+      $btn.attr('disabled', !isEnable);
+    };
+
+    /**
+     * bind enter key
+     *
+     * @private
+     * @param {jQuery} $input
+     * @param {jQuery} $btn
+     */
+    var bindEnterKey = function ($input, $btn) {
+      $input.on('keypress', function (event) {
+        if (event.keyCode === key.code.ENTER) {
+          $btn.trigger('click');
+        }
+      });
+    };
+
+    this.show = function (layoutInfo) {
+      var $dialog = layoutInfo.dialog(),
+          $editable = layoutInfo.editable();
+
+      handler.invoke('editor.saveRange', $editable);
+      this.showImageDialog($editable, $dialog).then(function (data) {
+        handler.invoke('editor.restoreRange', $editable);
+
+        if (typeof data === 'string') {
+          // image url
+          handler.invoke('editor.insertImage', $editable, data);
+        } else {
+          // array of files
+          handler.insertImages(layoutInfo, data);
+        }
+      }).fail(function () {
+        handler.invoke('editor.restoreRange', $editable);
+      });
+    };
+
+    /**
+     * show image dialog
+     *
+     * @param {jQuery} $editable
+     * @param {jQuery} $dialog
+     * @return {Promise}
+     */
+    this.showImageDialog = function ($editable, $dialog) {
+      return $.Deferred(function (deferred) {
+        var $imageDialog = $dialog.find('.note-image-dialog');
+
+        var $imageInput = $dialog.find('.note-image-input'),
+            $imageUrl = $dialog.find('.note-image-url'),
+            $imageBtn = $dialog.find('.note-image-btn');
+
+        $imageDialog.one('shown.bs.modal', function () {
+          // Cloning imageInput to clear element.
+          $imageInput.replaceWith($imageInput.clone()
+            .on('change', function () {
+              deferred.resolve(this.files || this.value);
+              $imageDialog.modal('hide');
+            })
+            .val('')
+          );
+
+          $imageBtn.click(function (event) {
+            event.preventDefault();
+
+            deferred.resolve($imageUrl.val());
+            $imageDialog.modal('hide');
+          });
+
+          $imageUrl.on('keyup paste', function (event) {
+            var url;
+            
+            if (event.type === 'paste') {
+              url = event.originalEvent.clipboardData.getData('text');
+            } else {
+              url = $imageUrl.val();
+            }
+            
+            toggleBtn($imageBtn, url);
+          }).val('').trigger('focus');
+          bindEnterKey($imageUrl, $imageBtn);
+        }).one('hidden.bs.modal', function () {
+          $imageInput.off('change');
+          $imageUrl.off('keyup paste keypress');
+          $imageBtn.off('click');
+
+          if (deferred.state() === 'pending') {
+            deferred.reject();
+          }
+        }).modal('show');
+      });
+    };
+  };
+
+  var HelpDialog = function (handler) {
+    /**
+     * show help dialog
+     *
+     * @param {jQuery} $editable
+     * @param {jQuery} $dialog
+     * @return {Promise}
+     */
+    this.showHelpDialog = function ($editable, $dialog) {
+      return $.Deferred(function (deferred) {
+        var $helpDialog = $dialog.find('.note-help-dialog');
+
+        $helpDialog.one('hidden.bs.modal', function () {
+          deferred.resolve();
+        }).modal('show');
+      }).promise();
+    };
+
+    /**
+     * @param {Object} layoutInfo
+     */
+    this.show = function (layoutInfo) {
+      var $dialog = layoutInfo.dialog(),
+          $editable = layoutInfo.editable();
+
+      handler.invoke('editor.saveRange', $editable, true);
+      this.showHelpDialog($editable, $dialog).then(function () {
+        handler.invoke('editor.restoreRange', $editable);
+      });
+    };
+  };
+
+
+  /**
+   * @class EventHandler
+   *
+   * EventHandler
+   *  - TODO: new instance per a editor
+   */
+  var EventHandler = function () {
+    /**
+     * Modules
+     */
+    var modules = this.modules = {
+      editor: new Editor(this),
+      toolbar: new Toolbar(this),
+      statusbar: new Statusbar(this),
+      popover: new Popover(this),
+      handle: new Handle(this),
+      fullscreen: new Fullscreen(this),
+      codeview: new Codeview(this),
+      dragAndDrop: new DragAndDrop(this),
+      clipboard: new Clipboard(this),
+      linkDialog: new LinkDialog(this),
+      imageDialog: new ImageDialog(this),
+      helpDialog: new HelpDialog(this)
+    };
+
+    /**
+     * invoke module's method
+     *
+     * @param {String} moduleAndMethod - ex) 'editor.redo'
+     * @param {...*} arguments - arguments of method
+     * @return {*}
+     */
+    this.invoke = function () {
+      var moduleAndMethod = list.head(list.from(arguments));
+      var args = list.tail(list.from(arguments));
+
+      var splits = moduleAndMethod.split('.');
+      var hasSeparator = splits.length > 1;
+      var moduleName = hasSeparator && list.head(splits);
+      var methodName = hasSeparator ? list.last(splits) : list.head(splits);
+
+      var module = this.getModule(moduleName);
+      var method = module[methodName];
+
+      return method && method.apply(module, args);
+    };
+
+    /**
+     * returns module
+     *
+     * @param {String} moduleName - name of module
+     * @return {Module} - defaults is editor
+     */
+    this.getModule = function (moduleName) {
+      return this.modules[moduleName] || this.modules.editor;
+    };
+
+    /**
+     * @param {jQuery} $holder
+     * @param {Object} callbacks
+     * @param {String} eventNamespace
+     * @returns {Function}
+     */
+    var bindCustomEvent = this.bindCustomEvent = function ($holder, callbacks, eventNamespace) {
+      return function () {
+        var callback = callbacks[func.namespaceToCamel(eventNamespace, 'on')];
+        if (callback) {
+          callback.apply($holder[0], arguments);
+        }
+        return $holder.trigger('summernote.' + eventNamespace, arguments);
+      };
+    };
+
+    /**
+     * insert Images from file array.
+     *
+     * @private
+     * @param {Object} layoutInfo
+     * @param {File[]} files
+     */
+    this.insertImages = function (layoutInfo, files) {
+      var $editor = layoutInfo.editor(),
+          $editable = layoutInfo.editable(),
+          $holder = layoutInfo.holder();
+
+      var callbacks = $editable.data('callbacks');
+      var options = $editor.data('options');
+
+      // If onImageUpload options setted
+      if (callbacks.onImageUpload) {
+        bindCustomEvent($holder, callbacks, 'image.upload')(files);
+      // else insert Image as dataURL
+      } else {
+        $.each(files, function (idx, file) {
+          var filename = file.name;
+          if (options.maximumImageFileSize && options.maximumImageFileSize < file.size) {
+            bindCustomEvent($holder, callbacks, 'image.upload.error')(options.langInfo.image.maximumFileSizeError);
+          } else {
+            async.readFileAsDataURL(file).then(function (sDataURL) {
+              modules.editor.insertImage($editable, sDataURL, filename);
+            }).fail(function () {
+              bindCustomEvent($holder, callbacks, 'image.upload.error')(options.langInfo.image.maximumFileSizeError);
+            });
+          }
+        });
+      }
+    };
+
+    var commands = {
+      /**
+       * @param {Object} layoutInfo
+       */
+      showLinkDialog: function (layoutInfo) {
+        modules.linkDialog.show(layoutInfo);
+      },
+
+      /**
+       * @param {Object} layoutInfo
+       */
+      showImageDialog: function (layoutInfo) {
+        modules.imageDialog.show(layoutInfo);
+      },
+
+      /**
+       * @param {Object} layoutInfo
+       */
+      showHelpDialog: function (layoutInfo) {
+        modules.helpDialog.show(layoutInfo);
+      },
+
+      /**
+       * @param {Object} layoutInfo
+       */
+      fullscreen: function (layoutInfo) {
+        modules.fullscreen.toggle(layoutInfo);
+      },
+
+      /**
+       * @param {Object} layoutInfo
+       */
+      codeview: function (layoutInfo) {
+        modules.codeview.toggle(layoutInfo);
+      }
+    };
+
+    var hMousedown = function (event) {
+      //preventDefault Selection for FF, IE8+
+      if (dom.isImg(event.target)) {
+        event.preventDefault();
+      }
+    };
+
+    var hKeyupAndMouseup = function (event) {
+      var layoutInfo = dom.makeLayoutInfo(event.currentTarget || event.target);
+      modules.editor.removeBogus(layoutInfo.editable());
+      hToolbarAndPopoverUpdate(event);
+    };
+
+    var hToolbarAndPopoverUpdate = function (event) {
+      // delay for range after mouseup
+      setTimeout(function () {
+        var layoutInfo = dom.makeLayoutInfo(event.currentTarget || event.target);
+        var styleInfo = modules.editor.currentStyle(event.target);
+        if (!styleInfo) { return; }
+
+        var isAirMode = layoutInfo.editor().data('options').airMode;
+        if (!isAirMode) {
+          modules.toolbar.update(layoutInfo.toolbar(), styleInfo);
+        }
+
+        modules.popover.update(layoutInfo.popover(), styleInfo, isAirMode);
+        modules.handle.update(layoutInfo.handle(), styleInfo, isAirMode);
+      }, 0);
+    };
+
+    var hScrollAndBlur = function (event) {
+      var layoutInfo = dom.makeLayoutInfo(event.currentTarget || event.target);
+      //hide popover and handle when scrolled
+      modules.popover.hide(layoutInfo.popover());
+      modules.handle.hide(layoutInfo.handle());
+    };
+
+    var hToolbarAndPopoverMousedown = function (event) {
+      // prevent default event when insertTable (FF, Webkit)
+      var $btn = $(event.target).closest('[data-event]');
+      if ($btn.length) {
+        event.preventDefault();
+      }
+    };
+
+    var hToolbarAndPopoverClick = function (event) {
+      var $btn = $(event.target).closest('[data-event]');
+
+      if ($btn.length) {
+        var eventName = $btn.attr('data-event'),
+            value = $btn.attr('data-value'),
+            hide = $btn.attr('data-hide');
+
+        var layoutInfo = dom.makeLayoutInfo(event.target);
+
+        // before command: detect control selection element($target)
+        var $target;
+        if ($.inArray(eventName, ['resize', 'floatMe', 'removeMedia', 'imageShape']) !== -1) {
+          var $selection = layoutInfo.handle().find('.note-control-selection');
+          $target = $($selection.data('target'));
+        }
+
+        // If requested, hide the popover when the button is clicked.
+        // Useful for things like showHelpDialog.
+        if (hide) {
+          $btn.parents('.popover').hide();
+        }
+
+        if ($.isFunction($.summernote.pluginEvents[eventName])) {
+          $.summernote.pluginEvents[eventName](event, modules.editor, layoutInfo, value);
+        } else if (modules.editor[eventName]) { // on command
+          var $editable = layoutInfo.editable();
+          $editable.focus();
+          modules.editor[eventName]($editable, value, $target);
+          event.preventDefault();
+        } else if (commands[eventName]) {
+          commands[eventName].call(this, layoutInfo);
+          event.preventDefault();
+        }
+
+        // after command
+        if ($.inArray(eventName, ['backColor', 'foreColor']) !== -1) {
+          var options = layoutInfo.editor().data('options', options);
+          var module = options.airMode ? modules.popover : modules.toolbar;
+          module.updateRecentColor(list.head($btn), eventName, value);
+        }
+
+        hToolbarAndPopoverUpdate(event);
+      }
+    };
+
+    var PX_PER_EM = 18;
+    var hDimensionPickerMove = function (event, options) {
+      var $picker = $(event.target.parentNode); // target is mousecatcher
+      var $dimensionDisplay = $picker.next();
+      var $catcher = $picker.find('.note-dimension-picker-mousecatcher');
+      var $highlighted = $picker.find('.note-dimension-picker-highlighted');
+      var $unhighlighted = $picker.find('.note-dimension-picker-unhighlighted');
+
+      var posOffset;
+      // HTML5 with jQuery - e.offsetX is undefined in Firefox
+      if (event.offsetX === undefined) {
+        var posCatcher = $(event.target).offset();
+        posOffset = {
+          x: event.pageX - posCatcher.left,
+          y: event.pageY - posCatcher.top
+        };
+      } else {
+        posOffset = {
+          x: event.offsetX,
+          y: event.offsetY
+        };
+      }
+
+      var dim = {
+        c: Math.ceil(posOffset.x / PX_PER_EM) || 1,
+        r: Math.ceil(posOffset.y / PX_PER_EM) || 1
+      };
+
+      $highlighted.css({ width: dim.c + 'em', height: dim.r + 'em' });
+      $catcher.attr('data-value', dim.c + 'x' + dim.r);
+
+      if (3 < dim.c && dim.c < options.insertTableMaxSize.col) {
+        $unhighlighted.css({ width: dim.c + 1 + 'em'});
+      }
+
+      if (3 < dim.r && dim.r < options.insertTableMaxSize.row) {
+        $unhighlighted.css({ height: dim.r + 1 + 'em'});
+      }
+
+      $dimensionDisplay.html(dim.c + ' x ' + dim.r);
+    };
+    
+    /**
+     * bind KeyMap on keydown
+     *
+     * @param {Object} layoutInfo
+     * @param {Object} keyMap
+     */
+    this.bindKeyMap = function (layoutInfo, keyMap) {
+      var $editor = layoutInfo.editor();
+      var $editable = layoutInfo.editable();
+
+      $editable.on('keydown', function (event) {
+        var keys = [];
+
+        // modifier
+        if (event.metaKey) { keys.push('CMD'); }
+        if (event.ctrlKey && !event.altKey) { keys.push('CTRL'); }
+        if (event.shiftKey) { keys.push('SHIFT'); }
+
+        // keycode
+        var keyName = key.nameFromCode[event.keyCode];
+        if (keyName) {
+          keys.push(keyName);
+        }
+
+        var pluginEvent;
+        var keyString = keys.join('+');
+        var eventName = keyMap[keyString];
+        if (eventName) {
+          // FIXME Summernote doesn't support event pipeline yet.
+          //  - Plugin -> Base Code
+          pluginEvent = $.summernote.pluginEvents[keyString];
+          if ($.isFunction(pluginEvent)) {
+            if (pluginEvent(event, modules.editor, layoutInfo)) {
+              return false;
+            }
+          }
+
+          pluginEvent = $.summernote.pluginEvents[eventName];
+
+          if ($.isFunction(pluginEvent)) {
+            pluginEvent(event, modules.editor, layoutInfo);
+          } else if (modules.editor[eventName]) {
+            modules.editor[eventName]($editable, $editor.data('options'));
+            event.preventDefault();
+          } else if (commands[eventName]) {
+            commands[eventName].call(this, layoutInfo);
+            event.preventDefault();
+          }
+        } else if (key.isEdit(event.keyCode)) {
+          modules.editor.afterCommand($editable);
+        }
+      });
+    };
+
+    /**
+     * attach eventhandler
+     *
+     * @param {Object} layoutInfo - layout Informations
+     * @param {Object} options - user options include custom event handlers
+     */
+    this.attach = function (layoutInfo, options) {
+      // handlers for editable
+      if (options.shortcuts) {
+        this.bindKeyMap(layoutInfo, options.keyMap[agent.isMac ? 'mac' : 'pc']);
+      }
+      layoutInfo.editable().on('mousedown', hMousedown);
+      layoutInfo.editable().on('keyup mouseup', hKeyupAndMouseup);
+      layoutInfo.editable().on('scroll blur', hScrollAndBlur);
+
+      // handler for clipboard
+      modules.clipboard.attach(layoutInfo, options);
+
+      // handler for handle and popover
+      modules.handle.attach(layoutInfo, options);
+      layoutInfo.popover().on('click', hToolbarAndPopoverClick);
+      layoutInfo.popover().on('mousedown', hToolbarAndPopoverMousedown);
+
+      // handler for drag and drop
+      modules.dragAndDrop.attach(layoutInfo, options);
+
+      // handlers for frame mode (toolbar, statusbar)
+      if (!options.airMode) {
+        // handler for toolbar
+        layoutInfo.toolbar().on('click', hToolbarAndPopoverClick);
+        layoutInfo.toolbar().on('mousedown', hToolbarAndPopoverMousedown);
+
+        // handler for statusbar
+        modules.statusbar.attach(layoutInfo, options);
+      }
+
+      // handler for table dimension
+      var $catcherContainer = options.airMode ? layoutInfo.popover() :
+                                                layoutInfo.toolbar();
+      var $catcher = $catcherContainer.find('.note-dimension-picker-mousecatcher');
+      $catcher.css({
+        width: options.insertTableMaxSize.col + 'em',
+        height: options.insertTableMaxSize.row + 'em'
+      }).on('mousemove', function (event) {
+        hDimensionPickerMove(event, options);
+      });
+
+      // save options on editor
+      layoutInfo.editor().data('options', options);
+
+      // ret styleWithCSS for backColor / foreColor clearing with 'inherit'.
+      if (!agent.isMSIE) {
+        // [workaround] for Firefox
+        //  - protect FF Error: NS_ERROR_FAILURE: Failure
+        setTimeout(function () {
+          document.execCommand('styleWithCSS', 0, options.styleWithSpan);
+        }, 0);
+      }
+
+      // History
+      var history = new History(layoutInfo.editable());
+      layoutInfo.editable().data('NoteHistory', history);
+
+      // All editor status will be saved on editable with jquery's data
+      // for support multiple editor with singleton object.
+      layoutInfo.editable().data('callbacks', {
+        onInit: options.onInit,
+        onFocus: options.onFocus,
+        onBlur: options.onBlur,
+        onKeydown: options.onKeydown,
+        onKeyup: options.onKeyup,
+        onMousedown: options.onMousedown,
+        onEnter: options.onEnter,
+        onPaste: options.onPaste,
+        onBeforeCommand: options.onBeforeCommand,
+        onChange: options.onChange,
+        onImageUpload: options.onImageUpload,
+        onImageUploadError: options.onImageUploadError,
+        onMediaDelete : options.onMediaDelete
+      });
+
+      // Textarea: auto filling the code before form submit.
+      if (dom.isTextarea(list.head(layoutInfo.holder()))) {
+        layoutInfo.holder().closest('form').submit(function () {
+          layoutInfo.holder().val(layoutInfo.holder().code());
+        });
+      }
+    };
+
+    /**
+     * attach jquery custom event
+     *
+     * @param {Object} layoutInfo - layout Informations
+     */
+    this.attachCustomEvent = function (layoutInfo, options) {
+      var $holder = layoutInfo.holder();
+      var $editable = layoutInfo.editable();
+      var callbacks = $editable.data('callbacks');
+
+      $editable.focus(bindCustomEvent($holder, callbacks, 'focus'));
+      $editable.blur(bindCustomEvent($holder, callbacks, 'blur'));
+
+      $editable.keydown(function (event) {
+        if (event.keyCode === key.code.ENTER) {
+          bindCustomEvent($holder, callbacks, 'enter').call(this, event);
+        }
+        bindCustomEvent($holder, callbacks, 'keydown').call(this, event);
+      });
+      $editable.keyup(bindCustomEvent($holder, callbacks, 'keyup'));
+
+      $editable.on('mousedown', bindCustomEvent($holder, callbacks, 'mousedown'));
+      $editable.on('mouseup', bindCustomEvent($holder, callbacks, 'mouseup'));
+      $editable.on('scroll', bindCustomEvent($holder, callbacks, 'scroll'));
+
+      $editable.on('paste', bindCustomEvent($holder, callbacks, 'paste'));
+      
+      // [workaround] for old IE - IE8 don't have input events
+      //  - TODO check IE version
+      var changeEventName = agent.isMSIE ? 'DOMCharacterDataModified DOMSubtreeModified DOMNodeInserted' : 'input';
+      $editable.on(changeEventName, function () {
+        bindCustomEvent($holder, callbacks, 'change')($editable.html(), $editable);
+      });
+
+      if (!options.airMode) {
+        layoutInfo.toolbar().click(bindCustomEvent($holder, callbacks, 'toolbar.click'));
+        layoutInfo.popover().click(bindCustomEvent($holder, callbacks, 'popover.click'));
+      }
+
+      // Textarea: auto filling the code before form submit.
+      if (dom.isTextarea(list.head($holder))) {
+        $holder.closest('form').submit(function (e) {
+          bindCustomEvent($holder, callbacks, 'submit').call(this, e, $holder.code());
+        });
+      }
+
+      // fire init event
+      bindCustomEvent($holder, callbacks, 'init')(layoutInfo);
+
+      // fire plugin init event
+      for (var i = 0, len = $.summernote.plugins.length; i < len; i++) {
+        if ($.isFunction($.summernote.plugins[i].init)) {
+          $.summernote.plugins[i].init(layoutInfo);
+        }
+      }
+    };
+      
+    this.detach = function (layoutInfo, options) {
+      layoutInfo.holder().off();
+      layoutInfo.editable().off();
+
+      layoutInfo.popover().off();
+      layoutInfo.handle().off();
+      layoutInfo.dialog().off();
+
+      if (!options.airMode) {
+        layoutInfo.dropzone().off();
+        layoutInfo.toolbar().off();
+        layoutInfo.statusbar().off();
+      }
+    };
+  };
+
+  /**
+   * @class Renderer
+   *
+   * renderer
+   *
+   * rendering toolbar and editable
+   */
+  var Renderer = function () {
+
+    /**
+     * bootstrap button template
+     * @private
+     * @param {String} label button name
+     * @param {Object} [options] button options
+     * @param {String} [options.event] data-event
+     * @param {String} [options.className] button's class name
+     * @param {String} [options.value] data-value
+     * @param {String} [options.title] button's title for popup
+     * @param {String} [options.dropdown] dropdown html
+     * @param {String} [options.hide] data-hide
+     */
+    var tplButton = function (label, options) {
+      var event = options.event;
+      var value = options.value;
+      var title = options.title;
+      var className = options.className;
+      var dropdown = options.dropdown;
+      var hide = options.hide;
+
+      return '<button type="button"' +
+                 ' class="btn btn-default btn-sm btn-small' +
+                   (className ? ' ' + className : '') +
+                   (dropdown ? ' dropdown-toggle' : '') +
+                 '"' +
+                 (dropdown ? ' data-toggle="dropdown"' : '') +
+                 (title ? ' title="' + title + '"' : '') +
+                 (event ? ' data-event="' + event + '"' : '') +
+                 (value ? ' data-value=\'' + value + '\'' : '') +
+                 (hide ? ' data-hide=\'' + hide + '\'' : '') +
+                 ' tabindex="-1">' +
+               label +
+               (dropdown ? ' <span class="caret"></span>' : '') +
+             '</button>' +
+             (dropdown || '');
+    };
+
+    /**
+     * bootstrap icon button template
+     * @private
+     * @param {String} iconClassName
+     * @param {Object} [options]
+     * @param {String} [options.event]
+     * @param {String} [options.value]
+     * @param {String} [options.title]
+     * @param {String} [options.dropdown]
+     */
+    var tplIconButton = function (iconClassName, options) {
+      var label = '<i class="' + iconClassName + '"></i>';
+      return tplButton(label, options);
+    };
+
+    /**
+     * bootstrap popover template
+     * @private
+     * @param {String} className
+     * @param {String} content
+     */
+    var tplPopover = function (className, content) {
+      var $popover = $('<div class="' + className + ' popover bottom in" style="display: none;">' +
+               '<div class="arrow"></div>' +
+               '<div class="popover-content">' +
+               '</div>' +
+             '</div>');
+      
+      $popover.find('.popover-content').append(content);
+      return $popover;
+    };
+
+    /**
+     * bootstrap dialog template
+     *
+     * @param {String} className
+     * @param {String} [title='']
+     * @param {String} body
+     * @param {String} [footer='']
+     */
+    var tplDialog = function (className, title, body, footer) {
+      return '<div class="' + className + ' modal" aria-hidden="false">' +
+               '<div class="modal-dialog">' +
+                 '<div class="modal-content">' +
+                   (title ?
+                   '<div class="modal-header">' +
+                     '<button type="button" class="close" aria-hidden="true" tabindex="-1">&times;</button>' +
+                     '<h4 class="modal-title">' + title + '</h4>' +
+                   '</div>' : ''
+                   ) +
+                   '<div class="modal-body">' + body + '</div>' +
+                   (footer ?
+                   '<div class="modal-footer">' + footer + '</div>' : ''
+                   ) +
+                 '</div>' +
+               '</div>' +
+             '</div>';
+    };
+
+    var tplButtonInfo = {
+      picture: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'picture-o', {
+          event: 'showImageDialog',
+          title: lang.image.image,
+          hide: true
+        });
+      },
+      link: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'link', {
+          event: 'showLinkDialog',
+          title: lang.link.link,
+          hide: true
+        });
+      },
+      table: function (lang, options) {
+        var dropdown = '<ul class="note-table dropdown-menu">' +
+                         '<div class="note-dimension-picker">' +
+                           '<div class="note-dimension-picker-mousecatcher" data-event="insertTable" data-value="1x1"></div>' +
+                           '<div class="note-dimension-picker-highlighted"></div>' +
+                           '<div class="note-dimension-picker-unhighlighted"></div>' +
+                         '</div>' +
+                         '<div class="note-dimension-display"> 1 x 1 </div>' +
+                       '</ul>';
+        return tplIconButton(options.iconPrefix + 'table', {
+          title: lang.table.table,
+          dropdown: dropdown
+        });
+      },
+      style: function (lang, options) {
+        var items = options.styleTags.reduce(function (memo, v) {
+          var label = lang.style[v === 'p' ? 'normal' : v];
+          return memo + '<li><a data-event="formatBlock" href="#" data-value="' + v + '">' +
+                   (
+                     (v === 'p' || v === 'pre') ? label :
+                     '<' + v + '>' + label + '</' + v + '>'
+                   ) +
+                 '</a></li>';
+        }, '');
+
+        return tplIconButton(options.iconPrefix + 'magic', {
+          title: lang.style.style,
+          dropdown: '<ul class="dropdown-menu">' + items + '</ul>'
+        });
+      },
+      fontname: function (lang, options) {
+        var realFontList = [];
+        var items = options.fontNames.reduce(function (memo, v) {
+          if (!agent.isFontInstalled(v) && options.fontNamesIgnoreCheck.indexOf(v) === -1) {
+            return memo;
+          }
+          realFontList.push(v);
+          return memo + '<li><a data-event="fontName" href="#" data-value="' + v + '" style="font-family:\'' + v + '\'">' +
+                          '<i class="' + options.iconPrefix + 'check"></i> ' + v +
+                        '</a></li>';
+        }, '');
+
+        var hasDefaultFont = agent.isFontInstalled(options.defaultFontName);
+        var defaultFontName = (hasDefaultFont) ? options.defaultFontName : realFontList[0];
+          
+        var label = '<span class="note-current-fontname">' +
+                        defaultFontName +
+                     '</span>';
+        return tplButton(label, {
+          title: lang.font.name,
+          dropdown: '<ul class="dropdown-menu note-check">' + items + '</ul>'
+        });
+      },
+      fontsize: function (lang, options) {
+        var items = options.fontSizes.reduce(function (memo, v) {
+          return memo + '<li><a data-event="fontSize" href="#" data-value="' + v + '">' +
+                          '<i class="fa fa-check"></i> ' + v +
+                        '</a></li>';
+        }, '');
+
+        var label = '<span class="note-current-fontsize">11</span>';
+        return tplButton(label, {
+          title: lang.font.size,
+          dropdown: '<ul class="dropdown-menu note-check">' + items + '</ul>'
+        });
+      },
+      color: function (lang, options) {
+        var colorButtonLabel = '<i class="' + options.iconPrefix + 'font" style="color:black;background-color:yellow;"></i>';
+        var colorButton = tplButton(colorButtonLabel, {
+          className: 'note-recent-color',
+          title: lang.color.recent,
+          event: 'color',
+          value: '{"backColor":"yellow"}'
+        });
+
+        var dropdown = '<ul class="dropdown-menu">' +
+                         '<li>' +
+                           '<div class="btn-group">' +
+                             '<div class="note-palette-title">' + lang.color.background + '</div>' +
+                             '<div class="note-color-reset" data-event="backColor"' +
+                               ' data-value="inherit" title="' + lang.color.transparent + '">' +
+                               lang.color.setTransparent +
+                             '</div>' +
+                             '<div class="note-color-palette" data-target-event="backColor"></div>' +
+                           '</div>' +
+                           '<div class="btn-group">' +
+                             '<div class="note-palette-title">' + lang.color.foreground + '</div>' +
+                             '<div class="note-color-reset" data-event="foreColor" data-value="inherit" title="' + lang.color.reset + '">' +
+                               lang.color.resetToDefault +
+                             '</div>' +
+                             '<div class="note-color-palette" data-target-event="foreColor"></div>' +
+                           '</div>' +
+                         '</li>' +
+                       '</ul>';
+
+        var moreButton = tplButton('', {
+          title: lang.color.more,
+          dropdown: dropdown
+        });
+
+        return colorButton + moreButton;
+      },
+      bold: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'bold', {
+          event: 'bold',
+          title: lang.font.bold
+        });
+      },
+      italic: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'italic', {
+          event: 'italic',
+          title: lang.font.italic
+        });
+      },
+      underline: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'underline', {
+          event: 'underline',
+          title: lang.font.underline
+        });
+      },
+      strikethrough: function (lang) {
+        return tplIconButton('fa fa-strikethrough', {
+          event: 'strikethrough',
+          title: lang.font.strikethrough
+        });
+      },
+      superscript: function (lang) {
+        return tplIconButton('fa fa-superscript', {
+          event: 'superscript',
+          title: lang.font.superscript
+        });
+      },
+      subscript: function (lang) {
+        return tplIconButton('fa fa-subscript', {
+          event: 'subscript',
+          title: lang.font.subscript
+        });
+      },
+      clear: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'eraser', {
+          event: 'removeFormat',
+          title: lang.font.clear
+        });
+      },
+      ul: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'list-ul', {
+          event: 'insertUnorderedList',
+          title: lang.lists.unordered
+        });
+      },
+      ol: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'list-ol', {
+          event: 'insertOrderedList',
+          title: lang.lists.ordered
+        });
+      },
+      paragraph: function (lang, options) {
+        var leftButton = tplIconButton(options.iconPrefix + 'align-left', {
+          title: lang.paragraph.left,
+          event: 'justifyLeft'
+        });
+        var centerButton = tplIconButton(options.iconPrefix + 'align-center', {
+          title: lang.paragraph.center,
+          event: 'justifyCenter'
+        });
+        var rightButton = tplIconButton(options.iconPrefix + 'align-right', {
+          title: lang.paragraph.right,
+          event: 'justifyRight'
+        });
+        var justifyButton = tplIconButton(options.iconPrefix + 'align-justify', {
+          title: lang.paragraph.justify,
+          event: 'justifyFull'
+        });
+
+        var outdentButton = tplIconButton(options.iconPrefix + 'outdent', {
+          title: lang.paragraph.outdent,
+          event: 'outdent'
+        });
+        var indentButton = tplIconButton(options.iconPrefix + 'indent', {
+          title: lang.paragraph.indent,
+          event: 'indent'
+        });
+
+        var dropdown = '<div class="dropdown-menu">' +
+                         '<div class="note-align btn-group">' +
+                           leftButton + centerButton + rightButton + justifyButton +
+                         '</div>' +
+                         '<div class="note-list btn-group">' +
+                           indentButton + outdentButton +
+                         '</div>' +
+                       '</div>';
+
+        return tplIconButton(options.iconPrefix + 'align-left', {
+          title: lang.paragraph.paragraph,
+          dropdown: dropdown
+        });
+      },
+      height: function (lang, options) {
+        var items = options.lineHeights.reduce(function (memo, v) {
+          return memo + '<li><a data-event="lineHeight" href="#" data-value="' + parseFloat(v) + '">' +
+                          '<i class="' + options.iconPrefix + 'check"></i> ' + v +
+                        '</a></li>';
+        }, '');
+
+        return tplIconButton(options.iconPrefix + 'text-height', {
+          title: lang.font.height,
+          dropdown: '<ul class="dropdown-menu note-check">' + items + '</ul>'
+        });
+
+      },
+      help: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'question', {
+          event: 'showHelpDialog',
+          title: lang.options.help,
+          hide: true
+        });
+      },
+      fullscreen: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'arrows-alt', {
+          event: 'fullscreen',
+          title: lang.options.fullscreen
+        });
+      },
+      codeview: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'code', {
+          event: 'codeview',
+          title: lang.options.codeview
+        });
+      },
+      undo: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'undo', {
+          event: 'undo',
+          title: lang.history.undo
+        });
+      },
+      redo: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'repeat', {
+          event: 'redo',
+          title: lang.history.redo
+        });
+      },
+      hr: function (lang, options) {
+        return tplIconButton(options.iconPrefix + 'minus', {
+          event: 'insertHorizontalRule',
+          title: lang.hr.insert
+        });
+      }
+    };
+
+    var tplPopovers = function (lang, options) {
+      var tplLinkPopover = function () {
+        var linkButton = tplIconButton(options.iconPrefix + 'edit', {
+          title: lang.link.edit,
+          event: 'showLinkDialog',
+          hide: true
+        });
+        var unlinkButton = tplIconButton(options.iconPrefix + 'unlink', {
+          title: lang.link.unlink,
+          event: 'unlink'
+        });
+        var content = '<a href="http://www.google.com" target="_blank">www.google.com</a>&nbsp;&nbsp;' +
+                      '<div class="note-insert btn-group">' +
+                        linkButton + unlinkButton +
+                      '</div>';
+        return tplPopover('note-link-popover', content);
+      };
+
+      var tplImagePopover = function () {
+        var fullButton = tplButton('<span class="note-fontsize-10">100%</span>', {
+          title: lang.image.resizeFull,
+          event: 'resize',
+          value: '1'
+        });
+        var halfButton = tplButton('<span class="note-fontsize-10">50%</span>', {
+          title: lang.image.resizeHalf,
+          event: 'resize',
+          value: '0.5'
+        });
+        var quarterButton = tplButton('<span class="note-fontsize-10">25%</span>', {
+          title: lang.image.resizeQuarter,
+          event: 'resize',
+          value: '0.25'
+        });
+
+        var leftButton = tplIconButton(options.iconPrefix + 'align-left', {
+          title: lang.image.floatLeft,
+          event: 'floatMe',
+          value: 'left'
+        });
+        var rightButton = tplIconButton(options.iconPrefix + 'align-right', {
+          title: lang.image.floatRight,
+          event: 'floatMe',
+          value: 'right'
+        });
+        var justifyButton = tplIconButton(options.iconPrefix + 'align-justify', {
+          title: lang.image.floatNone,
+          event: 'floatMe',
+          value: 'none'
+        });
+
+        var roundedButton = tplIconButton(options.iconPrefix + 'square', {
+          title: lang.image.shapeRounded,
+          event: 'imageShape',
+          value: 'img-rounded'
+        });
+        var circleButton = tplIconButton(options.iconPrefix + 'circle-o', {
+          title: lang.image.shapeCircle,
+          event: 'imageShape',
+          value: 'img-circle'
+        });
+        var thumbnailButton = tplIconButton(options.iconPrefix + 'picture-o', {
+          title: lang.image.shapeThumbnail,
+          event: 'imageShape',
+          value: 'img-thumbnail'
+        });
+        var noneButton = tplIconButton(options.iconPrefix + 'times', {
+          title: lang.image.shapeNone,
+          event: 'imageShape',
+          value: ''
+        });
+
+        var removeButton = tplIconButton(options.iconPrefix + 'trash-o', {
+          title: lang.image.remove,
+          event: 'removeMedia',
+          value: 'none'
+        });
+
+        var content = '<div class="btn-group">' + fullButton + halfButton + quarterButton + '</div>' +
+                      '<div class="btn-group">' + leftButton + rightButton + justifyButton + '</div>' +
+                      '<div class="btn-group">' + roundedButton + circleButton + thumbnailButton + noneButton + '</div>' +
+                      '<div class="btn-group">' + removeButton + '</div>';
+        return tplPopover('note-image-popover', content);
+      };
+
+      var tplAirPopover = function () {
+        var $content = $('<div />');
+        for (var idx = 0, len = options.airPopover.length; idx < len; idx ++) {
+          var group = options.airPopover[idx];
+          
+          var $group = $('<div class="note-' + group[0] + ' btn-group">');
+          for (var i = 0, lenGroup = group[1].length; i < lenGroup; i++) {
+            var $button = $(tplButtonInfo[group[1][i]](lang, options));
+
+            $button.attr('data-name', group[1][i]);
+            
+            $group.append($button);
+          }
+          $content.append($group);
+        }
+
+        return tplPopover('note-air-popover', $content.children());
+      };
+
+      var $notePopover = $('<div class="note-popover" />');
+      
+      $notePopover.append(tplLinkPopover());
+      $notePopover.append(tplImagePopover());
+      
+      if (options.airMode) {
+        $notePopover.append(tplAirPopover());
+      }
+      
+      return $notePopover;
+    };
+
+    var tplHandles = function () {
+      return '<div class="note-handle">' +
+               '<div class="note-control-selection">' +
+                 '<div class="note-control-selection-bg"></div>' +
+                 '<div class="note-control-holder note-control-nw"></div>' +
+                 '<div class="note-control-holder note-control-ne"></div>' +
+                 '<div class="note-control-holder note-control-sw"></div>' +
+                 '<div class="note-control-sizing note-control-se"></div>' +
+                 '<div class="note-control-selection-info"></div>' +
+               '</div>' +
+             '</div>';
+    };
+
+    /**
+     * shortcut table template
+     * @param {String} title
+     * @param {String} body
+     */
+    var tplShortcut = function (title, keys) {
+      var keyClass = 'note-shortcut-col col-xs-6 note-shortcut-';
+      var body = [];
+
+      for (var i in keys) {
+        if (keys.hasOwnProperty(i)) {
+          body.push(
+            '<div class="' + keyClass + 'key">' + keys[i].kbd + '</div>' +
+            '<div class="' + keyClass + 'name">' + keys[i].text + '</div>'
+            );
+        }
+      }
+
+      return '<div class="note-shortcut-row row"><div class="' + keyClass + 'title col-xs-offset-6">' + title + '</div></div>' +
+             '<div class="note-shortcut-row row">' + body.join('</div><div class="note-shortcut-row row">') + '</div>';
+    };
+
+    var tplShortcutText = function (lang) {
+      var keys = [
+        { kbd: '⌘ + B', text: lang.font.bold },
+        { kbd: '⌘ + I', text: lang.font.italic },
+        { kbd: '⌘ + U', text: lang.font.underline },
+        { kbd: '⌘ + \\', text: lang.font.clear }
+      ];
+
+      return tplShortcut(lang.shortcut.textFormatting, keys);
+    };
+
+    var tplShortcutAction = function (lang) {
+      var keys = [
+        { kbd: '⌘ + Z', text: lang.history.undo },
+        { kbd: '⌘ + ⇧ + Z', text: lang.history.redo },
+        { kbd: '⌘ + ]', text: lang.paragraph.indent },
+        { kbd: '⌘ + [', text: lang.paragraph.outdent },
+        { kbd: '⌘ + ENTER', text: lang.hr.insert }
+      ];
+
+      return tplShortcut(lang.shortcut.action, keys);
+    };
+
+    var tplShortcutPara = function (lang) {
+      var keys = [
+        { kbd: '⌘ + ⇧ + L', text: lang.paragraph.left },
+        { kbd: '⌘ + ⇧ + E', text: lang.paragraph.center },
+        { kbd: '⌘ + ⇧ + R', text: lang.paragraph.right },
+        { kbd: '⌘ + ⇧ + J', text: lang.paragraph.justify },
+        { kbd: '⌘ + ⇧ + NUM7', text: lang.lists.ordered },
+        { kbd: '⌘ + ⇧ + NUM8', text: lang.lists.unordered }
+      ];
+
+      return tplShortcut(lang.shortcut.paragraphFormatting, keys);
+    };
+
+    var tplShortcutStyle = function (lang) {
+      var keys = [
+        { kbd: '⌘ + NUM0', text: lang.style.normal },
+        { kbd: '⌘ + NUM1', text: lang.style.h1 },
+        { kbd: '⌘ + NUM2', text: lang.style.h2 },
+        { kbd: '⌘ + NUM3', text: lang.style.h3 },
+        { kbd: '⌘ + NUM4', text: lang.style.h4 },
+        { kbd: '⌘ + NUM5', text: lang.style.h5 },
+        { kbd: '⌘ + NUM6', text: lang.style.h6 }
+      ];
+
+      return tplShortcut(lang.shortcut.documentStyle, keys);
+    };
+
+    var tplExtraShortcuts = function (lang, options) {
+      var extraKeys = options.extraKeys;
+      var keys = [];
+
+      for (var key in extraKeys) {
+        if (extraKeys.hasOwnProperty(key)) {
+          keys.push({ kbd: key, text: extraKeys[key] });
+        }
+      }
+
+      return tplShortcut(lang.shortcut.extraKeys, keys);
+    };
+
+    var tplShortcutTable = function (lang, options) {
+      var colClass = 'class="note-shortcut note-shortcut-col col-sm-6 col-xs-12"';
+      var template = [
+        '<div ' + colClass + '>' + tplShortcutAction(lang, options) + '</div>' +
+        '<div ' + colClass + '>' + tplShortcutText(lang, options) + '</div>',
+        '<div ' + colClass + '>' + tplShortcutStyle(lang, options) + '</div>' +
+        '<div ' + colClass + '>' + tplShortcutPara(lang, options) + '</div>'
+      ];
+
+      if (options.extraKeys) {
+        template.push('<div ' + colClass + '>' + tplExtraShortcuts(lang, options) + '</div>');
+      }
+
+      return '<div class="note-shortcut-row row">' +
+               template.join('</div><div class="note-shortcut-row row">') +
+             '</div>';
+    };
+
+    var replaceMacKeys = function (sHtml) {
+      return sHtml.replace(/⌘/g, 'Ctrl').replace(/⇧/g, 'Shift');
+    };
+
+    var tplDialogInfo = {
+      image: function (lang, options) {
+        var imageLimitation = '';
+        if (options.maximumImageFileSize) {
+          var unit = Math.floor(Math.log(options.maximumImageFileSize) / Math.log(1024));
+          var readableSize = (options.maximumImageFileSize / Math.pow(1024, unit)).toFixed(2) * 1 +
+                             ' ' + ' KMGTP'[unit] + 'B';
+          imageLimitation = '<small>' + lang.image.maximumFileSize + ' : ' + readableSize + '</small>';
+        }
+
+        var body = '<div class="form-group row-fluid note-group-select-from-files">' +
+                     '<label>' + lang.image.selectFromFiles + '</label>' +
+                     '<input class="note-image-input" type="file" name="files" accept="image/*" multiple="multiple" />' +
+                     imageLimitation +
+                   '</div>' +
+                   '<div class="form-group row-fluid">' +
+                     '<label>' + lang.image.url + '</label>' +
+                     '<input class="note-image-url form-control span12" type="text" />' +
+                   '</div>';
+        var footer = '<button href="#" class="btn btn-primary note-image-btn disabled" disabled>' + lang.image.insert + '</button>';
+        return tplDialog('note-image-dialog', lang.image.insert, body, footer);
+      },
+
+      link: function (lang, options) {
+        var body = '<div class="form-group row-fluid">' +
+                     '<label>' + lang.link.textToDisplay + '</label>' +
+                     '<input class="note-link-text form-control span12" type="text" />' +
+                   '</div>' +
+                   '<div class="form-group row-fluid">' +
+                     '<label>' + lang.link.url + '</label>' +
+                     '<input class="note-link-url form-control span12" type="text" />' +
+                   '</div>' +
+                   (!options.disableLinkTarget ?
+                     '<div class="checkbox">' +
+                       '<label>' + '<input type="checkbox" checked> ' +
+                         lang.link.openInNewWindow +
+                       '</label>' +
+                     '</div>' : ''
+                   );
+        var footer = '<button href="#" class="btn btn-primary note-link-btn disabled" disabled>' + lang.link.insert + '</button>';
+        return tplDialog('note-link-dialog', lang.link.insert, body, footer);
+      },
+
+      help: function (lang, options) {
+        var body = '<a class="modal-close pull-right" aria-hidden="true" tabindex="-1">' + lang.shortcut.close + '</a>' +
+                   '<div class="title">' + lang.shortcut.shortcuts + '</div>' +
+                   (agent.isMac ? tplShortcutTable(lang, options) : replaceMacKeys(tplShortcutTable(lang, options))) +
+                   '<p class="text-center">' +
+                     '<a href="//summernote.org/" target="_blank">Summernote 0.6.7</a> · ' +
+                     '<a href="//github.com/summernote/summernote" target="_blank">Project</a> · ' +
+                     '<a href="//github.com/summernote/summernote/issues" target="_blank">Issues</a>' +
+                   '</p>';
+        return tplDialog('note-help-dialog', '', body, '');
+      }
+    };
+
+    var tplDialogs = function (lang, options) {
+      var dialogs = '';
+
+      $.each(tplDialogInfo, function (idx, tplDialog) {
+        dialogs += tplDialog(lang, options);
+      });
+
+      return '<div class="note-dialog">' + dialogs + '</div>';
+    };
+
+    var tplStatusbar = function () {
+      return '<div class="note-resizebar">' +
+               '<div class="note-icon-bar"></div>' +
+               '<div class="note-icon-bar"></div>' +
+               '<div class="note-icon-bar"></div>' +
+             '</div>';
+    };
+
+    var representShortcut = function (str) {
+      if (agent.isMac) {
+        str = str.replace('CMD', '⌘').replace('SHIFT', '⇧');
+      }
+
+      return str.replace('BACKSLASH', '\\')
+                .replace('SLASH', '/')
+                .replace('LEFTBRACKET', '[')
+                .replace('RIGHTBRACKET', ']');
+    };
+
+    /**
+     * createTooltip
+     *
+     * @param {jQuery} $container
+     * @param {Object} keyMap
+     * @param {String} [sPlacement]
+     */
+    var createTooltip = function ($container, keyMap, sPlacement) {
+      var invertedKeyMap = func.invertObject(keyMap);
+      var $buttons = $container.find('button');
+
+      $buttons.each(function (i, elBtn) {
+        var $btn = $(elBtn);
+        var sShortcut = invertedKeyMap[$btn.data('event')];
+        if (sShortcut) {
+          $btn.attr('title', function (i, v) {
+            return v + ' (' + representShortcut(sShortcut) + ')';
+          });
+        }
+      // bootstrap tooltip on btn-group bug
+      // https://github.com/twbs/bootstrap/issues/5687
+      }).tooltip({
+        container: 'body',
+        trigger: 'hover',
+        placement: sPlacement || 'top'
+      }).on('click', function () {
+        $(this).tooltip('hide');
+      });
+    };
+
+    // createPalette
+    var createPalette = function ($container, options) {
+      var colorInfo = options.colors;
+      $container.find('.note-color-palette').each(function () {
+        var $palette = $(this), eventName = $palette.attr('data-target-event');
+        var paletteContents = [];
+        for (var row = 0, lenRow = colorInfo.length; row < lenRow; row++) {
+          var colors = colorInfo[row];
+          var buttons = [];
+          for (var col = 0, lenCol = colors.length; col < lenCol; col++) {
+            var color = colors[col];
+            buttons.push(['<button type="button" class="note-color-btn" style="background-color:', color,
+                           ';" data-event="', eventName,
+                           '" data-value="', color,
+                           '" title="', color,
+                           '" data-toggle="button" tabindex="-1"></button>'].join(''));
+          }
+          paletteContents.push('<div class="note-color-row">' + buttons.join('') + '</div>');
+        }
+        $palette.html(paletteContents.join(''));
+      });
+    };
+
+    /**
+     * create summernote layout (air mode)
+     *
+     * @param {jQuery} $holder
+     * @param {Object} options
+     */
+    this.createLayoutByAirMode = function ($holder, options) {
+      var langInfo = options.langInfo;
+      var keyMap = options.keyMap[agent.isMac ? 'mac' : 'pc'];
+      var id = func.uniqueId();
+
+      $holder.addClass('note-air-editor note-editable');
+      $holder.attr({
+        'id': 'note-editor-' + id,
+        'contentEditable': true
+      });
+
+      var body = document.body;
+
+      // create Popover
+      var $popover = $(tplPopovers(langInfo, options));
+      $popover.addClass('note-air-layout');
+      $popover.attr('id', 'note-popover-' + id);
+      $popover.appendTo(body);
+      createTooltip($popover, keyMap);
+      createPalette($popover, options);
+
+      // create Handle
+      var $handle = $(tplHandles());
+      $handle.addClass('note-air-layout');
+      $handle.attr('id', 'note-handle-' + id);
+      $handle.appendTo(body);
+
+      // create Dialog
+      var $dialog = $(tplDialogs(langInfo, options));
+      $dialog.addClass('note-air-layout');
+      $dialog.attr('id', 'note-dialog-' + id);
+      $dialog.find('button.close, a.modal-close').click(function () {
+        $(this).closest('.modal').modal('hide');
+      });
+      $dialog.appendTo(body);
+    };
+
+    /**
+     * create summernote layout (normal mode)
+     *
+     * @param {jQuery} $holder
+     * @param {Object} options
+     */
+    this.createLayoutByFrame = function ($holder, options) {
+      var langInfo = options.langInfo;
+
+      //01. create Editor
+      var $editor = $('<div class="note-editor"></div>');
+      if (options.width) {
+        $editor.width(options.width);
+      }
+
+      //02. statusbar (resizebar)
+      if (options.height > 0) {
+        $('<div class="note-statusbar">' + (options.disableResizeEditor ? '' : tplStatusbar()) + '</div>').prependTo($editor);
+      }
+
+      //03. create Editable
+      var isContentEditable = !$holder.is(':disabled');
+      var $editable = $('<div class="note-editable" contentEditable="' + isContentEditable + '"></div>')
+          .prependTo($editor);
+      if (options.height) {
+        $editable.height(options.height);
+      }
+      if (options.direction) {
+        $editable.attr('dir', options.direction);
+      }
+      var placeholder = $holder.attr('placeholder') || options.placeholder;
+      if (placeholder) {
+        $editable.attr('data-placeholder', placeholder);
+      }
+
+      $editable.html(dom.html($holder));
+
+      //031. create codable
+      $('<textarea class="note-codable"></textarea>').prependTo($editor);
+
+      //04. create Toolbar
+      var $toolbar = $('<div class="note-toolbar btn-toolbar" />');
+      for (var idx = 0, len = options.toolbar.length; idx < len; idx ++) {
+        var groupName = options.toolbar[idx][0];
+        var groupButtons = options.toolbar[idx][1];
+
+        var $group = $('<div class="note-' + groupName + ' btn-group" />');
+        for (var i = 0, btnLength = groupButtons.length; i < btnLength; i++) {
+          var buttonInfo = tplButtonInfo[groupButtons[i]];
+          // continue creating toolbar even if a button doesn't exist
+          if (!$.isFunction(buttonInfo)) { continue; }
+
+          var $button = $(buttonInfo(langInfo, options));
+          $button.attr('data-name', groupButtons[i]);  // set button's alias, becuase to get button element from $toolbar
+          $group.append($button);
+        }
+        $toolbar.append($group);
+      }
+      
+      $toolbar.prependTo($editor);
+      var keyMap = options.keyMap[agent.isMac ? 'mac' : 'pc'];
+      createPalette($toolbar, options);
+      createTooltip($toolbar, keyMap, 'bottom');
+
+      //05. create Popover
+      var $popover = $(tplPopovers(langInfo, options)).prependTo($editor);
+      createPalette($popover, options);
+      createTooltip($popover, keyMap);
+
+      //06. handle(control selection, ...)
+      $(tplHandles()).prependTo($editor);
+
+      //07. create Dialog
+      var $dialog = $(tplDialogs(langInfo, options)).prependTo($editor);
+      $dialog.find('button.close, a.modal-close').click(function () {
+        $(this).closest('.modal').modal('hide');
+      });
+
+      //08. create Dropzone
+      $('<div class="note-dropzone"><div class="note-dropzone-message"></div></div>').prependTo($editor);
+
+      //09. Editor/Holder switch
+      $editor.insertAfter($holder);
+      $holder.hide();
+    };
+
+    this.hasNoteEditor = function ($holder) {
+      return this.noteEditorFromHolder($holder).length > 0;
+    };
+
+    this.noteEditorFromHolder = function ($holder) {
+      if ($holder.hasClass('note-air-editor')) {
+        return $holder;
+      } else if ($holder.next().hasClass('note-editor')) {
+        return $holder.next();
+      } else {
+        return $();
+      }
+    };
+
+    /**
+     * create summernote layout
+     *
+     * @param {jQuery} $holder
+     * @param {Object} options
+     */
+    this.createLayout = function ($holder, options) {
+      if (options.airMode) {
+        this.createLayoutByAirMode($holder, options);
+      } else {
+        this.createLayoutByFrame($holder, options);
+      }
+    };
+
+    /**
+     * returns layoutInfo from holder
+     *
+     * @param {jQuery} $holder - placeholder
+     * @return {Object}
+     */
+    this.layoutInfoFromHolder = function ($holder) {
+      var $editor = this.noteEditorFromHolder($holder);
+      if (!$editor.length) {
+        return;
+      }
+
+      // connect $holder to $editor
+      $editor.data('holder', $holder);
+
+      return dom.buildLayoutInfo($editor);
+    };
+
+    /**
+     * removeLayout
+     *
+     * @param {jQuery} $holder - placeholder
+     * @param {Object} layoutInfo
+     * @param {Object} options
+     *
+     */
+    this.removeLayout = function ($holder, layoutInfo, options) {
+      if (options.airMode) {
+        $holder.removeClass('note-air-editor note-editable')
+               .removeAttr('id contentEditable');
+
+        layoutInfo.popover().remove();
+        layoutInfo.handle().remove();
+        layoutInfo.dialog().remove();
+      } else {
+        $holder.html(layoutInfo.editable().html());
+
+        layoutInfo.editor().remove();
+        $holder.show();
+      }
+    };
+
+    /**
+     *
+     * @return {Object}
+     * @return {function(label, options=):string} return.button {@link #tplButton function to make text button}
+     * @return {function(iconClass, options=):string} return.iconButton {@link #tplIconButton function to make icon button}
+     * @return {function(className, title=, body=, footer=):string} return.dialog {@link #tplDialog function to make dialog}
+     */
+    this.getTemplate = function () {
+      return {
+        button: tplButton,
+        iconButton: tplIconButton,
+        dialog: tplDialog
+      };
+    };
+
+    /**
+     * add button information
+     *
+     * @param {String} name button name
+     * @param {Function} buttonInfo function to make button, reference to {@link #tplButton},{@link #tplIconButton}
+     */
+    this.addButtonInfo = function (name, buttonInfo) {
+      tplButtonInfo[name] = buttonInfo;
+    };
+
+    /**
+     *
+     * @param {String} name
+     * @param {Function} dialogInfo function to make dialog, reference to {@link #tplDialog}
+     */
+    this.addDialogInfo = function (name, dialogInfo) {
+      tplDialogInfo[name] = dialogInfo;
+    };
+  };
+
+
+  // jQuery namespace for summernote
+  /**
+   * @class $.summernote 
+   * 
+   * summernote attribute  
+   * 
+   * @mixin defaults
+   * @singleton  
+   * 
+   */
+  $.summernote = $.summernote || {};
+
+  // extends default settings
+  //  - $.summernote.version
+  //  - $.summernote.options
+  //  - $.summernote.lang
+  $.extend($.summernote, defaults);
+
+  var renderer = new Renderer();
+  var eventHandler = new EventHandler();
+
+  $.extend($.summernote, {
+    /** @property {Renderer} */
+    renderer: renderer,
+    /** @property {EventHandler} */
+    eventHandler: eventHandler,
+    /** 
+     * @property {Object} core 
+     * @property {core.agent} core.agent 
+     * @property {core.dom} core.dom
+     * @property {core.range} core.range 
+     */
+    core: {
+      agent: agent,
+      list : list,
+      dom: dom,
+      range: range
+    },
+    /** 
+     * @property {Object} 
+     * pluginEvents event list for plugins
+     * event has name and callback function.
+     * 
+     * ``` 
+     * $.summernote.addPlugin({
+     *     events : {
+     *          'hello' : function(layoutInfo, value, $target) {
+     *              console.log('event name is hello, value is ' + value );
+     *          }
+     *     }     
+     * })
+     * ```
+     * 
+     * * event name is data-event property.
+     * * layoutInfo is a summernote layout information.
+     * * value is data-value property.
+     */
+    pluginEvents: {},
+
+    plugins : []
+  });
+
+  /**
+   * @method addPlugin
+   *
+   * add Plugin in Summernote 
+   * 
+   * Summernote can make a own plugin.
+   *
+   * ### Define plugin
+   * ```
+   * // get template function  
+   * var tmpl = $.summernote.renderer.getTemplate();
+   * 
+   * // add a button   
+   * $.summernote.addPlugin({
+   *     buttons : {
+   *        // "hello"  is button's namespace.      
+   *        "hello" : function(lang, options) {
+   *            // make icon button by template function          
+   *            return tmpl.iconButton('fa fa-header', {
+   *                // callback function name when button clicked 
+   *                event : 'hello',
+   *                // set data-value property                 
+   *                value : 'hello',                
+   *                hide : true
+   *            });           
+   *        }
+   *     
+   *     }, 
+   *     
+   *     events : {
+   *        "hello" : function(layoutInfo, value) {
+   *            // here is event code 
+   *        }
+   *     }     
+   * });
+   * ``` 
+   * ### Use a plugin in toolbar
+   * 
+   * ``` 
+   *    $("#editor").summernote({
+   *    ...
+   *    toolbar : [
+   *        // display hello plugin in toolbar     
+   *        ['group', [ 'hello' ]]
+   *    ]
+   *    ...    
+   *    });
+   * ```
+   *  
+   *  
+   * @param {Object} plugin
+   * @param {Object} [plugin.buttons] define plugin button. for detail, see to Renderer.addButtonInfo
+   * @param {Object} [plugin.dialogs] define plugin dialog. for detail, see to Renderer.addDialogInfo
+   * @param {Object} [plugin.events] add event in $.summernote.pluginEvents 
+   * @param {Object} [plugin.langs] update $.summernote.lang
+   * @param {Object} [plugin.options] update $.summernote.options
+   */
+  $.summernote.addPlugin = function (plugin) {
+
+    // save plugin list
+    $.summernote.plugins.push(plugin);
+
+    if (plugin.buttons) {
+      $.each(plugin.buttons, function (name, button) {
+        renderer.addButtonInfo(name, button);
+      });
+    }
+
+    if (plugin.dialogs) {
+      $.each(plugin.dialogs, function (name, dialog) {
+        renderer.addDialogInfo(name, dialog);
+      });
+    }
+
+    if (plugin.events) {
+      $.each(plugin.events, function (name, event) {
+        $.summernote.pluginEvents[name] = event;
+      });
+    }
+
+    if (plugin.langs) {
+      $.each(plugin.langs, function (locale, lang) {
+        if ($.summernote.lang[locale]) {
+          $.extend($.summernote.lang[locale], lang);
+        }
+      });
+    }
+
+    if (plugin.options) {
+      $.extend($.summernote.options, plugin.options);
+    }
+  };
+
+  /*
+   * extend $.fn
+   */
+  $.fn.extend({
+    /**
+     * @method
+     * Initialize summernote
+     *  - create editor layout and attach Mouse and keyboard events.
+     * 
+     * ```
+     * $("#summernote").summernote( { options ..} );
+     * ```
+     *   
+     * @member $.fn
+     * @param {Object|String} options reference to $.summernote.options
+     * @return {this}
+     */
+    summernote: function () {
+      // check first argument's type
+      //  - {String}: External API call {{module}}.{{method}}
+      //  - {Object}: init options
+      var type = $.type(list.head(arguments));
+      var isExternalAPICalled = type === 'string';
+      var hasInitOptions = type === 'object';
+
+      // extend default options with custom user options
+      var options = hasInitOptions ? list.head(arguments) : {};
+
+      options = $.extend({}, $.summernote.options, options);
+
+      // Include langInfo in options for later use, e.g. for image drag-n-drop
+      // Setup language info with en-US as default
+      options.langInfo = $.extend(true, {}, $.summernote.lang['en-US'], $.summernote.lang[options.lang]);
+
+      // override plugin options
+      if (!isExternalAPICalled && hasInitOptions) {
+        for (var i = 0, len = $.summernote.plugins.length; i < len; i++) {
+          var plugin = $.summernote.plugins[i];
+
+          if (options.plugin[plugin.name]) {
+            $.summernote.plugins[i] = $.extend(true, plugin, options.plugin[plugin.name]);
+          }
+        }
+      }
+
+      this.each(function (idx, holder) {
+        var $holder = $(holder);
+
+        // if layout isn't created yet, createLayout and attach events
+        if (!renderer.hasNoteEditor($holder)) {
+          renderer.createLayout($holder, options);
+
+          var layoutInfo = renderer.layoutInfoFromHolder($holder);
+          $holder.data('layoutInfo', layoutInfo);
+
+          eventHandler.attach(layoutInfo, options);
+          eventHandler.attachCustomEvent(layoutInfo, options);
+
+        }
+      });
+
+      var $first = this.first();
+      if ($first.length) {
+        var layoutInfo = renderer.layoutInfoFromHolder($first);
+
+        // external API
+        if (isExternalAPICalled) {
+          var moduleAndMethod = list.head(list.from(arguments));
+          var args = list.tail(list.from(arguments));
+
+          // TODO now external API only works for editor
+          var params = [moduleAndMethod, layoutInfo.editable()].concat(args);
+          return eventHandler.invoke.apply(eventHandler, params);
+        } else if (options.focus) {
+          // focus on first editable element for initialize editor
+          layoutInfo.editable().focus();
+        }
+      }
+
+      return this;
+    },
+
+    /**
+     * @method 
+     * 
+     * get the HTML contents of note or set the HTML contents of note.
+     *
+     * * get contents 
+     * ```
+     * var content = $("#summernote").code();
+     * ```
+     * * set contents 
+     *
+     * ```
+     * $("#summernote").code(html);
+     * ```
+     *
+     * @member $.fn 
+     * @param {String} [html] - HTML contents(optional, set)
+     * @return {this|String} - context(set) or HTML contents of note(get).
+     */
+    code: function (html) {
+      // get the HTML contents of note
+      if (html === undefined) {
+        var $holder = this.first();
+        if (!$holder.length) {
+          return;
+        }
+
+        var layoutInfo = renderer.layoutInfoFromHolder($holder);
+        var $editable = layoutInfo && layoutInfo.editable();
+
+        if ($editable && $editable.length) {
+          var isCodeview = eventHandler.invoke('codeview.isActivated', layoutInfo);
+          eventHandler.invoke('codeview.sync', layoutInfo);
+          return isCodeview ? layoutInfo.codable().val() :
+                              layoutInfo.editable().html();
+        }
+        return dom.value($holder);
+      }
+
+      // set the HTML contents of note
+      this.each(function (i, holder) {
+        var layoutInfo = renderer.layoutInfoFromHolder($(holder));
+        var $editable = layoutInfo && layoutInfo.editable();
+        if ($editable) {
+          $editable.html(html);
+        }
+      });
+
+      return this;
+    },
+
+    /**
+     * @method
+     * 
+     * destroy Editor Layout and detach Key and Mouse Event
+     *
+     * @member $.fn
+     * @return {this}
+     */
+    destroy: function () {
+      this.each(function (idx, holder) {
+        var $holder = $(holder);
+
+        if (!renderer.hasNoteEditor($holder)) {
+          return;
+        }
+
+        var info = renderer.layoutInfoFromHolder($holder);
+        var options = info.editor().data('options');
+
+        eventHandler.detach(info, options);
+        renderer.removeLayout($holder, info, options);
+      });
+
+      return this;
+    }
+  });
+}));
+
+$(document).ready(function(){
+	
+	$(window).load(function() { $("#loading").fadeOut("slow"); })
+	
+	
+	//SLIM SCROLL
+	$('.slimscroller').slimscroll({
+		height: 'auto',
+		size: '3px',
+		railOpacity: 0.3,
+		wheelStep: 5
+	});
+	$('.chat-widget').slimScroll({
+		height: '300px',
+		color: '#868686',
+		size: '3px',
+		railOpacity: 0.3,
+		wheelStep: 5
+	});
+	$('.scroll-widget').slimScroll({
+		height: '325px',
+		position: 'left',
+		color: '#868686',
+		size: '3px',
+		railOpacity: 0.3,
+		wheelStep: 5
+	});
+	$('.scroll-user-widget').slimScroll({
+		height: '500px',
+		color: '#868686',
+		size: '3px',
+		railOpacity: 0.3,
+		wheelStep: 5
+	});
+	$('.dropdown-message-scroll').slimScroll({
+		height: '250px',
+		position: 'left',
+		color: '#868686',
+		size: '3px',
+		railOpacity: 0.3,
+		wheelStep: 5
+	});
+	$('.table-scroll').slimScroll({
+		height: '300px',
+		position: 'right',
+		color: '#868686',
+		size: '3px',
+		railOpacity: 0.3,
+		wheelStep: 5
+	});
+
+
+
+	//TOOLTIP
+	$('.tooltips').tooltip({
+	  selector: "[data-toggle=tooltip]",
+	  container: "body"
+	})
+
+	//RESPONSIVE SIDEBAR
+	$("button.show-sidebar").click(function(){
+	$("div.left").toggleClass("mobile-sidebar");
+	$("div.right").toggleClass("mobile-content");
+	$("div.logo-brand").toggleClass("logo-brand-toggle");
+	});
+
+
+	//SIDEBAR MENU
+	$('#sidebar-menu > ul > li > a').click(function() {
+		$('#sidebar-menu li').removeClass('selected');
+		$(this).closest('li').addClass('selected');	
+		var checkElement = $(this).next();
+			if((checkElement.is('ul')) && (checkElement.is(':visible'))) {
+				$(this).closest('li').removeClass('selected');
+				checkElement.slideUp('fast');
+			}
+			if((checkElement.is('ul')) && (!checkElement.is(':visible'))) {
+				$('#sidebar-menu ul ul:visible').slideUp('fast');
+				checkElement.slideDown('fast');
+			}
+			if($(this).closest('li').find('ul').children().length == 0) {
+				return true;
+				} else {
+				return false;	
+			}		
+	});
+
+
+	//SUMMERNOTE
+	$('.summernote').summernote({
+	  height: 500
+	});
+
+
+	$('.summernote-small').summernote({
+	  toolbar: [
+		['style', ['bold', 'italic', 'underline', 'clear']],
+		['fontsize', ['fontsize']],
+		['color', ['color']],
+		['para', ['ul', 'ol', 'paragraph']]
+	  ],
+	  height: 200
+	});
+
+
+	//SELECT
+	$('.selectpicker').selectpicker();
+	//FILE INPUT
+	$('input[type=file]').bootstrapFileInput();
+	//DATE PICKER
+	$('.datepicker-input').datepicker();
+	//ICHECK
+	$('input').iCheck({
+	checkboxClass: 'icheckbox_minimal-grey',
+	radioClass: 'iradio_minimal-grey',
+	increaseArea: '20%' // optional
+	});
+
+
+	//GALLERY
+	$('.gallery-wrap').each(function() { // the containers for all your galleries
+		$(this).magnificPopup({
+			delegate: 'a.zooming', // the selector for gallery item
+			type: 'image',
+			removalDelay: 300,
+			mainClass: 'mfp-fade',
+			gallery: {
+			  enabled:true
+			}
+		});
+	}); 
+
+
+	if ($('#morris-bar-home').length > 0){
+		//MORRIS
+		Morris.Bar({
+		  element: 'morris-bar-home',
+		  data: [
+			{ y: 'Indonesia', a: 952},
+			{ y: 'India', a: 985},
+			{ y: 'Malaysia', a: 955},
+			{ y: 'China', a: 785 },
+			{ y: 'Philipina', a: 700 },
+			{ y: 'Autralia', a: 601 },
+			{ y: 'United Kingdom', a: 421 },
+			{ y: 'United States', a: 725 },
+			{ y: 'Taiwan', a: 350 },
+			{ y: 'New Zealand', a: 120 },
+			{ y: 'Singapore', a: 124}
+		  ],
+		  xkey: 'y',
+		  ykeys: ['a'],
+		  labels: ['Visitor'],
+		  resize: true,
+		  barColors: ['#2C7439'],
+		  gridTextColor: ['#2C7439'],
+		  gridTextSize: 11,
+		  grid :false
+		});
+
+	}
+
+	if ($('#morris-home').length > 0){
+		//MORRIS
+		Morris.Area({
+		  element: 'morris-home',
+		  data: [
+			{ y: '2006', a: 100, b: 90, c: 112 },
+			{ y: '2007', a: 75,  b: 65, c: 95 },
+			{ y: '2008', a: 50,  b: 40, c: 80 },
+			{ y: '2009', a: 75,  b: 65, c: 96 },
+			{ y: '2010', a: 50,  b: 40, c: 75 },
+			{ y: '2011', a: 75,  b: 65, c: 110 },
+			{ y: '2012', a: 100, b: 90, c: 132 },
+			{ y: '2013', a: 125, b: 110, c: 152 },
+			{ y: '2014', a: 145, b: 135, c: 165 }
+		  ],
+		  xkey: 'y',
+		  ykeys: ['a', 'b', 'c'],
+		  labels: ['New Visitor', 'Visitor', 'Page Hits'],
+		  resize: true,
+		  lineColors: ['#5CB85C', '#FFD600', '#D10D0D']
+		});
+	}
+	
+
+
+});
+
+
+
+/* ===========================================================
+ * Bootstrap: inputmask.js v3.0.0-p7
+ * http://jasny.github.io/bootstrap/javascript.html#inputmask
+ * Based on Masked Input plugin by Josh Bush (digitalbush.com)
+ * ===========================================================
+ * Copyright 2012 Jasny BV, Netherlands.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License")
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ========================================================== */
+
++function ($) { "use strict";
+
+  var isIphone = (window.orientation !== undefined)
+  var isAndroid = navigator.userAgent.toLowerCase().indexOf("android") > -1
+  var isIE = window.navigator.appName == 'Microsoft Internet Explorer'
+
+  // INPUTMASK PUBLIC CLASS DEFINITION
+  // =================================
+
+  var Inputmask = function (element, options) {
+    if (isAndroid) return // No support because caret positioning doesn't work on Android
+    
+    this.$element = $(element)
+    this.options = $.extend({}, Inputmask.DEFAULS, options)
+    this.mask = String(this.options.mask)
+    
+    this.init()
+    this.listen()
+        
+    this.checkVal() //Perform initial check for existing values
+  }
+
+  Inputmask.DEFAULS = {
+    mask: "",
+    placeholder: "_",
+    definitions: {
+      '9': "[0-9]",
+      'a': "[A-Za-z]",
+      '?': "[A-Za-z0-9]",
+      '*': "."
+    }
+  }
+
+  Inputmask.prototype.init = function() {
+    var defs = this.options.definitions
+    var len = this.mask.length
+
+    this.tests = [] 
+    this.partialPosition = this.mask.length
+    this.firstNonMaskPos = null
+
+    $.each(this.mask.split(""), $.proxy(function(i, c) {
+      if (c == '?') {
+        len--
+        this.partialPosition = i
+      } else if (defs[c]) {
+        this.tests.push(new RegExp(defs[c]))
+        if(this.firstNonMaskPos === null)
+          this.firstNonMaskPos =  this.tests.length - 1
+      } else {
+        this.tests.push(null)
+      }
+    }, this))
+
+    this.buffer = $.map(this.mask.split(""), $.proxy(function(c, i) {
+      if (c != '?') return defs[c] ? this.options.placeholder : c
+    }, this))
+
+    this.focusText = this.$element.val()
+
+    this.$element.data("rawMaskFn", $.proxy(function() {
+      return $.map(this.buffer, function(c, i) {
+        return this.tests[i] && c != this.options.placeholder ? c : null
+      }).join('')
+    }, this))
+  }
+    
+  Inputmask.prototype.listen = function() {
+    if (this.$element.attr("readonly")) return
+
+    var pasteEventName = (isIE ? 'paste' : 'input') + ".mask"
+
+    this.$element
+      .on("unmask.bs.inputmask", $.proxy(this.unmask, this))
+
+      .on("focus.bs.inputmask", $.proxy(this.focusEvent, this))
+      .on("blur.bs.inputmask", $.proxy(this.blurEvent, this))
+
+      .on("keydown.bs.inputmask", $.proxy(this.keydownEvent, this))
+      .on("keypress.bs.inputmask", $.proxy(this.keypressEvent, this))
+
+      .on(pasteEventName, $.proxy(this.pasteEvent, this))
+  }
+
+  //Helper Function for Caret positioning
+  Inputmask.prototype.caret = function(begin, end) {
+    if (this.$element.length === 0) return
+    if (typeof begin == 'number') {
+      end = (typeof end == 'number') ? end : begin
+      return this.$element.each(function() {
+        if (this.setSelectionRange) {
+          this.setSelectionRange(begin, end)
+        } else if (this.createTextRange) {
+          var range = this.createTextRange()
+          range.collapse(true)
+          range.moveEnd('character', end)
+          range.moveStart('character', begin)
+          range.select()
+        }
+      })
+    } else {
+      if (this.$element[0].setSelectionRange) {
+        begin = this.$element[0].selectionStart
+        end = this.$element[0].selectionEnd
+      } else if (document.selection && document.selection.createRange) {
+        var range = document.selection.createRange()
+        begin = 0 - range.duplicate().moveStart('character', -100000)
+        end = begin + range.text.length
+      }
+      return {
+        begin: begin, 
+        end: end
+      }
+    }
+  }
+  
+  Inputmask.prototype.seekNext = function(pos) {
+    var len = this.mask.length
+    while (++pos <= len && !this.tests[pos]);
+
+    return pos
+  }
+  
+  Inputmask.prototype.seekPrev = function(pos) {
+    while (--pos >= 0 && !this.tests[pos]);
+
+    return pos
+  }
+
+  Inputmask.prototype.shiftL = function(begin,end) {
+    var len = this.mask.length
+
+    if(begin<0) return
+
+    for (var i = begin,j = this.seekNext(end); i < len; i++) {
+      if (this.tests[i]) {
+        if (j < len && this.tests[i].test(this.buffer[j])) {
+          this.buffer[i] = this.buffer[j]
+          this.buffer[j] = this.options.placeholder
+        } else
+          break
+        j = this.seekNext(j)
+      }
+    }
+    this.writeBuffer()
+    this.caret(Math.max(this.firstNonMaskPos, begin))
+  }
+
+  Inputmask.prototype.shiftR = function(pos) {
+    var len = this.mask.length
+
+    for (var i = pos, c = this.options.placeholder; i < len; i++) {
+      if (this.tests[i]) {
+        var j = this.seekNext(i)
+        var t = this.buffer[i]
+        this.buffer[i] = c
+        if (j < len && this.tests[j].test(t))
+          c = t
+        else
+          break
+      }
+    }
+  },
+
+  Inputmask.prototype.unmask = function() {
+    this.$element
+      .unbind(".mask")
+      .removeData("inputmask")
+  }
+
+  Inputmask.prototype.focusEvent = function() {
+    this.focusText = this.$element.val()
+    var len = this.mask.length 
+    var pos = this.checkVal()
+    this.writeBuffer()
+
+    var that = this
+    var moveCaret = function() {
+      if (pos == len)
+        that.caret(0, pos)
+      else
+        that.caret(pos)
+    }
+
+    moveCaret()
+    setTimeout(moveCaret, 50)
+  }
+
+  Inputmask.prototype.blurEvent = function() {
+    this.checkVal()
+    if (this.$element.val() !== this.focusText)
+      this.$element.trigger('change')
+  }
+
+  Inputmask.prototype.keydownEvent = function(e) {
+    var k=e.which
+
+    //backspace, delete, and escape get special treatment
+    if (k == 8 || k == 46 || (isIphone && k == 127)) {
+      var pos = this.caret(),
+      begin = pos.begin,
+      end = pos.end
+
+      if (end-begin === 0) {
+        begin = k!=46 ? this.seekPrev(begin) : (end=this.seekNext(begin-1))
+        end = k==46 ? this.seekNext(end) : end
+      }
+      this.clearBuffer(begin, end)
+      this.shiftL(begin,end-1)
+
+      return false
+    } else if (k == 27) {//escape
+      this.$element.val(this.focusText)
+      this.caret(0, this.checkVal())
+      return false
+    }
+  }
+
+  Inputmask.prototype.keypressEvent = function(e) {
+    var len = this.mask.length
+
+    var k = e.which,
+    pos = this.caret()
+
+    if (e.ctrlKey || e.altKey || e.metaKey || k<32)  {//Ignore
+      return true
+    } else if (k) {
+      if (pos.end - pos.begin !== 0) {
+        this.clearBuffer(pos.begin, pos.end)
+        this.shiftL(pos.begin, pos.end-1)
+      }
+
+      var p = this.seekNext(pos.begin - 1)
+      if (p < len) {
+        var c = String.fromCharCode(k)
+        if (this.tests[p].test(c)) {
+          this.shiftR(p)
+          this.buffer[p] = c
+          this.writeBuffer()
+          var next = this.seekNext(p)
+          this.caret(next)
+        }
+      }
+      return false
+    }
+  }
+
+  Inputmask.prototype.pasteEvent = function() {
+    var that = this
+
+    setTimeout(function() {
+      that.caret(that.checkVal(true))
+    }, 0)
+  }
+
+  Inputmask.prototype.clearBuffer = function(start, end) {
+    var len = this.mask.length
+
+    for (var i = start; i < end && i < len; i++) {
+      if (this.tests[i])
+        this.buffer[i] = this.options.placeholder
+    }
+  }
+
+  Inputmask.prototype.writeBuffer = function() {
+    return this.$element.val(this.buffer.join('')).val()
+  }
+
+  Inputmask.prototype.checkVal = function(allow) {
+    var len = this.mask.length
+    //try to place characters where they belong
+    var test = this.$element.val()
+    var lastMatch = -1
+
+    for (var i = 0, pos = 0; i < len; i++) {
+      if (this.tests[i]) {
+        this.buffer[i] = this.options.placeholder
+        while (pos++ < test.length) {
+          var c = test.charAt(pos - 1)
+          if (this.tests[i].test(c)) {
+            this.buffer[i] = c
+            lastMatch = i
+            break
+          }
+        }
+        if (pos > test.length)
+          break
+      } else if (this.buffer[i] == test.charAt(pos) && i != this.partialPosition) {
+        pos++
+        lastMatch = i
+      }
+    }
+    if (!allow && lastMatch + 1 < this.partialPosition) {
+      this.$element.val("")
+      this.clearBuffer(0, len)
+    } else if (allow || lastMatch + 1 >= this.partialPosition) {
+      this.writeBuffer()
+      if (!allow) this.$element.val(this.$element.val().substring(0, lastMatch + 1))
+    }
+    return (this.partialPosition ? i : this.firstNonMaskPos)
+  }
+
+  
+  // INPUTMASK PLUGIN DEFINITION
+  // ===========================
+
+  var old = $.fn.inputmask
+  
+  $.fn.inputmask = function (options) {
+    return this.each(function () {
+      var $this = $(this)
+      var data = $this.data('inputmask')
+      
+      if (!data) $this.data('inputmask', (data = new Inputmask(this, options)))
+    })
+  }
+
+  $.fn.inputmask.Constructor = Inputmask
+
+
+  // INPUTMASK NO CONFLICT
+  // ====================
+
+  $.fn.inputmask.noConflict = function () {
+    $.fn.inputmask = old
+    return this
+  }
+
+
+  // INPUTMASK DATA-API
+  // ==================
+
+  $(document).on('focus.bs.inputmask.data-api', '[data-mask]', function (e) {
+    var $this = $(this)
+    if ($this.data('inputmask')) return
+    $this.inputmask($this.data())
+  })
+
+}(window.jQuery);
+

@@ -9,7 +9,8 @@ module.exports = function (grunt) {
         app: 'app',
         dist: 'dist',
         local: 'local',
-        public: 'static'
+        public: 'static',
+        bower: 'bower_components'
     };
 
     grunt.initConfig({
@@ -64,7 +65,9 @@ module.exports = function (grunt) {
                 cssDest: '<%= yeoman.public %>/<%= yeoman.dist %>/css/bower.css',
                 mainFiles: {
                     'moment': ['../moment.js', '../locale/pl.js'],
-                    'jquery-easy-wizard': ['../../lib/jquery.easyWizard.js']
+                    'jquery-easy-wizard': ['../../lib/jquery.easyWizard.js'],
+                    'niftymodals': ['../../js/jquery.modalEffects.js'],
+                    'sortable': ['../js/sortable.js']
                 },
                 exclude: ['animate-css', 'font-awesome', 'weather-icons'],
                 callback: function(mainFiles, component) {
@@ -145,12 +148,20 @@ module.exports = function (grunt) {
                 files: [
                     {expand: true, cwd: '<%= yeoman.app %>/styles', src: ['**.css'], dest: '<%= yeoman.public %>/<%= yeoman.local %>/css'},
                     {expand: true, cwd: '<%= yeoman.app %>/assets', src: ['**'], dest: '<%= yeoman.public %>/<%= yeoman.local %>/assets'},
+                    {expand: true, cwd: '<%= yeoman.bower %>/bootstrap-fileinput/img/', src: ['**'], dest: '<%= yeoman.public %>/<%= yeoman.local %>/img'},
+                    {expand: true, cwd: '<%= yeoman.bower %>/font-awesome/fonts/', src: ['**'], dest: '<%= yeoman.public %>/<%= yeoman.local %>/fonts'},
+                    {expand: true, cwd: '<%= yeoman.bower %>/niftymodals/fonts/', src: ['**'], dest: '<%= yeoman.public %>/<%= yeoman.local %>/fonts'},
+                    {expand: true, cwd: '<%= yeoman.bower %>/weather-icons/font/', src: ['**'], dest: '<%= yeoman.public %>/<%= yeoman.local %>/font'},
                 ]
             },
             dist: {
                 files: [
                     {expand: true, cwd: '<%= yeoman.app %>/styles', src: ['**.css'], dest: '<%= yeoman.public %>/<%= yeoman.dist %>/css'},
                     {expand: true, cwd: '<%= yeoman.app %>/assets', src: ['**'], dest: '<%= yeoman.public %>/<%= yeoman.dist %>/assets'},
+                    {expand: true, cwd: '<%= yeoman.bower %>/bootstrap-fileinput/img/', src: ['**'], dest: '<%= yeoman.public %>/<%= yeoman.dist %>/img'},
+                    {expand: true, cwd: '<%= yeoman.bower %>/font-awesome/fonts/', src: ['**'], dest: '<%= yeoman.public %>/<%= yeoman.dist %>/fonts'},
+                    {expand: true, cwd: '<%= yeoman.bower %>/niftymodals/fonts/', src: ['**'], dest: '<%= yeoman.public %>/<%= yeoman.dist %>/fonts'},
+                    {expand: true, cwd: '<%= yeoman.bower %>/weather-icons/font/', src: ['**'], dest: '<%= yeoman.public %>/<%= yeoman.dist %>/font'},
                 ]
             },
         },
