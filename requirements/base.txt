@@ -21,3 +21,4 @@ django-haystack
 whoosh
 django-facebook
 haversine
+django-bootstrap-form

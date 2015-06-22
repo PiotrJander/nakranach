@@ -8,3 +8,4 @@ dontruninproduction
 .DS_Store
 /uploads
 *.pyc
+.idea

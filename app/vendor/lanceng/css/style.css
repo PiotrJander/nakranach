@@ -75,7 +75,7 @@ blockquote.reply-message{
 }
 .dropdown-menu.dropdown-message ul{white-space: inherit;}
 .dropdown-menu.dropdown-message li a{
-	word-wrap:normal|break-word;
+	word-wrap:normal;
 	white-space: inherit;
 	width: 300px;
 	border-bottom: 1px solid #ddd;
@@ -1763,7 +1763,7 @@ UPDATE FOR VERSION 1.1
 @media screen and (min-width: 768px) {
   .jumbotron.sm {
     padding-top: 36px;
-    padding-bottom: 36x;
+    padding-bottom: 36px;
   }
   .jumbotron.sm h1,
   .jumbotron.sm .h1 {
@@ -1772,7 +1772,7 @@ UPDATE FOR VERSION 1.1
   }
   .jumbotron.xs {
     padding-top: 24px;
-    padding-bottom: 24x;
+    padding-bottom: 24px;
   }
   .jumbotron.xs h1,
   .jumbotron.xs .h1 {
