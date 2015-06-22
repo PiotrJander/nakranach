@@ -11,6 +11,7 @@ urlpatterns = patterns('',
     url(r'^$', landing, name='landing'),
     url(r'^login/$', 'django.contrib.auth.views.login', name='login'),
     url(r'^logout/$', 'django.contrib.auth.views.logout', name='logout', kwargs={'next_page': '/login/'}),
+    url(r'^dashboard/$', DashboardView.as_view(), name='dashboard'),
     url(r'pubs/search/$', search_view_factory(
         form_class=HighlightedModelSearchForm,
         view_class=SearchView,
