@@ -123,5 +123,9 @@ HAYSTACK_CONNECTIONS = {
     },
 }
 
+# login
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/'
+
 from .api import *
 from .fb import *

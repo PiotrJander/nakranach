@@ -5,7 +5,6 @@ from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import TemplateView, DetailView
-from django.contrib import auth
 
 
 from django.views.decorators.csrf import csrf_exempt
@@ -21,9 +20,7 @@ urlpatterns = patterns('',
     (r'^api/', include('app.api.urls')),
 	(r'^admin/', include(admin.site.urls)),
     (r'^fb/', include('app.fb.urls')),
-    url(r'^login/$', auth.views.login, name='login'),
-    url(r'^logout/$', auth.views.logout, name='logout', kwargs={'next_page': '/login/'}),
-    (r'', include('app.main.urls'))
+    (r'', include('app.main.urls', namespace='main'))
 )
 
 if settings.DEBUG:

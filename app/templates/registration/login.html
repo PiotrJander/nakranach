@@ -2,6 +2,10 @@
 {% load staticfiles %}
 {% load bootstrap %}
 
+{% block lanceng_body_classes %}
+  tooltips full-content
+{% endblock %}
+
 {% block content %}
 
   <!-- BEGIN PAGE -->
@@ -15,27 +19,25 @@
         <div class="box-info">
           <h2 class="text-center"><strong>Login</strong> form</h2>
 
-          <form role="form" action="index.html">
-            <div class="form-group login-input">
-              <i class="fa fa-sign-in overlay"></i>
-              <input type="text" class="form-control text-input" placeholder="Username">
-            </div>
-            <div class="form-group login-input">
-              <i class="fa fa-key overlay"></i>
-              <input type="password" class="form-control text-input" placeholder="Password">
-            </div>
-            <div class="checkbox">
-              <label>
-                <input type="checkbox"> Remember me
-              </label>
-            </div>
+          <form role="form" method="post" action="{% url 'main:login' %}">
+{#            <div class="form-group login-input">#}
+{#              <i class="fa fa-sign-in overlay"></i>#}
+{#              <input type="text" class="form-control text-input" placeholder="Username">#}
+{#            </div>#}
+{#            <div class="form-group login-input">#}
+{#              <i class="fa fa-key overlay"></i>#}
+{#              <input type="password" class="form-control text-input" placeholder="Password">#}
+{#            </div>#}
+{#            <div class="checkbox">#}
+{#              <label>#}
+{#                <input type="checkbox"> Remember me#}
+{#              </label>#}
+{#            </div>#}
 
-       {% comment %}
           {% csrf_token %}
 
           {{ form.username|bootstrap }}
           {{ form.password|bootstrap }}
-       {% endcomment %}
 
             <div class="row">
               <div class="col-sm-6">

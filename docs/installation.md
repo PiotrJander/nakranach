@@ -14,10 +14,11 @@ Instalacja składa się z następujących poleceń (wykonywanych w głównym kat
     virtualenv env
     . env/bin/activate
     npm install .
+    bower install
     grunt install
     pip install -r requirements/dist.txt
-    ./manage.py syncdb
     ./manage.py migrate
+    ./manage.py syncdb
 
 Krok opcjonalny jakby coś nie pojszło:
 

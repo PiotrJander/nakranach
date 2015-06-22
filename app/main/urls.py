@@ -4,9 +4,13 @@ from haystack.views import SearchView, search_view_factory
 from haystack.forms import HighlightedModelSearchForm
 
 from .views import *
+from .views.landing import landing
 
 urlpatterns = patterns('',
-    url(r'^$', IndexView.as_view(), name='index'),
+    # url(r'^$', IndexView.as_view(), name='index'),
+    url(r'^$', landing, name='landing'),
+    url(r'^login/$', 'django.contrib.auth.views.login', name='login'),
+    url(r'^logout/$', 'django.contrib.auth.views.logout', name='logout', kwargs={'next_page': '/login/'}),
     url(r'pubs/search/$', search_view_factory(
         form_class=HighlightedModelSearchForm,
         view_class=SearchView,
