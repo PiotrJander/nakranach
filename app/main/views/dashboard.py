@@ -1,6 +1,6 @@
 from django.views.generic import TemplateView
 
-from ..utils import SidebarMenu
+from ..sidebar_utils import SidebarMenu
 
 class DashboardView(TemplateView):
     template_name = 'dashboard.html'
