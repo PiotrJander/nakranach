@@ -96,6 +96,9 @@ TEMPLATE_CONTEXT_PROCESSORS = (
     'django.core.context_processors.request',
     'django.core.context_processors.media',
     'django.core.context_processors.static',
+
+    # custom
+    'app.main.context_processors.sidebar_menu',
 )
 
 SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
