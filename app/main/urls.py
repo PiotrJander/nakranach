@@ -12,7 +12,7 @@ urlpatterns = patterns('',
     # url(r'^$', IndexView.as_view(), name='index'),
     url(r'^$', landing, name='landing'),
     url(r'^dashboard/$', DashboardView.as_view(), name='dashboard'),
-    # url(r'^logout/$', logout, {'next_page': '/user/login/', }),
+
     url(r'pubs/search/$', search_view_factory(
         form_class=HighlightedModelSearchForm,
         view_class=SearchView,

@@ -21,5 +21,5 @@ def sidebar_menu(request):
     # perms = PermWrapper(user)
 
     return {
-        'sidebar_menu': SidebarMenu(),
+        'sidebar_menu': SidebarMenu(request),
     }

@@ -1,3 +1,4 @@
+# coding=utf-8
 from django.utils.html import escape
 
 
@@ -6,17 +7,20 @@ class SidebarMenu(object):
 
     :attr fields: a list of SidebarField objects.
     """
-    def __init__(self):
+    def __init__(self, request):
         """Creates a SidebarMenu object from a request.
 
+        :param request: a HTTPRequest with a user attribute
         """
         super(SidebarMenu, self).__init__()
+        self.user = request.user
         self.fields = []
 
         # test fields
         self.make_dashboard()
         self.make_frontend()
         self.make_elements()
+        self.make_users()
 
     def append_field(self, field):
         """Appends the child field to children attribute."""
@@ -53,6 +57,30 @@ class SidebarMenu(object):
         child2.active = True
         parent.append_field(child2)
         self.append_field(parent)
+
+
+    # methods for real fields
+
+    def make_users(self):
+        u"""
+        Makes a field 'Użytkownicy' with a child field 'Lista'.
+        'Lista' links to a list of users the logged user can manage.
+
+        The field is only displayed to users who have the role of a pub admin.
+        """
+        if not self.user.can_manage_user():
+            return
+        parent = SidebarWrapperField(name='Użytkownicy', icon='bug')
+        parent.append_field(SidebarChildField(
+            name='Listy',
+            url='/primary/',
+            label=SidebarLabel('success', 'UPDATED')
+        ))
+        child2 = SidebarChildField(name='Extended', url='/extended/')
+        child2.active = True
+        parent.append_field(child2)
+        self.append_field(parent)
+
 
 class SidebarField(object):
     """Abstract class for fields in the sidebar menu.
