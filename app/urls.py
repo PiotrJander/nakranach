@@ -14,14 +14,15 @@ from app.pubs.models import Pub
 from app import api
 
 admin.autodiscover()
-
 urlpatterns = patterns('',
     (r'^oauth2/', include('oauth2_provider.urls', namespace='oauth2_provider')),
     (r'^api/', include('app.api.urls')),
 	(r'^admin/', include(admin.site.urls)),
     (r'^fb/', include('app.fb.urls')),
-    (r'', include('app.main.urls', namespace='main'))
+    (r'^user/', include('django.contrib.auth.urls', namespace='registration')),
+    (r'^', include('app.main.urls', namespace='main')),
 )
+
 
 if settings.DEBUG:
     urlpatterns = patterns('',
