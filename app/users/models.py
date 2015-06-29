@@ -17,6 +17,18 @@ class Profile(models.Model):
 
     pubs = models.ManyToManyField(Pub, through='ProfilePub', related_name='employees', through_fields=('profile', 'pub'))
 
+    def fullname(self):
+        """Returns name and surname concatenated."""
+        return '%s %s' % (self.name, self.surname)
+
+    def role_descs(self):
+        """
+        Returns a list of role descriptions. A role description is a string with information about the role
+        and the pub. To be used in contexts where the user is known implicitly
+        and we don't want to include the user explicitly.
+        """
+        return [profile_pub.role_desc() for profile_pub in ProfilePub.objects.filter(profile=self)]
+
     @property
     def can_manage_pubs(self):
         return self.pubs.count() != 0
@@ -43,6 +55,14 @@ class Profile(models.Model):
         and pp1.pub_id = pub.id and pub.id = pp2.pub_id and pp2.profile_id = user.id;
         """, {'user_id': self.id})
 
+    @staticmethod
+    def get_by_user(user):
+        """
+        Returns the profile associated with given custom_user.
+        Raises Profile.DoesNotExist if there is no associated profile.
+        """
+        return Profile.objects.get(user=user.id)
+
     def __unicode__(self):
         return unicode(self.user)
 
@@ -64,6 +84,13 @@ class ProfilePub(models.Model):
     def __unicode__(self):
         entities = {'person': unicode(self.profile), 'role': self.get_role_display(), 'pub': unicode(self.pub), }
         return u'%(person)s pełni rolę %(role)s w %(pub)s' % entities
+
+    def role_desc(self):
+        """
+        Returns a string with information about the role and the pub. To be used in contexts where the user
+        is known implicitly and we don't want to include the user explicitly.
+        """
+        return '%s w %s' % (self.get_role_display(), unicode(self.pub))
 
     class Meta:
         verbose_name = _(u'profil-pub')

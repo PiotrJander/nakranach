@@ -1,0 +1,55 @@
+{% extends 'base_framed.html' %}
+{% load staticfiles %}
+
+{% block content %}
+
+  <!-- Page header -->
+  <div class="page-heading animated fadeInDownBig">
+    <h1>Użytkownicy
+      <small>zarządzanie</small>
+    </h1>
+  </div>
+  <!-- End page header -->
+
+  <!-- Begin profile table -->
+  <div class="box-info full">
+    <h2><strong>Lista</strong> użytkowników</h2>
+
+    <div class="table-responsive">
+      <table class="table" data-sortable>
+        <thead>
+          <tr>
+            <th style="width: 30px" data-sortable="false"><input type="checkbox" class="rows-check"></th>
+            <th>Nazwisko</th>
+            <th>Rola</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th data-sortable="false">Opcje</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          
+          {% for profile in profile_list %}
+            <tr>
+              <td><input type="checkbox" class="rows-check"></td>
+              <td><strong>{{ profile.fullname | default:"N/A" }}</strong></td>
+              <td>{% for role in profile.role_descs %} {{ role }} <br/> {% endfor %}</td>
+              <td><a href="mailto:{{ profile.email }}">{{ profile.user.email }}</a></td>
+              <td><span class="label label-success">Aktywny</span></td>
+              <td>
+                <div class="btn-group btn-group-xs">
+                  <a data-toggle="tooltip" title="Off" class="btn btn-default"><i class="fa fa-power-off"></i></a>
+                  <a data-toggle="tooltip" title="Edit" class="btn btn-default"><i class="fa fa-edit"></i></a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <!-- End profile table -->
+
+{% endblock content %}

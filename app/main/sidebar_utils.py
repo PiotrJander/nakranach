@@ -75,7 +75,7 @@ class SidebarMenu(object):
         The field is only displayed to users who have the role of a pub admin.
         """
         try:
-            profile = Profile.objects.get(user=self.user.id)
+            profile = Profile.get_by_user(self.user)
         except Profile.DoesNotExist:
             return
         if not profile.can_manage_users():
@@ -83,9 +83,7 @@ class SidebarMenu(object):
         parent = SidebarWrapperField(name='Użytkownicy', icon='bug')
         parent.append_field(SidebarChildField(
             name='Lista',
-            # TODO use actual url
-            # url=reverse('users:list'),
-            url='',
+            url=reverse('users:list'),
         ))
         self.append_field(parent)
 
