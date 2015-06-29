@@ -1,0 +1,53 @@
+{% load staticfiles %}
+
+<div id="sidebar-menu">
+  <ul>
+
+    {% for field in sidebar_menu.fields %}
+
+      {% if field.is_wrapper %}
+
+        <li {{ field.mark_active | safe }}>
+          <a>
+            {{ field.icon_str | safe }}
+            {{ field.ANGLE_DOUBLE_DOWN | safe }}
+            {{ field.name }}
+            {{ field.label_str | safe }}
+          </a>
+
+          <ul {{ field.mark_visible | safe }}>
+
+            {% for child in field.children %}
+
+              <li {{ child.mark_active | safe }}>
+                <a href="{{ child.url }}">
+                  {{ child.ANGLE_RIGHT | safe }}
+                  {{ child.name }}
+                  {{ child.label_str | safe }}
+                </a>
+              </li>
+
+            {% endfor %}
+
+          </ul>
+
+        </li>
+
+      {% else %}
+
+        {# field is a link field #}
+        <li {{ field.mark_active | safe }}>
+          <a href="{{ field.url }}">
+            {{ field.icon_str | safe }}
+            {{ field.name }}
+            {{ field.label_str | safe }}
+          </a>
+        </li>
+
+      {% endif %}
+
+    {% endfor %}
+
+  </ul>
+  <div class="clear"></div>
+</div>

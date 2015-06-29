@@ -1,1 +1,5 @@
-__author__ = 'piotr'
+from django.conf.urls import url
+
+# urlpatterns = [
+#     url(r'^list')
+# ]

@@ -1,4 +1,5 @@
 # coding=utf-8
+from django.core.urlresolvers import reverse
 from django.utils.html import escape
 
 
@@ -7,6 +8,7 @@ class SidebarMenu(object):
 
     :attr fields: a list of SidebarField objects.
     """
+
     def __init__(self, request):
         """Creates a SidebarMenu object from a request.
 
@@ -20,6 +22,8 @@ class SidebarMenu(object):
         self.make_dashboard()
         self.make_frontend()
         self.make_elements()
+
+        # custom fields
         self.make_users()
 
     def append_field(self, field):
@@ -58,7 +62,6 @@ class SidebarMenu(object):
         parent.append_field(child2)
         self.append_field(parent)
 
-
     # methods for real fields
 
     def make_users(self):
@@ -68,18 +71,19 @@ class SidebarMenu(object):
 
         The field is only displayed to users who have the role of a pub admin.
         """
-        if not self.user.can_manage_user():
-            return
-        parent = SidebarWrapperField(name='Użytkownicy', icon='bug')
-        parent.append_field(SidebarChildField(
-            name='Listy',
-            url='/primary/',
-            label=SidebarLabel('success', 'UPDATED')
-        ))
-        child2 = SidebarChildField(name='Extended', url='/extended/')
-        child2.active = True
-        parent.append_field(child2)
-        self.append_field(parent)
+        pass
+        # if not self.user.is_authenticated():
+        #     return
+        # profile = self.user.profile
+        # if not profile.can_manage_user():
+        #     return
+        # parent = SidebarWrapperField(name='Użytkownicy', icon='bug')
+        # parent.append_field(SidebarChildField(
+        #     name='Listy',
+        #     url=reverse('users:list'),
+        #     label=SidebarLabel('success', 'UPDATED')
+        # ))
+        # self.append_field(parent)
 
 
 class SidebarField(object):
@@ -198,14 +202,4 @@ class SidebarLabel(object):
 
     def __unicode__(self):
         return '<span class="label label-%s new-circle">%s</span>' % (self.label_type, escape(self.text))
-
-
-if __name__ == '__main__':
-    side = SidebarMenu()
-    wrapper = side.fields[2]
-    child = wrapper.children[1]
-    print wrapper.active
-    print wrapper.mark_active()
-    print child.active
-    print child.mark_active()
 
