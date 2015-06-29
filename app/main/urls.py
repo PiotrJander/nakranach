@@ -1,6 +1,7 @@
 from django.core.urlresolvers import reverse
 from django.conf.urls import patterns, url
 from django.contrib.auth.views import login, logout
+from django.views.generic.base import View
 
 from haystack.views import SearchView, search_view_factory
 from haystack.forms import HighlightedModelSearchForm
@@ -12,6 +13,7 @@ urlpatterns = patterns('',
     # url(r'^$', IndexView.as_view(), name='index'),
     url(r'^$', landing, name='landing'),
     url(r'^dashboard/$', DashboardView.as_view(), name='dashboard'),
+    url(r'^dummy/$', View.as_view(), name='dummy'),
 
     url(r'pubs/search/$', search_view_factory(
         form_class=HighlightedModelSearchForm,

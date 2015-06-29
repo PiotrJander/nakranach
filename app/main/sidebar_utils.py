@@ -17,7 +17,10 @@ class SidebarMenu(object):
         """
         super(SidebarMenu, self).__init__()
         self.fields = []
+        self.request = request
         self.user = request.user
+        self.view_name = request.resolver_match.view_name
+        self.kwargs = request.resolver_match.kwargs
         # any view which has a sidebar requires that the user is logged in
         # so we can assume that the request has attribute 'user'
 
@@ -31,25 +34,36 @@ class SidebarMenu(object):
 
     def append_field(self, field):
         """Appends the child field to children attribute."""
+        self.determine_if_active(field)
+
         self.fields.append(field)
 
-    def insert_field(self, i, field):
+    def insert_field(self, field, i):
         """Inserts the child field into children list at the i-th position."""
-        self.fields.insert(i, field)
+        self.determine_if_active(field)
+
+        self.fields.insert(field, i)
+
+    def determine_if_active(self, field):
+        if isinstance(field, SidebarLinkField):
+            field.active = field.url == self.request.path
+        if isinstance(field, SidebarWrapperField):
+            for child in field.children:
+                child.active = child.url == self.request.path
 
     # methods generating three first default lanceng fields
     def make_dashboard(self):
         self.append_field(SidebarLinkField(
             name='Dashboard',
             icon='home',
-            url='/dashboard/'
+            view_name='main:dummy'
         ))
 
     def make_frontend(self):
         self.append_field(SidebarLinkField(
             name='Frontend',
             icon='leaf',
-            url='/fontend/',
+            view_name='main:dummy',
             label=SidebarLabel('danger', 'COMING SOON')
         ))
 
@@ -57,11 +71,10 @@ class SidebarMenu(object):
         parent = SidebarWrapperField(name='Elements', icon='bug')
         parent.append_field(SidebarChildField(
             name='Primary',
-            url='/primary/',
+            view_name='main:dummy',
             label=SidebarLabel('success', 'UPDATED')
         ))
-        child2 = SidebarChildField(name='Extended', url='/extended/')
-        child2.active = True
+        child2 = SidebarChildField(name='Extended', view_name='main:dummy')
         parent.append_field(child2)
         self.append_field(parent)
 
@@ -83,7 +96,7 @@ class SidebarMenu(object):
         parent = SidebarWrapperField(name='Użytkownicy', icon='bug')
         parent.append_field(SidebarChildField(
             name='Lista',
-            url=reverse('users:list'),
+            view_name='users:list',
         ))
         self.append_field(parent)
 
@@ -128,14 +141,13 @@ class SidebarField(object):
 class SidebarLinkField(SidebarField):
     """Sidebar field serving as a link.
 
-    :attr url: URL to which the field points
+    :attr view_name: view_name to which the field points
     :attr active: boolean field saying whether the field is active at the given view
     """
 
-    def __init__(self, name, icon, url, label=None):
+    def __init__(self, name, icon, view_name, kwargs=None, label=None):
         super(SidebarLinkField, self).__init__(name, icon, label)
-        self.url = url
-        self.active = False
+        self.url = reverse(view_name, kwargs=kwargs)
 
 
 class SidebarWrapperField(SidebarField):
@@ -185,23 +197,23 @@ class SidebarChildField(SidebarLinkField):
     """
     ANGLE_RIGHT = '<i class="fa fa-angle-right"></i>'
 
-    def __init__(self, name, url, label=None):
-        super(SidebarChildField, self).__init__(name, 'bug', url, label)
+    def __init__(self, name, view_name, label=None):
+        super(SidebarChildField, self).__init__(name, 'bug', view_name, label=label)
         # here 'bug' is just a placeholder - icons are not used by child fields
 
 
 class SidebarLabel(object):
     """An informative label appended to fields in the sidebar.
 
-    :attr label_type: label type; if type is 'success', then the label receives a class 'label-success'
+    :attr labeltype: label type; if type is 'success', then the label receives a class 'label-success'
     :attr text: label text
     """
 
-    def __init__(self, label_type, text):
+    def __init__(self, labeltype, text):
         super(SidebarLabel, self).__init__()
-        self.label_type = label_type
+        self.labeltype = labeltype
         self.text = text
 
     def __unicode__(self):
-        return '<span class="label label-%s new-circle">%s</span>' % (self.label_type, escape(self.text))
+        return '<span class="label label-%s new-circle">%s</span>' % (self.labeltype, escape(self.text))
 
