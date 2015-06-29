@@ -5,21 +5,9 @@ from .sidebar_utils import SidebarMenu
 
 def sidebar_menu(request):
     """
-    Returns context variables required by apps that use Django's authentication
-    system.
-    If there is no 'user' attribute in the request, uses AnonymousUser (from
-    django.contrib.auth).
+    Adds 'sidebar_menu' to the context. Only takes effect when the user is logged in.
     """
-    # is anonymous needed?
-    # if hasattr(request, 'user'):
-    #     user = request.user
-    # else:
-    #     from django.contrib.auth.models import AnonymousUser
-    #     user = AnonymousUser()
-
-    # user = request.user
-    # perms = PermWrapper(user)
-
-    return {
-        'sidebar_menu': SidebarMenu(request),
-    }
+    if request.user.is_authenticated():
+        return { 'sidebar_menu': SidebarMenu(request), }
+    else:
+        return {}

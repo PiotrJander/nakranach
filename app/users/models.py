@@ -61,6 +61,10 @@ class ProfilePub(models.Model):
     pub = models.ForeignKey(Pub, verbose_name=_(u'Pub'))
     role = models.CharField(max_length=20, verbose_name=_(u'Rola'), choices=ROLE_CHOICES)
 
+    def __unicode__(self):
+        entities = {'person': unicode(self.profile), 'role': self.get_role_display(), 'pub': unicode(self.pub), }
+        return u'%(person)s pełni rolę %(role)s w %(pub)s' % entities
+
     class Meta:
         verbose_name = _(u'profil-pub')
         verbose_name_plural = _(u'profile-puby')

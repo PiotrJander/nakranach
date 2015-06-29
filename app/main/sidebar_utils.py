@@ -1,6 +1,7 @@
 # coding=utf-8
 from django.core.urlresolvers import reverse
 from django.utils.html import escape
+from app.users.models import Profile
 
 
 class SidebarMenu(object):
@@ -15,8 +16,10 @@ class SidebarMenu(object):
         :param request: a HTTPRequest with a user attribute
         """
         super(SidebarMenu, self).__init__()
-        self.user = request.user
         self.fields = []
+        self.user = request.user
+        # any view which has a sidebar requires that the user is logged in
+        # so we can assume that the request has attribute 'user'
 
         # test fields
         self.make_dashboard()
@@ -71,19 +74,20 @@ class SidebarMenu(object):
 
         The field is only displayed to users who have the role of a pub admin.
         """
-        pass
-        # if not self.user.is_authenticated():
-        #     return
-        # profile = self.user.profile
-        # if not profile.can_manage_user():
-        #     return
-        # parent = SidebarWrapperField(name='Użytkownicy', icon='bug')
-        # parent.append_field(SidebarChildField(
-        #     name='Listy',
-        #     url=reverse('users:list'),
-        #     label=SidebarLabel('success', 'UPDATED')
-        # ))
-        # self.append_field(parent)
+        try:
+            profile = Profile.objects.get(user=self.user.id)
+        except Profile.DoesNotExist:
+            return
+        if not profile.can_manage_users():
+            return
+        parent = SidebarWrapperField(name='Użytkownicy', icon='bug')
+        parent.append_field(SidebarChildField(
+            name='Lista',
+            # TODO use actual url
+            # url=reverse('users:list'),
+            url='',
+        ))
+        self.append_field(parent)
 
 
 class SidebarField(object):
