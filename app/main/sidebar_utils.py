@@ -198,11 +198,10 @@ class SidebarChildField(SidebarLinkField):
 
     Note that icon has no effect for child fields.
     """
-    ANGLE_RIGHT = '<i class="fa fa-angle-right"></i>'
+    angle_right_icon = '<i class="fa fa-angle-right"></i>'
 
     def __init__(self, name, view_name, kwargs=None, label=None):
-        super(SidebarChildField, self).__init__(name, 'bug', view_name, kwargs=kwargs, label=label)
-        # here 'bug' is just a placeholder - icons are not used by child fields
+        super(SidebarChildField, self).__init__(name, self.angle_right_icon, view_name, kwargs=kwargs, label=label)
 
 
 class SidebarLabel(object):

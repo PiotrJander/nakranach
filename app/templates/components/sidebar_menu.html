@@ -5,7 +5,7 @@
 
       {% if field.is_wrapper %}
 
-        <li {{ field.mark_active | safe }}>
+        <li {{ field.active_str | safe }}>
           <a>
             {{ field.icon_str | safe }}
             {{ field.ANGLE_DOUBLE_DOWN | safe }}
@@ -13,13 +13,13 @@
             {{ field.label_str | safe }}
           </a>
 
-          <ul {{ field.mark_visible | safe }}>
+          <ul {{ field.visible_str | safe }}>
 
             {% for child in field.children %}
 
-              <li {{ child.mark_active | safe }}>
+              <li {{ child.active_str | safe }}>
                 <a href="{{ child.url }}">
-                  {{ child.ANGLE_RIGHT | safe }}
+                  {{ child.icon_str | safe }}
                   {{ child.name }}
                   {{ child.label_str | safe }}
                 </a>
@@ -34,7 +34,7 @@
       {% else %}
 
         {# field is a link field #}
-        <li {{ field.mark_active | safe }}>
+        <li {{ field.active_str | safe }}>
           <a href="{{ field.url }}">
             {{ field.icon_str | safe }}
             {{ field.name }}

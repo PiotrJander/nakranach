@@ -38,7 +38,7 @@ class Profile(models.Model):
         Returns True if the user is a pub admin, ie. has the 'admin' role
         in at least one ProfilePub relationship.
         """
-        return ProfilePub.objects.filter(profile=self, role='admin').count() > 0
+        return ProfilePub.objects.filter(profile=self, role='admin')
 
     def managed_users(self):
         """

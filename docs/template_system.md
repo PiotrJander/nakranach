@@ -13,7 +13,7 @@ Szablony są zorganizowane trzypoziomowo:
     - z tego szablony powinno dziedziczyć większość widoków lancenga
     - poszerza base.html o panel boczny i pasek górny
     - wprowadza blok content, do którego ma trafiać główna zawartość strony
-    - każdy szablon dziedziczący z base_framed.html wymaga obiektu Profile, który
-        reprezentuje zalogowanego użytkownika
+    - każdy szablon dziedziczący z base_framed.html wymaga w kontekście obiektu
+        SidebarMenu
 
 3. *.html - szablony powinny dziedziczyć z base_framed.html
