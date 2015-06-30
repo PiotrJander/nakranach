@@ -20,11 +20,11 @@ class SidebarMenu(object):
         self.request = request
 
         # placeholder/test fields
-        self.make_dashboard()
         self.make_frontend()
         self.make_elements()
 
         # actual fields
+        self.make_dashboard()
         self.make_users()
 
     def append_field(self, field):
@@ -48,13 +48,6 @@ class SidebarMenu(object):
 
     # methods generating placeholder fields
 
-    def make_dashboard(self):
-        self.append_field(SidebarLinkField(
-            name='Dashboard',
-            icon='home',
-            view_name='main:dummy'
-        ))
-
     def make_frontend(self):
         self.append_field(SidebarLinkField(
             name='Frontend',
@@ -75,6 +68,13 @@ class SidebarMenu(object):
         self.append_field(parent)
 
     # methods for real fields
+
+    def make_dashboard(self):
+        self.append_field(SidebarLinkField(
+            name='Dashboard',
+            icon='home',
+            view_name='main:dashboard'
+        ))
 
     def make_users(self):
         u"""
@@ -198,10 +198,8 @@ class SidebarChildField(SidebarLinkField):
 
     Note that icon has no effect for child fields.
     """
-    angle_right_icon = '<i class="fa fa-angle-right"></i>'
-
     def __init__(self, name, view_name, kwargs=None, label=None):
-        super(SidebarChildField, self).__init__(name, self.angle_right_icon, view_name, kwargs=kwargs, label=label)
+        super(SidebarChildField, self).__init__(name, 'angle-right', view_name, kwargs=kwargs, label=label)
 
 
 class SidebarLabel(object):
