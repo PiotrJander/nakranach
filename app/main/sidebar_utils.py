@@ -18,40 +18,36 @@ class SidebarMenu(object):
         super(SidebarMenu, self).__init__()
         self.fields = []
         self.request = request
-        self.user = request.user
-        self.view_name = request.resolver_match.view_name
-        self.kwargs = request.resolver_match.kwargs
-        # any view which has a sidebar requires that the user is logged in
-        # so we can assume that the request has attribute 'user'
 
-        # test fields
+        # placeholder/test fields
         self.make_dashboard()
         self.make_frontend()
         self.make_elements()
 
-        # custom fields
+        # actual fields
         self.make_users()
 
     def append_field(self, field):
         """Appends the child field to children attribute."""
         self.determine_if_active(field)
-
         self.fields.append(field)
 
-    def insert_field(self, field, i):
+    def insert_field(self, i, field):
         """Inserts the child field into children list at the i-th position."""
         self.determine_if_active(field)
-
-        self.fields.insert(field, i)
+        self.fields.insert(i, field)
 
     def determine_if_active(self, field):
+        """Adds active=True attr to the link field whose URL equals the current URL.
+        """
         if isinstance(field, SidebarLinkField):
             field.active = field.url == self.request.path
         if isinstance(field, SidebarWrapperField):
             for child in field.children:
                 child.active = child.url == self.request.path
 
-    # methods generating three first default lanceng fields
+    # methods generating placeholder fields
+
     def make_dashboard(self):
         self.append_field(SidebarLinkField(
             name='Dashboard',
@@ -87,13 +83,19 @@ class SidebarMenu(object):
 
         The field is only displayed to users who have the role of a pub admin.
         """
+        # request.user is an instance of email_user; we want Profile instance
         try:
-            profile = Profile.get_by_user(self.user)
-        except Profile.DoesNotExist:
-            return
+            profile = Profile.get_by_user(self.request.user)
+        except Profile.DoesNotExist as e:
+            raise e
+            # TODO deal with this exception
+
+        # if the user in not a admin, do nothing
         if not profile.can_manage_users():
             return
-        parent = SidebarWrapperField(name='Użytkownicy', icon='bug')
+
+        # make the fields
+        parent = SidebarWrapperField(name='Użytkownicy', icon='list')
         parent.append_field(SidebarChildField(
             name='Lista',
             view_name='users:list',
@@ -118,7 +120,7 @@ class SidebarField(object):
         self.label = label
         self.is_wrapper = False
 
-    def mark_active(self):
+    def active_str(self):
         """Returns the string 'class="active"' if the field is active. To be used in templates."""
         if hasattr(self, 'active') and self.active:
             return 'class="active"'
@@ -141,8 +143,9 @@ class SidebarField(object):
 class SidebarLinkField(SidebarField):
     """Sidebar field serving as a link.
 
-    :attr view_name: view_name to which the field points
+    :attr url: href attr of the link
     :attr active: boolean field saying whether the field is active at the given view
+                    this attr is added by SidebarMenu.determine_if_active
     """
 
     def __init__(self, name, icon, view_name, kwargs=None, label=None):
@@ -170,7 +173,7 @@ class SidebarWrapperField(SidebarField):
         """Inserts the child field into children list at the i-th position."""
         self.children.insert(i, child_field)
 
-    def mark_visible(self):
+    def visible_str(self):
         """Returns 'class="visible"' if one of its children is active."""
         for child in self.children:
             if child.active:
@@ -197,8 +200,8 @@ class SidebarChildField(SidebarLinkField):
     """
     ANGLE_RIGHT = '<i class="fa fa-angle-right"></i>'
 
-    def __init__(self, name, view_name, label=None):
-        super(SidebarChildField, self).__init__(name, 'bug', view_name, label=label)
+    def __init__(self, name, view_name, kwargs=None, label=None):
+        super(SidebarChildField, self).__init__(name, 'bug', view_name, kwargs=kwargs, label=label)
         # here 'bug' is just a placeholder - icons are not used by child fields
 
 
