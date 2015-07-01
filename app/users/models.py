@@ -55,13 +55,13 @@ class Profile(models.Model):
         and pp1.pub_id = pub.id and pub.id = pp2.pub_id and pp2.profile_id = user.id;
         """, {'user_id': self.id})
 
-    @staticmethod
-    def get_by_user(user):
+    @classmethod
+    def get_by_user(cls, user):
         """
         Returns the profile associated with given custom_user.
         Raises Profile.DoesNotExist if there is no associated profile.
         """
-        return Profile.objects.get(user=user.id)
+        return cls.objects.get(user=user.id)
 
     def __unicode__(self):
         return unicode(self.user)
