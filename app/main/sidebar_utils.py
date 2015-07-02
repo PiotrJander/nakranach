@@ -100,6 +100,10 @@ class SidebarMenu(object):
             name='Lista',
             view_name='users:list',
         ))
+        parent.append_field(SidebarChildField(
+            name='Zaproś do pubu',
+            view_name='users:invite',
+        ))
         self.append_field(parent)
 
 

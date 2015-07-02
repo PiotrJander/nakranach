@@ -6,8 +6,9 @@
 
 how invitation goes:
 admin enters a user email, one at a time; submits
-if email in the system, OK
-if not, message
-URL user/invite
-add TemplateView
-create a form: email, role
+if email in the system, user/list
+if not, redisplay form, message
+
+form: if admin in more than one pub, choose the pub to invite
+
+add Zaproś do pubu do Użytkownicy
