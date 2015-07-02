@@ -23,5 +23,3 @@ we could alternatively have a list of managed pubs, and link: "Zaproś do pubu X
 albo i to, i to
 
 jeżeli admin zarządza jednym pubem, pole Wybierz pub nieaktywne
-
-na początek html: prawa columna
