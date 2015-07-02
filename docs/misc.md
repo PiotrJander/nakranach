@@ -10,5 +10,18 @@ if email in the system, user/list
 if not, redisplay form, message
 
 form: if admin in more than one pub, choose the pub to invite
+always display choose pub field
+but
 
-add Zaproś do pubu do Użytkownicy
+do I need django crispy forms? not now; try to play with HTML for forms
+would be nice to have a horizontal form
+but first of all create two columns
+in the right column list existing users: pub/role/name:email
+
+we could alternatively have a list of managed pubs, and link: "Zaproś do pubu X"
+
+albo i to, i to
+
+jeżeli admin zarządza jednym pubem, pole Wybierz pub nieaktywne
+
+na początek html: prawa columna

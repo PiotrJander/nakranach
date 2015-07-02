@@ -6,10 +6,47 @@
 Na kranach | zaproś użytkownika
 {% endblock title %}
 
+{#{% block lanceng_body_classes %}#}
+{#{{ block.super }} user-invite#}
+{#{% endblock lanceng_body_classes %}#}
+
 {% block content %}
-<form method="post" action="{% url 'users:invite' %}">
-{% csrf_token %}
-{{ form | bootstrap }}
-<button type="submit">Zaproś</button>
-</form>
+
+  <!-- Page header -->
+  <div class="page-heading animated fadeInDownBig">
+    <h1>Form Wizard
+      <small>lorem ipsum dolor</small>
+    </h1>
+  </div>
+  <!-- End page header -->
+
+  {# Begin form #}
+  <div class="row">
+
+    {# Left form column #}
+    <div class="col-sm-6">
+      <form method="post" action="{% url 'users:invite' %}">
+        {% csrf_token %}
+        {{ form | bootstrap }}
+        <button type="submit" class="btn btn-default">Zaproś</button>
+      </form>
+    </div>
+
+    {# Right info column #}
+    <div class="col-sm-6">
+      <div class="dotted">
+        <h4>Puby</h4>
+        {% lorem %}
+      </div>
+    </div>
+
+  </div>
+  {# End row #}
+
 {% endblock content %}
+
+<form method="post" action="{% url 'users:invite' %}">
+  {% csrf_token %}
+  {{ form | bootstrap }}
+  <button type="submit" class="btn btn-default">Zaproś</button>
+</form>
