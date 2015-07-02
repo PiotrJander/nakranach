@@ -91,7 +91,7 @@ class SidebarMenu(object):
             # TODO deal with this exception
 
         # if the user in not a admin, do nothing
-        if not profile.can_manage_users():
+        if not profile.is_admin():
             return
 
         # make the fields

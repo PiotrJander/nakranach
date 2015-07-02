@@ -1,7 +1,7 @@
 from django.views.generic import ListView, FormView
 
 from .models import Profile
-from .forms import InviteUserForm
+from .forms import invite_user_form_factory
 
 class ProfileListView(ListView):
     model = Profile
@@ -13,6 +13,10 @@ class ProfileListView(ListView):
 
 
 class InviteUserView(FormView):
-    form_class = InviteUserForm
     template_name = 'users/invite.html'
     success_url = '/user/list'
+
+    def get_form_class(self):
+        profile = Profile.get_by_user(self.request.user)
+        return invite_user_form_factory(profile)
+

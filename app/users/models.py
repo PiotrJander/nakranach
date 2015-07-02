@@ -33,7 +33,7 @@ class Profile(models.Model):
     def can_manage_pubs(self):
         return self.pubs.count() != 0
 
-    def can_manage_users(self):
+    def is_admin(self):
         """
         Returns True if the user is a pub admin, ie. has the 'admin' role
         in at least one ProfilePub relationship.
@@ -54,6 +54,12 @@ class Profile(models.Model):
         where admin.id = %(user_id)s and admin.id = pp1.profile_id and pp1.role = 'admin'
         and pp1.pub_id = pub.id and pub.id = pp2.pub_id and pp2.profile_id = user.id;
         """, {'user_id': self.id})
+
+    def managed_pubs(self):
+        """
+        Returns a QuerySet containing pubs managed by the user.
+        """
+        return Pub.objects.filter(profilepub__profile=self, profilepub__role='admin')
 
     @classmethod
     def get_by_user(cls, user):
