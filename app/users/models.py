@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from django.contrib.auth import get_user_model
 
 from django.conf import settings
 from django.db import models
@@ -68,6 +69,16 @@ class Profile(models.Model):
         Raises Profile.DoesNotExist if there is no associated profile.
         """
         return cls.objects.get(user=user.id)
+
+    @classmethod
+    def get_by_email(cls, email):
+        user = get_user_model().objects.get(email=email)
+        return cls.get_by_user(user)
+
+    @staticmethod
+    def check_email_is_registered(email):
+        """Checks if the given email is registered in Nakranach."""
+        return email in (user.email for user in get_user_model().objects.all())
 
     def __unicode__(self):
         return unicode(self.user)

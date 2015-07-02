@@ -1,5 +1,8 @@
+from django.db.utils import IntegrityError
 from django.views.generic import ListView, FormView
 
+from app.pubs.models import Pub
+from app.users.models import ProfilePub
 from .models import Profile
 from .forms import invite_user_form_factory
 
@@ -19,4 +22,22 @@ class InviteUserView(FormView):
     def get_form_class(self):
         profile = Profile.get_by_user(self.request.user)
         return invite_user_form_factory(profile)
+
+    def form_valid(self, form):
+        # get pub
+        pub_id = form.cleaned_data['pub']
+        pub = Pub.get_by_id(pub_id)
+
+        # get profile
+        user_email = form.cleaned_data['email']
+        profile = Profile.get_by_email(user_email)
+
+        # get role
+        role = form.cleaned_data['role']
+
+        # make and save relation
+        pp = ProfilePub(pub=pub, profile=profile, role=role)
+        pp.save()
+
+        return super(InviteUserView, self).form_valid(form)
 

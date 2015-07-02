@@ -98,11 +98,11 @@ class SidebarMenu(object):
         parent = SidebarWrapperField(name='Użytkownicy', icon='list')
         parent.append_field(SidebarChildField(
             name='Lista',
-            view_name='users:list',
+            view_name='user:list',
         ))
         parent.append_field(SidebarChildField(
             name='Zaproś do pubu',
-            view_name='users:invite',
+            view_name='user:invite',
         ))
         self.append_field(parent)
 

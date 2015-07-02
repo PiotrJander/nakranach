@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
 from django.utils import timezone
@@ -87,6 +86,11 @@ class Pub(models.Model):
 
     def get_absolute_url(self):
         return '/%s' % self.slug
+
+    @classmethod
+    def get_by_id(cls, id):
+        return cls.objects.get(pk=id)
+
 
 class Volume(models.Model):
     pub = models.ForeignKey(Pub, related_name='available_volumes')
