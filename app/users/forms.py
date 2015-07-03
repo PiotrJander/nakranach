@@ -1,11 +1,11 @@
 # coding=utf-8
-from app.users.models import Profile
 
 from django.core.exceptions import ValidationError
 from django import forms
 from django.utils.translation import ugettext_lazy as _
 
-from .models import ProfilePub
+from app.pubs.models import Pub
+from .models import ProfilePub, Profile
 
 
 def invite_user_form_factory(profile):
@@ -23,9 +23,7 @@ def invite_user_form_factory(profile):
         pub = forms.ChoiceField(choices=pub_choices)
 
         def clean_email(self):
-            """
-            Checks if the email is already registered.
-            """
+            """Checks if the email is already registered."""
             email = self.cleaned_data['email']
             if not Profile.check_email_is_registered(email):
                 raise ValidationError(
@@ -34,6 +32,25 @@ def invite_user_form_factory(profile):
                     params={'email': email},
                 )
             return email
+
+        def clean(self):
+            """
+            Ensures the email has not been associated with the pub yet.
+            Adds a ValidationError to email field otherwise.
+            """
+            cleaned_data = super(InviteUserForm, self).clean()
+            email = cleaned_data.get('email')
+            pub_id = cleaned_data.get('pub')
+
+            if not email:
+                # email validation failed, cross field clean doesn't make sense
+                return
+
+            profile = Profile.get_by_email(email)
+            pub = Pub.get_by_id(pub_id)
+            if ProfilePub.objects.filter(profile=profile, pub=pub):
+                # profile and pub are already associated
+                self.add_error('email', email_already_associated_error_msg % {'email': email})
 
     return InviteUserForm
 
@@ -44,4 +61,10 @@ email_not_registered_error_msg = u"""
 Wprowadzony adres email %(email)s nie jest zarejestrowany w Nakranach.
 Upewnij się, że użytkownik, którego chcesz zaprosić, jest zarejestrowany.
 Upewnij się też, że wprowadzony adres email jest poprawny.
+"""
+
+email_already_associated_error_msg = u"""
+Użytkownik o adresie email %(email)s pełni już rolę w pubie.
+Jeżeli chcesz zmienić rolę lub usunąć użytkownika z pubu, zrób to w widoku
+listy użytkowników.
 """

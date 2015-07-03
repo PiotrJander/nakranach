@@ -1,9 +1,7 @@
-from django.db.utils import IntegrityError
 from django.views.generic import ListView, FormView
 
 from app.pubs.models import Pub
-from app.users.models import ProfilePub
-from .models import Profile
+from .models import Profile, ProfilePub
 from .forms import invite_user_form_factory
 
 class ProfileListView(ListView):
@@ -40,4 +38,6 @@ class InviteUserView(FormView):
         pp.save()
 
         return super(InviteUserView, self).form_valid(form)
+
+
 
