@@ -39,5 +39,8 @@ class InviteUserView(FormView):
 
         return super(InviteUserView, self).form_valid(form)
 
-
-
+    def get_context_data(self, **kwargs):
+        "Add user profile to the context."
+        context = super(InviteUserView, self).get_context_data(**kwargs)
+        context['profile'] = Profile.get_by_user(self.request.user)
+        return context

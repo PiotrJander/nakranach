@@ -6,16 +6,12 @@
 Na kranach | zaproś użytkownika
 {% endblock title %}
 
-{#{% block lanceng_body_classes %}#}
-{#{{ block.super }} user-invite#}
-{#{% endblock lanceng_body_classes %}#}
-
 {% block content %}
 
   <!-- Page header -->
   <div class="page-heading animated fadeInDownBig">
-    <h1>Form Wizard
-      <small>lorem ipsum dolor</small>
+    <h1>Zaproś użytkowników
+      <small>do twojego pubu</small>
     </h1>
   </div>
   <!-- End page header -->
@@ -35,8 +31,32 @@ Na kranach | zaproś użytkownika
     {# Right info column #}
     <div class="col-sm-6">
       <div class="dotted">
-        <h4>Puby</h4>
-        {% lorem %}
+
+        <h4><strong>Użytkownicy</strong> w twoich pubach</h4>
+
+        {% for pub in profile.managed_pubs %}
+
+          <h5>{{ pub.name }}</h5>
+
+          <ul class="list-unstyled">
+
+            {% for profile in pub.profile_set.all %}
+
+              <li>
+                {{ profile.user.email }}
+                {% if profile.fullname %} ({{ profile.fullname }}) {% endif %}
+              </li>
+
+            {% endfor %}
+
+          </ul>
+
+        {% endfor %}
+
+        <div class="alert alert-warning">
+        	<p>Użytkownik, którego zapraszasz, musi być zarejestrowany w systemie.</p>
+        </div>
+
       </div>
     </div>
 

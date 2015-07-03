@@ -7,6 +7,7 @@ from django.utils.translation import ugettext_lazy as _
 
 from app.pubs.models import Pub
 
+
 class Profile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, related_name='profile')
     avatar_url = models.URLField(blank=True, null=True, max_length=1000)
@@ -74,6 +75,11 @@ class Profile(models.Model):
     def get_by_email(cls, email):
         user = get_user_model().objects.get(email=email)
         return cls.get_by_user(user)
+
+    @classmethod
+    def associated_with_pub(cls, pub):
+        "Returns an iterable of profiles associated with the given pub."
+        return cls.objects.filter(pub=pub)
 
     @staticmethod
     def check_email_is_registered(email):
