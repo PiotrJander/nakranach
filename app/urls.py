@@ -20,7 +20,7 @@ urlpatterns = patterns('',
 	(r'^admin/', include(admin.site.urls)),
     (r'^fb/', include('app.fb.urls')),
     (r'^user/', include('app.users.urls', namespace='user')),
-    (r'^', include('django.contrib.auth.urls', namespace='registration')),
+    (r'^accounts/', include('registration.backends.simple.urls')),
     (r'^', include('app.main.urls', namespace='main')),
 )
 

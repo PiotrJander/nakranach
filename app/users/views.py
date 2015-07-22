@@ -1,6 +1,8 @@
 from django.views.generic import ListView, FormView
+# from registration.backends.simple.views import RegistrationView
 
 from app.pubs.models import Pub
+# from app.users.forms import CustomUserRegistrationForm
 from .models import Profile, ProfilePub
 from .forms import invite_user_form_factory
 
@@ -8,9 +10,12 @@ class ProfileListView(ListView):
     model = Profile
 
     def get_queryset(self):
+        """Queryset should only include users which are managed by the logged-in admin."""
         profile = Profile.get_by_user(self.request.user)
-        self.queryset = profile.managed_users()
-        return super(ProfileListView, self).get_queryset()
+        return profile.managed_users()
+        # profile = Profile.get_by_user(self.request.user)
+        # self.queryset = profile.managed_users()
+        # return super(ProfileListView, self).get_queryset()
 
 
 class InviteUserView(FormView):
@@ -44,3 +49,7 @@ class InviteUserView(FormView):
         context = super(InviteUserView, self).get_context_data(**kwargs)
         context['profile'] = Profile.get_by_user(self.request.user)
         return context
+
+
+# class CustomUserRegistrationView(RegistrationView):
+#     form_class = CustomUserRegistrationForm

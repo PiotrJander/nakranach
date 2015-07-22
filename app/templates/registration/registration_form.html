@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% load staticfiles %}
+{% load bootstrap %}
+
+{% block lanceng_body_classes %}
+  tooltips full-content
+{% endblock lanceng_body_classes %}
+
+{% block body %}
+
+  <div class="container">
+
+    <div class="full-content-center animated fadeInDownBig">
+      <a href="#fakelink"><img src="assets/img/logo-login.png" class="logo-login img-circle" alt="Logo"></a>
+
+      <div class="login-wrap">
+        <div class="box-info">
+          <h2 class="text-center"><strong>Register</strong> new account</h2>
+
+          <form role="form">
+
+            {{ form | bootstrap }}
+
+            <button type="submit" class="btn btn-success btn-block"><i class="fa fa-rocket"></i> Register</button>
+          </form>
+
+{#          <p class="text-center"><strong>- or -</strong></p>#}
+{##}
+{#          <button type="button" class="btn btn-primary btn-block btn-facebook"><i class="fa fa-facebook"></i> Register#}
+{#            with Facebook#}
+{#          </button>#}
+
+        </div>
+        <p class="text-center"><a href="{% url 'auth_login' %}"><i class="fa fa-sign-in"></i> Back to login</a></p>
+      </div>
+    </div>
+
+  </div>
+
+{% endblock body %}

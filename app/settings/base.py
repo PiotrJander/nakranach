@@ -84,6 +84,7 @@ INSTALLED_APPS = (
     'app.api',
     'app.users',
     'app.fb',
+    'registration',
 
     # possibly
     'bootstrapform',
@@ -127,8 +128,14 @@ HAYSTACK_CONNECTIONS = {
 }
 
 # login
-LOGIN_URL = '/login/'
+LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/dashboard/'
+
+# registration
+REGISTRATION_AUTO_LOGIN = True
+INCLUDE_REGISTER_URL = True
+INCLUDE_AUTH_URLS = True
+REGISTRATION_FORM = 'app.users.forms.CustomUserRegistrationForm'
 
 from .api import *
 from .fb import *

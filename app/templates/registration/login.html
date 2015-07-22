@@ -18,7 +18,7 @@
         <div class="box-info">
           <h2 class="text-center"><strong>Login</strong> form</h2>
 
-          <form role="form" method="post" action="{% url 'registration:login' %}">
+          <form role="form" method="post" action="{% url 'auth_login' %}">
 {#            <div class="form-group login-input">#}
 {#              <i class="fa fa-sign-in overlay"></i>#}
 {#              <input type="text" class="form-control text-input" placeholder="Username">#}
@@ -43,19 +43,16 @@
                 <button type="submit" class="btn btn-success btn-block"><i class="fa fa-unlock"></i> Login</button>
               </div>
               <div class="col-sm-6">
-                <a href="register.html" class="btn btn-default btn-block"><i class="fa fa-rocket"></i> Register</a>
+                <a href="{% url 'registration_register' %}" class="btn btn-default btn-block"><i class="fa fa-rocket"></i> Register</a>
               </div>
             </div>
           </form>
 
-          <p class="text-center"><strong>- or -</strong></p>
+{#          <p class="text-center"><strong>- or -</strong></p>#}
 
-          <button type="button" class="btn btn-primary btn-block btn-facebook"><i class="fa fa-facebook"></i> Login with
-            Facebook account
-          </button>
-          <button type="button" class="btn btn-primary btn-block btn-twitter"><i class="fa fa-twitter"></i> Login with
-            Twitter account
-          </button>
+{#          <button type="button" class="btn btn-primary btn-block btn-facebook"><i class="fa fa-facebook"></i> Login with#}
+{#            Facebook account#}
+{#          </button>#}
 
         </div>
         <p class="text-center"><a href="forgot-password.html"><i class="fa fa-lock"></i> Forgot password?</a></p>
