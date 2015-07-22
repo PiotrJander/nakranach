@@ -1,45 +1,31 @@
-{% extends 'base.html' %}
-{% load staticfiles %}
+{% extends 'base_not_logged_in.html' %}
 {% load bootstrap %}
 
 {% block title %}
-Nakranach | rejestracja
+Nakranach | załóż nowe konto
 {% endblock title %}
 
-{% block lanceng_body_classes %}
-  tooltips full-content
-{% endblock lanceng_body_classes %}
+{% block login_wrap %}
 
-{% block body %}
+  <div class="box-info">
+    <h2 class="text-center">Załóż nowe konto</h2>
 
-  <div class="container">
+    <form role="form" method="post" action="{% url 'registration_register' %}">
+      {% csrf_token %}
 
-    <div class="full-content-center animated fadeInDownBig">
-      <a href="#fakelink"><img src="assets/img/logo-login.png" class="logo-login img-circle" alt="Logo"></a>
+      {{ form | bootstrap }}
 
-      <div class="login-wrap">
-        <div class="box-info">
-          <h2 class="text-center"><strong>Register</strong> new account</h2>
+      <button type="submit" class="btn btn-success btn-block"><i class="fa fa-rocket"></i> Załóż konto</button>
+    </form>
 
-          <form role="form" method="post" action="{% url 'registration_register' %}">
-            {% csrf_token %}
-
-            {{ form | bootstrap }}
-
-            <button type="submit" class="btn btn-success btn-block"><i class="fa fa-rocket"></i> Register</button>
-          </form>
-
-{#          <p class="text-center"><strong>- or -</strong></p>#}
+{#    <p class="text-center"><strong>- or -</strong></p>#}
 {##}
-{#          <button type="button" class="btn btn-primary btn-block btn-facebook"><i class="fa fa-facebook"></i> Register#}
-{#            with Facebook#}
-{#          </button>#}
-
-        </div>
-        <p class="text-center"><a href="{% url 'auth_login' %}"><i class="fa fa-sign-in"></i> Back to login</a></p>
-      </div>
-    </div>
+{#    <button type="button" class="btn btn-primary btn-block btn-facebook"><i class="fa fa-facebook"></i> Register#}
+{#      with Facebook#}
+{#    </button>#}
 
   </div>
 
-{% endblock body %}
+  {% include 'components/back_to_login.html' %}
+
+{% endblock login_wrap %}

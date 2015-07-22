@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block lanceng_body_classes %}
+  tooltips
+  full-content
+{% endblock %}
+
+{% block body %}
+
+  <!-- BEGIN PAGE -->
+  <div class="container">
+
+    <!-- Begin Login Page -->
+    <div class="full-content-center animated fadeInDownBig">
+      <a href="#fakelink"><img src="assets/img/logo-login.png" class="logo-login img-circle" alt="Logo"></a>
+
+      <div class="login-wrap">
+
+          {% block login_wrap %}
+          
+          {% endblock login_wrap %}
+          
+      </div>
+    </div>
+    <!-- End Login Page -->
+
+  </div><!-- End div .container -->
+  <!-- END PAGE -->
+
+{% endblock body %}
