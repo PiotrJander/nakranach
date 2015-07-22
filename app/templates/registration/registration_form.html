@@ -17,7 +17,8 @@
         <div class="box-info">
           <h2 class="text-center"><strong>Register</strong> new account</h2>
 
-          <form role="form">
+          <form role="form" method="post" action="{% url 'registration_register' %}">
+            {% csrf_token %}
 
             {{ form | bootstrap }}
 

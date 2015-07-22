@@ -76,8 +76,8 @@ listy użytkowników.
 
 class CustomUserRegistrationForm(RegistrationFormUniqueEmail):
     """Adjust the registration form to work with a user model without the username field."""
-    first_name = forms.CharField(max_length=255)
-    last_name = forms.CharField(max_length=255)
+    first_name = forms.CharField(max_length=255, required=False)
+    last_name = forms.CharField(max_length=255, required=False)
 
     class Meta:
         model = get_user_model()

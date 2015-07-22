@@ -1,4 +1,5 @@
 # coding=utf-8
+from django.contrib.auth import logout
 from django.core.urlresolvers import reverse
 from django.utils.html import escape
 from app.users.models import Profile
@@ -87,6 +88,7 @@ class SidebarMenu(object):
         try:
             profile = Profile.get_by_user(self.request.user)
         except Profile.DoesNotExist as e:
+            logout(self.request)
             raise e
             # TODO deal with this exception
 

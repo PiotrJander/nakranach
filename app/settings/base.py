@@ -133,9 +133,9 @@ LOGIN_REDIRECT_URL = '/dashboard/'
 
 # registration
 REGISTRATION_AUTO_LOGIN = True
-INCLUDE_REGISTER_URL = True
+INCLUDE_REGISTER_URL = False
 INCLUDE_AUTH_URLS = True
-REGISTRATION_FORM = 'app.users.forms.CustomUserRegistrationForm'
+# REGISTRATION_FORM = 'app.users.forms.CustomUserRegistrationForm'
 
 from .api import *
 from .fb import *
