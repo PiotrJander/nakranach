@@ -20,7 +20,7 @@ Nakranach | logowanie
 
       <div class="login-wrap">
         <div class="box-info">
-          <h2 class="text-center"><strong>Login</strong> form</h2>
+          <h2 class="text-center">Zaloguj się do <strong>nakranach.pl</strong></h2>
 
           <form role="form" method="post" action="{% url 'auth_login' %}">
 {#            <div class="form-group login-input">#}
@@ -44,10 +44,10 @@ Nakranach | logowanie
 
             <div class="row">
               <div class="col-sm-6">
-                <button type="submit" class="btn btn-success btn-block"><i class="fa fa-unlock"></i> Login</button>
+                <button type="submit" class="btn btn-success btn-block"><i class="fa fa-unlock"></i> Zaloguj się</button>
               </div>
               <div class="col-sm-6">
-                <a href="{% url 'registration_register' %}" class="btn btn-default btn-block"><i class="fa fa-rocket"></i> Register</a>
+                <a href="{% url 'registration_register' %}" class="btn btn-default btn-block"><i class="fa fa-rocket"></i> Zarejestruj się</a>
               </div>
             </div>
           </form>
@@ -59,7 +59,7 @@ Nakranach | logowanie
 {#          </button>#}
 
         </div>
-        <p class="text-center"><a href="{% url 'auth_password_reset' %}"><i class="fa fa-lock"></i> Forgot password?</a></p>
+        <p class="text-center"><a href="{% url 'auth_password_reset' %}"><i class="fa fa-lock"></i> Zapomniałeś hasła?</a></p>
       </div>
     </div>
     <!-- End Login Page -->
