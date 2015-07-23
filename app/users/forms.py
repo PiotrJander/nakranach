@@ -1,12 +1,8 @@
 # coding=utf-8
-from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django import forms
 from django.utils.translation import ugettext_lazy as _
 from django import forms
 
-from registration.forms import RegistrationFormUniqueEmail
-from registration.users import UsernameField
 
 from app.pubs.models import Pub
 from .models import ProfilePub, Profile
@@ -72,13 +68,3 @@ Użytkownik o adresie email %(email)s pełni już rolę w pubie.
 Jeżeli chcesz zmienić rolę lub usunąć użytkownika z pubu, zrób to w widoku
 listy użytkowników.
 """
-
-
-class CustomUserRegistrationForm(RegistrationFormUniqueEmail):
-    """Adjust the registration form to work with a user model without the username field."""
-    first_name = forms.CharField(max_length=255, required=False)
-    last_name = forms.CharField(max_length=255, required=False)
-
-    class Meta:
-        model = get_user_model()
-        fields = (UsernameField(), 'first_name', 'last_name', )

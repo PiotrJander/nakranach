@@ -12,7 +12,6 @@ from django.views.decorators.csrf import csrf_exempt
 from app.pubs.models import Pub
 
 from app import api
-from app.users.views import ProfileRegistrationView
 
 admin.autodiscover()
 urlpatterns = patterns('',
@@ -21,7 +20,6 @@ urlpatterns = patterns('',
 	(r'^admin/', include(admin.site.urls)),
     (r'^fb/', include('app.fb.urls')),
     (r'^user/', include('app.users.urls', namespace='user')),
-    url(r'^accounts/register/$', ProfileRegistrationView.as_view(), name='registration_register'),
     (r'^accounts/', include('registration.backends.simple.urls')),
     (r'^', include('app.main.urls', namespace='main')),
 )

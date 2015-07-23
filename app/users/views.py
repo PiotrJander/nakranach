@@ -1,26 +1,8 @@
 from django.views.generic import ListView, FormView
-# from registration.backends.simple.views import RegistrationView
-from registration.backends.simple.views import RegistrationView
 
 from app.pubs.models import Pub
-# from app.users.forms import CustomUserRegistrationForm
-from .forms import CustomUserRegistrationForm
 from .models import Profile, ProfilePub
 from .forms import invite_user_form_factory
-
-
-class ProfileRegistrationView(RegistrationView):
-    """
-    Works like RegistrationFormUniqueEmail, but on saving the user also creates a Profile and links that profile
-    to the newly created user. Also handles first name and last name fields.
-    """
-    form_class = CustomUserRegistrationForm
-    success_url = 'main:dashboard'
-
-    def register(self, request, form):
-        new_user = super(ProfileRegistrationView, self).register(request, form)
-        Profile.objects.create(user=new_user, name=form.cleaned_data['first_name'], surname=form.cleaned_data['last_name'])
-        return new_user
 
 
 class ProfileListView(ListView):
@@ -66,7 +48,3 @@ class InviteUserView(FormView):
         context = super(InviteUserView, self).get_context_data(**kwargs)
         context['profile'] = Profile.get_by_user(self.request.user)
         return context
-
-
-# class CustomUserRegistrationView(RegistrationView):
-#     form_class = CustomUserRegistrationForm

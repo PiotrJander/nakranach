@@ -79,7 +79,7 @@ INSTALLED_APPS = (
     'custom_user',
     'crispy_forms',
     'app.beers',
-	'app.pubs',
+    'app.pubs',
     'app.taps',
     'app.api',
     'app.users',
@@ -90,7 +90,7 @@ INSTALLED_APPS = (
     'bootstrapform',
 )
 
-TEMPLATE_CONTEXT_PROCESSORS = (    
+TEMPLATE_CONTEXT_PROCESSORS = (
     'django.contrib.auth.context_processors.auth',
     'django.contrib.messages.context_processors.messages',
     'django.core.context_processors.i18n',
