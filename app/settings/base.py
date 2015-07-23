@@ -115,6 +115,7 @@ SITE_ID = 1
 SESSION_SAVE_EVERY_REQUEST = True
 
 CRISPY_TEMPLATE_PACK = 'bootstrap3'
+CRISPY_CLASS_CONVERTERS = {'textinput': "textinput text-input"}
 
 FIXTURE_DIRS = [
     os.path.join(PROJECT_PATH, 'fixtures')

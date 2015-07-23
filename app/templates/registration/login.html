@@ -1,39 +1,24 @@
 {% extends 'base_not_logged_in.html' %}
-{% load bootstrap %}
+{% load crispy_forms_tags %}
 
 {% block title %}
-Nakranach | logowanie
+  Nakranach | logowanie
 {% endblock title %}
 
 {% block login_wrap %}
 
-        <div class="box-info">
-          <h2 class="text-center">Zaloguj się do <strong>nakranach.pl</strong></h2>
+  <div class="box-info">
+    <h2 class="text-center">Zaloguj się do <strong>nakranach.pl</strong></h2>
 
-          <form role="form" method="post" action="{% url 'auth_login' %}">
+    {% crispy form form_helper %}
 
-          {% csrf_token %}
+    {#          <p class="text-center"><strong>- or -</strong></p>#}
 
-          {{ form.username|bootstrap }}
-          {{ form.password|bootstrap }}
+    {#          <button type="button" class="btn btn-primary btn-block btn-facebook"><i class="fa fa-facebook"></i> Login with#}
+    {#            Facebook account#}
+    {#          </button>#}
 
-            <div class="row">
-              <div class="col-sm-6">
-                <button type="submit" class="btn btn-success btn-block"><i class="fa fa-unlock"></i> Zaloguj się</button>
-              </div>
-              <div class="col-sm-6">
-                <a href="{% url 'registration_register' %}" class="btn btn-default btn-block"><i class="fa fa-rocket"></i> Załóż konto</a>
-              </div>
-            </div>
-          </form>
-
-{#          <p class="text-center"><strong>- or -</strong></p>#}
-
-{#          <button type="button" class="btn btn-primary btn-block btn-facebook"><i class="fa fa-facebook"></i> Login with#}
-{#            Facebook account#}
-{#          </button>#}
-
-        </div>
-        <p class="text-center"><a href="{% url 'auth_password_reset' %}"><i class="fa fa-lock"></i> Zapomniałeś hasła?</a></p>
+  </div>
+  <p class="text-center"><a href="{% url 'auth_password_reset' %}"><i class="fa fa-lock"></i> Zapomniałeś hasła?</a></p>
 
 {% endblock login_wrap %}

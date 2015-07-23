@@ -4,14 +4,7 @@ from django.conf.urls import patterns, include, url
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
-from django.views.generic import TemplateView, DetailView
 
-
-from django.views.decorators.csrf import csrf_exempt
-
-from app.pubs.models import Pub
-
-from app import api
 
 admin.autodiscover()
 urlpatterns = patterns('',
@@ -20,7 +13,7 @@ urlpatterns = patterns('',
 	(r'^admin/', include(admin.site.urls)),
     (r'^fb/', include('app.fb.urls')),
     (r'^user/', include('app.users.urls', namespace='user')),
-    (r'^accounts/', include('registration.backends.simple.urls')),
+    (r'^accounts/', include('app.accounts.urls')),
     (r'^', include('app.main.urls', namespace='main')),
 )
 
