@@ -1,5 +1,6 @@
 from registration.backends.simple.views import RegistrationView
 from app.accounts.forms import CustomUserRegistrationForm
+from app.accounts.form_helpers import register_form_helper
 from app.users.models import Profile
 
 
@@ -16,3 +17,8 @@ class ProfileRegistrationView(RegistrationView):
         Profile.objects.create(user=new_user, name=form.cleaned_data['first_name'],
                                surname=form.cleaned_data['last_name'])
         return new_user
+
+    def get_context_data(self, **kwargs):
+        context = super(ProfileRegistrationView, self).get_context_data(**kwargs)
+        context['form_helper'] = register_form_helper
+        return context

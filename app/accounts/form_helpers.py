@@ -1,6 +1,6 @@
 # coding=utf-8
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Layout, Field, HTML
+from crispy_forms.layout import Layout, Field, HTML, Submit
 from django.conf import settings
 
 
@@ -34,7 +34,7 @@ login_form_helper.__dict__.update({
     'form_action': 'auth_login',
     'html5_required': True,
     'layout': Layout(
-        AccountsFormField('username', wrapper_class='login-input', placeholder='Email', icon='sign-in'),
+        AccountsFormField('username', wrapper_class='login-input', placeholder='Email', icon='envelope'),
         AccountsFormField('password', css_class='text-input', wrapper_class='login-input', placeholder=u'Hasło', icon='key'),
         HTML(u'''
             <div class="row">
@@ -44,5 +44,36 @@ login_form_helper.__dict__.update({
               <div class="col-sm-6"><a href="{% url 'registration_register' %}" class="btn btn-default btn-block"><i class="fa fa-rocket"></i> Załóż konto</a></div>
             </div>
         ''')
+    )
+})
+
+
+# register form helper
+
+register_form_helper = FormHelper()
+register_form_helper.__dict__.update({
+    'form_action': 'registration_register',
+    'html5_required': True,
+    'layout': Layout(
+        AccountsFormField('email', css_class='text-input', wrapper_class='login-input', placeholder='Email', icon='envelope'),
+        AccountsFormField('first_name', wrapper_class='login-input', placeholder=u'Imię', icon='user'),
+        AccountsFormField('last_name', wrapper_class='login-input', placeholder='Nazwisko', icon='user'),
+        AccountsFormField('password1', css_class='text-input', wrapper_class='login-input', placeholder=u'Hasło', icon='key'),
+        AccountsFormField('password2', css_class='text-input', wrapper_class='login-input', placeholder=u'Powtórz hasło', icon='eye'),
+        Submit('submit', u'Załóż konto', css_class='btn btn-success btn-block')
+    )
+})
+
+
+# password reset confirm form helper
+
+password_reset_confirm_form_helper = FormHelper()
+password_reset_confirm_form_helper.__dict__.update({
+    'form_action': 'auth_password_reset_confirm',
+    'html5_required': True,
+    'layout': Layout(
+        AccountsFormField('new_password1', css_class='text-input', wrapper_class='login-input', placeholder=u'Nowe hasło', icon='key'),
+        AccountsFormField('new_password2', css_class='text-input', wrapper_class='login-input', placeholder=u'Powtórz hasło', icon='eye'),
+        Submit('submit', u'Zresetuj hasło', css_class='btn btn-success btn-block')
     )
 })

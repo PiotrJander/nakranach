@@ -1,5 +1,5 @@
 {% extends 'base_not_logged_in.html' %}
-{% load bootstrap %}
+{% load crispy_forms_tags %}
 
 {% block title %}
 Nakranach | załóż nowe konto
@@ -10,13 +10,7 @@ Nakranach | załóż nowe konto
   <div class="box-info">
     <h2 class="text-center">Załóż nowe konto</h2>
 
-    <form role="form" method="post" action="{% url 'registration_register' %}">
-      {% csrf_token %}
-
-      {{ form | bootstrap }}
-
-      <button type="submit" class="btn btn-success btn-block"><i class="fa fa-rocket"></i> Załóż konto</button>
-    </form>
+    {% crispy form form_helper %}
 
 {#    <p class="text-center"><strong>- or -</strong></p>#}
 {##}
