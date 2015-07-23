@@ -20,8 +20,11 @@ class Profile(models.Model):
     pubs = models.ManyToManyField(Pub, through='ProfilePub', related_name='employees', through_fields=('profile', 'pub'))
 
     def fullname(self):
-        """Returns name and surname concatenated."""
-        return '%s %s' % (self.name, self.surname)
+        """Returns name and surname concatenated. If these are empty, return the email."""
+        if self.name or self.surname:
+            return '%s %s' % (self.name, self.surname)
+        else:
+            return self.user.email
 
     def role_descs(self):
         """

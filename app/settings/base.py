@@ -100,6 +100,7 @@ TEMPLATE_CONTEXT_PROCESSORS = (
 
     # custom
     'app.main.context_processors.sidebar_menu',
+    'app.main.context_processors.profile',
 )
 
 SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'

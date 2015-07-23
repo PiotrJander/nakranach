@@ -12,11 +12,11 @@
         </a>
 
         <div class="media-body">
-          Welcome back,
-          <h4 class="media-heading"><strong>Mas Bro</strong></h4>
-          <a href="user-profile.html">Edit</a>
+          Witaj ponownie,
+          <h4 class="media-heading"><strong>{{ profile.fullname }}</strong></h4>
+          <a href="user-profile.html">Edytuj profil</a>
           <a class="md-trigger" data-modal="logout-modal-alt"
-             href="{% url 'auth_logout' %}?next=/accounts/login/">Logout</a>
+             href="{% url 'auth_logout' %}?next=/accounts/login/" style="white-space: nowrap">Wyloguj się</a>
         </div>
         <!-- End div .media-body -->
       </div>
