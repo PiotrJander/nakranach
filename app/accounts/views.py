@@ -1,5 +1,6 @@
+from django.contrib.auth import views as auth_views
 from registration.backends.simple.views import RegistrationView
-from app.accounts.forms import CustomUserRegistrationForm
+from app.accounts.forms import CustomUserRegistrationForm, AuthenticationFormWithRememberMe
 from app.accounts.form_helpers import register_form_helper
 from app.users.models import Profile
 
@@ -22,3 +23,13 @@ class ProfileRegistrationView(RegistrationView):
         context = super(ProfileRegistrationView, self).get_context_data(**kwargs)
         context['form_helper'] = register_form_helper
         return context
+
+
+def login_with_remember_me(request, *args, **kwargs):
+    if request.method == 'POST':
+        if not request.POST.get('remember_me', None):
+            request.session.set_expiry(0)
+
+    # use custom form
+    kwargs['authentication_form'] = AuthenticationFormWithRememberMe
+    return auth_views.login(request, *args, **kwargs)

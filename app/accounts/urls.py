@@ -22,8 +22,7 @@ from django.views.generic.base import TemplateView
 from django.contrib.auth import views as auth_views
 from django.core.urlresolvers import reverse_lazy
 from app.accounts.form_helpers import login_form_helper, register_form_helper, password_reset_confirm_form_helper
-
-from app.accounts.views import ProfileRegistrationView
+from app.accounts.views import ProfileRegistrationView, login_with_remember_me
 
 
 urlpatterns = patterns('',
@@ -37,7 +36,7 @@ urlpatterns = patterns('',
                            TemplateView.as_view(template_name='registration/registration_complete.html'),
                            name='registration_complete'),
                        url(r'^login/$',
-                           auth_views.login,
+                           login_with_remember_me,
                            {'template_name': 'registration/login.html',
                             'extra_context': {'form_helper': login_form_helper}},
                            name='auth_login'),

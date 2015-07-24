@@ -36,6 +36,7 @@ login_form_helper.__dict__.update({
     'layout': Layout(
         AccountsFormField('username', wrapper_class='login-input', placeholder='Email', icon='envelope'),
         AccountsFormField('password', css_class='text-input', wrapper_class='login-input', placeholder=u'Hasło', icon='key'),
+        'remember_me',
         HTML(u'''
             <div class="row">
               <div class="col-sm-6">
