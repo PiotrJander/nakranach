@@ -16,47 +16,67 @@
     <h2><strong>Lista</strong> użytkowników</h2>
 
     <div class="table-responsive">
-      <table class="table" data-sortable style="overflow: visible">
+      <table class="table" data-sortable>
         <thead>
-          <tr>
-            <th style="width: 30px" data-sortable="false"><input type="checkbox" class="rows-check"></th>
-            <th>Nazwisko</th>
-            <th>Rola</th>
-            <th>Email</th>
-            <th data-sortable="false">Opcje</th>
-          </tr>
+        <tr>
+          <th style="width: 30px" data-sortable="false"><input type="checkbox" class="rows-check"></th>
+          <th>Nazwisko</th>
+          <th>Rola</th>
+          <th>Email</th>
+          <th data-sortable="false">Opcje</th>
+        </tr>
         </thead>
 
         <tbody>
-          
-          {% for profile in profile_list %}
-            <tr>
-              <td><input type="checkbox" class="rows-check"></td>
-              <td><strong>{{ profile.fullname | default:"N/A" }}</strong></td>
-              <td>{% for role in profile.role_descs %} {{ role }} <br/> {% endfor %}</td>
-              <td><a href="mailto:{{ profile.email }}">{{ profile.user.email }}</a></td>
-              <td>
-                <div class="btn-group btn-group-xs" style="z-index: {{ forloop.revcounter }}">
-                  <a data-toggle="tooltip" title="Off" class="btn btn-default"><i class="fa fa-power-off"></i></a>
 
+        {% for profile in profile_list %}
+          <tr>
+            <td><input type="checkbox" class="rows-check"></td>
+            <td><strong>{{ profile.fullname | default:"N/A" }}</strong></td>
+            <td>{% for role in profile.role_descs %} {{ role }} <br/> {% endfor %}</td>
+            <td><a href="mailto:{{ profile.email }}">{{ profile.user.email }}</a></td>
+            <td>
+
+              <form method="post" action="{% url 'user:list' %}">
+                {% csrf_token %}
+
+                <input type="hidden" name="user" value="{{ profile.id }}">
+
+                <div class="btn-group btn-group-xs" style="z-index: {{ forloop.revcounter }}">
+
+                  <button type="submit" name="action" value="remove" data-toggle="tooltip"
+                          title="Usuń użytkownika z pubu" class="btn btn-default">
+                    <i class="fa fa-power-off"></i>
+                  </button>
 
                   {# Begin dropdown #}
-                    <a id="dLabel" title="Edit" class="btn btn-default" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fa fa-edit"></i></a>
-                    <ul class="dropdown-menu" aria-labelledby="dLabel">
-                      <li>Whatever1</li>
-                      <li>Whatever2</li>
-                      <li>Whatever3</li>
-                      <li>Whatever4</li>
-                      <li>Whatever5</li>
-                    </ul>
-                  {# End dropdown #}
+                  <button id="dLabel" title="Nadaj użytkownikowi nową rolę" class="btn btn-default"
+                          data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    <i class="fa fa-edit"></i>
+                  </button>
 
-
+                  <ul class="dropdown-menu" aria-labelledby="dLabel">
+                    <li class="dropdown-header">Nowa rola dla użytkownika</li>
+                    <li>
+                      <button type="submit" name="action" value="admin" class="btn btn-link">Administrator</button>
+                    </li>
+                    <li>
+                      <button type="submit" name="action" value="employee" class="btn btn-link">Pracownik baru</button>
+                    </li>
+                    <li>
+                      <button type="submit" name="action" value="storeman" class="btn btn-link">
+                        Pracownik magazynu
+                      </button>
+                    </li>
+                  </ul>
 
                 </div>
-              </td>
-            </tr>
-          {% endfor %}
+              </form>
+              {# End dropdown #}
+
+            </td>
+          </tr>
+        {% endfor %}
 
         </tbody>
       </table>

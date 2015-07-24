@@ -6,15 +6,16 @@ from .forms import invite_user_form_factory
 
 
 class ProfileListView(ListView):
+    # TODO secure the form
     model = Profile
 
     def get_queryset(self):
         """Queryset should only include users which are managed by the logged-in admin."""
         profile = Profile.get_by_user(self.request.user)
         return profile.managed_users()
-        # profile = Profile.get_by_user(self.request.user)
-        # self.queryset = profile.managed_users()
-        # return super(ProfileListView, self).get_queryset()
+
+    def post(self, request, *args, **kwargs):
+        pass
 
 
 class InviteUserView(FormView):
