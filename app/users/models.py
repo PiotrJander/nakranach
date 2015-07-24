@@ -47,24 +47,38 @@ class Profile(models.Model):
 
     def managed_users(self):
         """
-        Returns the list of users that the user can manage.
+        Returns the list of workers in the managed pub.
         """
-        return Profile.objects.raw("""
-        SELECT user.* from
-        users_profile as admin,
-        users_profile as user,
-        users_profilepub as pp1,
-        users_profilepub as pp2,
-        pubs_pub as pub
-        where admin.id = %(user_id)s and admin.id = pp1.profile_id and pp1.role = 'admin'
-        and pp1.pub_id = pub.id and pub.id = pp2.pub_id and pp2.profile_id = user.id;
-        """, {'user_id': self.id})
+        if self.managed_pub():
+            return self.managed_pub().profile_set.all()
+        else:
+            return []
 
-    def managed_pubs(self):
+    # def managed_users(self):
+    #     """
+    #     Returns the list of users that the user can manage.
+    #     """
+    #     return Profile.objects.raw("""
+    #     SELECT user.* from
+    #     users_profile as admin,
+    #     users_profile as user,
+    #     users_profilepub as pp1,
+    #     users_profilepub as pp2,
+    #     pubs_pub as pub
+    #     where admin.id = %(user_id)s and admin.id = pp1.profile_id and pp1.role = 'admin'
+    #     and pp1.pub_id = pub.id and pub.id = pp2.pub_id and pp2.profile_id = user.id;
+    #     """, {'user_id': self.id})
+
+    def managed_pub(self):
         """
-        Returns a QuerySet containing pubs managed by the user.
+        Returns the pub managed by the user, or None is the user is not an admin.
+
+        CRUCIAL: assumes that a single user can only manage one pub, which is not enforced by code however
         """
-        return Pub.objects.filter(profilepub__profile=self, profilepub__role='admin')
+        try:
+            return Pub.objects.get(profilepub__profile=self, profilepub__role='admin')
+        except Pub.DoesNotExist:
+            return None
 
     @classmethod
     def get_by_user(cls, user):
@@ -117,6 +131,16 @@ class ProfilePub(models.Model):
         is known implicitly and we don't want to include the user explicitly.
         """
         return '%s w %s' % (self.get_role_display(), unicode(self.pub))
+
+    @classmethod
+    def remove_from_pub(cls, profile, pub):
+        """Deletes the association between the profile and the pub."""
+        cls.objects.filter(profile=profile, pub=pub).delete()
+
+    @classmethod
+    def change_role(cls, profile, pub, role):
+        """Sets the new role for the user in the pub."""
+        cls.objects.filter(profile=profile, pub=pub).update(role=role)
 
     class Meta:
         verbose_name = _(u'profil-pub')
