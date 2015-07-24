@@ -16,7 +16,7 @@
     <h2><strong>Lista</strong> użytkowników</h2>
 
     <div class="table-responsive">
-      <table class="table" data-sortable>
+      <table class="table" data-sortable style="overflow: visible">
         <thead>
           <tr>
             <th style="width: 30px" data-sortable="false"><input type="checkbox" class="rows-check"></th>
@@ -36,9 +36,23 @@
               <td>{% for role in profile.role_descs %} {{ role }} <br/> {% endfor %}</td>
               <td><a href="mailto:{{ profile.email }}">{{ profile.user.email }}</a></td>
               <td>
-                <div class="btn-group btn-group-xs">
+                <div class="btn-group btn-group-xs" style="z-index: {{ forloop.revcounter }}">
                   <a data-toggle="tooltip" title="Off" class="btn btn-default"><i class="fa fa-power-off"></i></a>
-                  <a data-toggle="tooltip" title="Edit" class="btn btn-default"><i class="fa fa-edit"></i></a>
+
+
+                  {# Begin dropdown #}
+                    <a id="dLabel" title="Edit" class="btn btn-default" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fa fa-edit"></i></a>
+                    <ul class="dropdown-menu" aria-labelledby="dLabel">
+                      <li>Whatever1</li>
+                      <li>Whatever2</li>
+                      <li>Whatever3</li>
+                      <li>Whatever4</li>
+                      <li>Whatever5</li>
+                    </ul>
+                  {# End dropdown #}
+
+
+
                 </div>
               </td>
             </tr>
