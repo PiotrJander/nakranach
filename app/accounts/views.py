@@ -1,6 +1,7 @@
 from django.contrib.auth import views as auth_views
+from django.views.generic import FormView
 from registration.backends.simple.views import RegistrationView
-from app.accounts.forms import CustomUserRegistrationForm, AuthenticationFormWithRememberMe
+from app.accounts.forms import CustomUserRegistrationForm, AuthenticationFormWithRememberMe, ProfileUpdateForm
 from app.accounts.form_helpers import register_form_helper
 from app.users.models import Profile
 
@@ -24,6 +25,20 @@ class ProfileRegistrationView(RegistrationView):
         context['form_helper'] = register_form_helper
         return context
 
+
+class ProfileUpdateView(FormView):
+    form_class = ProfileUpdateForm
+    # initial =
+    success_url = 'accounts_profile_update'
+    template_name = 'registration/profile_update.html'
+
+    def get_context_data(self, **kwargs):
+        context = super(ProfileUpdateView, self).get_context_data()
+        context['profile'] = Profile.get_by_user(self.request.user)
+        return context
+
+
+#  login view
 
 def login_with_remember_me(request, *args, **kwargs):
     if request.method == 'POST':

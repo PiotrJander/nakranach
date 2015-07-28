@@ -49,3 +49,5 @@ STATICFILES_DIRS = (
 # Email
 DEFAULT_FROM_EMAIL = 'biuro@makimo.pl'
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+DOMAIN = '127.0.0.1:8000'

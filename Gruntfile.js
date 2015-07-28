@@ -47,8 +47,12 @@ module.exports = function (grunt) {
                 mainFiles: {
                     'moment': ['../moment.js', '../locale/pl.js'],
                     'jquery-easy-wizard': ['../../lib/jquery.easyWizard.js'],
-                    'niftymodals': ['../../js/jquery.modalEffects.js'],
+                    'niftymodals': ['../../js/jquery.modalEffects.js', '../../js/classie.js'],
                     'sortable': ['../js/sortable.js']
+                    //'moment': ['./moment.js', './locale/pl.js'],
+                    //'jquery-easy-wizard': ['./lib/jquery.easyWizard.js'],
+                    //'niftymodals': ['/js/jquery.modalEffects.js', '/js/classie.js'],
+                    //'sortable': ['/js/sortable.js']
                 },
                 callback: function(mainFiles, component) {
                     console.log(component, ":", mainFiles)

@@ -5,6 +5,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.utils.translation import ugettext_lazy as _
 from registration.forms import RegistrationFormUniqueEmail
 from registration.users import UsernameField
+from app.users.models import Profile
 
 
 class CustomUserRegistrationForm(RegistrationFormUniqueEmail):
@@ -19,4 +20,12 @@ class CustomUserRegistrationForm(RegistrationFormUniqueEmail):
 
 class AuthenticationFormWithRememberMe(AuthenticationForm):
     """Extends the default authentication form with a 'remember me' field."""
-    remember_me = forms.BooleanField(label=_(u'zapamiętaj mnie'))
+    remember_me = forms.BooleanField(label=_(u'zapamiętaj mnie'), required=False)
+
+
+class ProfileUpdateForm(forms.ModelForm):
+    email = forms.EmailField()
+
+    class Meta:
+        model = Profile
+        fields = ['email', 'name', 'surname']

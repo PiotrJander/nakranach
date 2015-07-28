@@ -40,7 +40,8 @@
               <form method="post" action="{% url 'user:list' %}">
                 {% csrf_token %}
 
-                <input type="hidden" name="user" value="{{ profile.id }}">
+                <input type="hidden" name="profile_id" value="{{ profile.id }}">
+                <input type="hidden" name="pub_id" value="{{ pub_id }}">
 
                 <div class="btn-group btn-group-xs" style="z-index: {{ forloop.revcounter }}">
 

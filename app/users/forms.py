@@ -15,7 +15,7 @@ def invite_user_form_factory(profile):
     the argument and returns a customized form, ie. with pub choices being P and R.
     """
     # first we need managed pubs and
-    pub_choices = ((pub.id, pub.name) for pub in profile.managed_pubs())
+    pub_choices = ((pub.id, pub.name) for pub in [profile.managed_pub()])
 
     class InviteUserForm(forms.Form):
         email = forms.EmailField()

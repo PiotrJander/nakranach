@@ -1,3 +1,5 @@
+from django.shortcuts import redirect
+
 from django.views.generic import ListView, FormView
 
 from app.pubs.models import Pub
@@ -14,8 +16,21 @@ class ProfileListView(ListView):
         profile = Profile.get_by_user(self.request.user)
         return profile.managed_users()
 
+    def get_context_data(self, **kwargs):
+        context = super(ProfileListView, self).get_context_data(**kwargs)
+        context['pub_id'] = Profile.get_by_user(self.request.user).managed_pub().id
+        return context
+
     def post(self, request, *args, **kwargs):
-        pass
+        profile_id = request.POST['profile_id']
+        pub_id = request.POST['pub_id']
+        action = request.POST['action']
+        relation = ProfilePub.objects.filter(profile=profile_id, pub=pub_id)
+        if action == 'remove':
+            relation.delete()
+        else:  # we can assume action is admin|employee|storeman
+            relation.update(role=action)
+        return redirect('user:list')
 
 
 class InviteUserView(FormView):

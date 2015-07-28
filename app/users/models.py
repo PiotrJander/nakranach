@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
+import hashlib
+import urllib
 from django.contrib.auth import get_user_model
 
 from django.conf import settings
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
+from django.contrib.sites.models import Site
 
 from app.pubs.models import Pub
 
@@ -16,6 +19,7 @@ class Profile(models.Model):
     surname = models.CharField(max_length=255, blank=True, null=True)
 
     favorite_pubs = models.ManyToManyField(Pub)
+    # favorite_pubs = models.ManyToManyField(Pub, related_name='-')
 
     pubs = models.ManyToManyField(Pub, through='ProfilePub', related_name='employees', through_fields=('profile', 'pub'))
 
@@ -34,6 +38,14 @@ class Profile(models.Model):
         """
         return [profile_pub.role_desc() for profile_pub in ProfilePub.objects.filter(profile=self)]
 
+    def gravatar_url(self):
+        """Returns the md5 hash of the email."""
+        # default = 'http://americanmuslimconsumer.com/wp-content/uploads/2013/09/blank-user.jpg'
+        gravatar_url = "http://www.gravatar.com/avatar/" + hashlib.md5(self.user.email.lower()).hexdigest() + "?"
+        gravatar_url += urllib.urlencode({'d': 'mm', 's': 90})
+        # gravatar_url += urllib.urlencode({'s': 90})
+        return gravatar_url
+
     @property
     def can_manage_pubs(self):
         return self.pubs.count() != 0
@@ -50,7 +62,7 @@ class Profile(models.Model):
         Returns the list of workers in the managed pub.
         """
         if self.managed_pub():
-            return self.managed_pub().profile_set.all()
+            return self.managed_pub().employees.all()
         else:
             return []
 
@@ -130,7 +142,7 @@ class ProfilePub(models.Model):
         Returns a string with information about the role and the pub. To be used in contexts where the user
         is known implicitly and we don't want to include the user explicitly.
         """
-        return '%s w %s' % (self.get_role_display(), unicode(self.pub))
+        return '%s w pubie %s' % (self.get_role_display(), unicode(self.pub))
 
     @classmethod
     def remove_from_pub(cls, profile, pub):

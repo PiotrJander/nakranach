@@ -26,6 +26,7 @@ class SidebarMenu(object):
 
         # actual fields
         self.make_dashboard()
+        self.make_my_profile()
         self.make_users()
 
     def append_field(self, field):
@@ -107,6 +108,13 @@ class SidebarMenu(object):
             view_name='user:invite',
         ))
         self.append_field(parent)
+
+    def make_my_profile(self):
+        self.append_field(SidebarLinkField(
+            name='Mój profil',
+            icon='home',
+            view_name='accounts_profile_update'
+        ))
 
 
 class SidebarField(object):

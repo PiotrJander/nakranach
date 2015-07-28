@@ -22,7 +22,7 @@ from django.views.generic.base import TemplateView
 from django.contrib.auth import views as auth_views
 from django.core.urlresolvers import reverse_lazy
 from app.accounts.form_helpers import login_form_helper, register_form_helper, password_reset_confirm_form_helper
-from app.accounts.views import ProfileRegistrationView, login_with_remember_me
+from app.accounts.views import ProfileRegistrationView, login_with_remember_me, ProfileUpdateView
 
 
 urlpatterns = patterns('',
@@ -66,4 +66,7 @@ urlpatterns = patterns('',
                        url(r'^password/reset/complete/$',
                            auth_views.password_reset_complete,
                            name='auth_password_reset_complete'),
+                       url(r'profile/update/$',
+                           ProfileUpdateView.as_view(),
+                           name='accounts_profile_update')
                        )
