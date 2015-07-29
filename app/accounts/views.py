@@ -30,72 +30,72 @@ class ProfileRegistrationView(RegistrationView):
         return context
 
 
-# class ProfileUpdateView(FormView):
-#     form_class = ProfileUpdateForm
-#     success_url = '/accounts/profile/update/'
-#     template_name = 'registration/profile_update.html'
-#
-#     def form_valid(self, form):
-#         """Additionally save form data."""
-#         form.save()
-#         return super(ProfileUpdateView, self).form_valid(form)
-#
-#     def get_context_data(self, **kwargs):
-#         context = super(ProfileUpdateView, self).get_context_data(**kwargs)
-#         context.update({
-#             'profile': Profile.get_by_user(self.request.user),
-#             'password_change_form_helper': password_change_form_helper,
-#         })
-#         if 'password_change_form' not in context:
-#             context['password_change_form'] = PasswordChangeForm(user=self.request.user)
-#         return context
-#
-#     def get_form_kwargs(self):
-#         """Pass the 'instance' kwarg to the form."""
-#         kwargs = super(ProfileUpdateView, self).get_form_kwargs()
-#         # kwargs['instance'] = Profile.get_by_user(self.request.user)
-#         kwargs.update({
-#             'instance': Profile.get_by_user(self.request.user),
-#             'initial': {'email': self.request.user.email},
-#         })
-#         return kwargs
-#
-#     def post(self, request, *args, **kwargs):
-#         if 'password_change' in request.POST:
-#             form = PasswordChangeForm(user=request.user, data=request.POST)
-#             if form.is_valid():
-#                 form.save()
-#                 # Updating the password logs out all other sessions for the user
-#                 # except the current one if
-#                 # django.contrib.auth.middleware.SessionAuthenticationMiddleware
-#                 # is enabled.
-#                 update_session_auth_hash(request, form.user)
-#                 return self.get(request)
-#             else:
-#                 password_change_form = form
-#                 form = self.get_form()
-#                 return self.render_to_response(self.get_context_data(password_change_form=password_change_form, form=form))
-#         else:
-#             return super(ProfileUpdateView, self).post(request)
-
-
-class ProfileUpdateView(TemplateView):
+class ProfileUpdateView(FormView):
+    form_class = ProfileUpdateForm
+    success_url = '/accounts/profile/update/'
     template_name = 'registration/profile_update.html'
 
-    def get(self, request, *args, **kwargs):
-        # prepare forms
-        profile_update_form = ProfileUpdateForm(instance=self.request.profile,
-                                                initial={'email': self.request.user.email})
-        password_change_form = PasswordChangeForm(user=self.request.user)
-        password_change_form.helper = password_change_form_helper
-        # update context
-        context = self.get_context_data(profile_update_form=profile_update_form,
-                                        password_change_form=password_change_form)
-        # render
-        return self.render_to_response(context)
+    def form_valid(self, form):
+        """Additionally save form data."""
+        form.save()
+        return super(ProfileUpdateView, self).form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super(ProfileUpdateView, self).get_context_data(**kwargs)
+        context.update({
+            'profile': Profile.get_by_user(self.request.user),
+            'password_change_form_helper': password_change_form_helper,
+        })
+        if 'password_change_form' not in context:
+            context['password_change_form'] = PasswordChangeForm(user=self.request.user)
+        return context
+
+    def get_form_kwargs(self):
+        """Pass the 'instance' kwarg to the form."""
+        kwargs = super(ProfileUpdateView, self).get_form_kwargs()
+        # kwargs['instance'] = Profile.get_by_user(self.request.user)
+        kwargs.update({
+            'instance': Profile.get_by_user(self.request.user),
+            'initial': {'email': self.request.user.email},
+        })
+        return kwargs
 
     def post(self, request, *args, **kwargs):
-        pass
+        if 'password_change' in request.POST:
+            form = PasswordChangeForm(user=request.user, data=request.POST)
+            if form.is_valid():
+                form.save()
+                # Updating the password logs out all other sessions for the user
+                # except the current one if
+                # django.contrib.auth.middleware.SessionAuthenticationMiddleware
+                # is enabled.
+                update_session_auth_hash(request, form.user)
+                return self.get(request)
+            else:
+                password_change_form = form
+                form = self.get_form()
+                return self.render_to_response(self.get_context_data(password_change_form=password_change_form, form=form))
+        else:
+            return super(ProfileUpdateView, self).post(request)
+
+
+# class ProfileUpdateView(TemplateView):
+#     template_name = 'registration/profile_update.html'
+#
+#     def get(self, request, *args, **kwargs):
+#         # prepare forms
+#         profile_update_form = ProfileUpdateForm(instance=self.request.profile,
+#                                                 initial={'email': self.request.user.email})
+#         password_change_form = PasswordChangeForm(user=self.request.user)
+#         password_change_form.helper = password_change_form_helper
+#         # update context
+#         context = self.get_context_data(profile_update_form=profile_update_form,
+#                                         password_change_form=password_change_form)
+#         # render
+#         return self.render_to_response(context)
+#
+#     def post(self, request, *args, **kwargs):
+#         pass
 
 
 #  login view

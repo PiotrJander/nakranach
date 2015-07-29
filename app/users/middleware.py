@@ -1,6 +1,8 @@
 from app.users.models import Profile
 
 
-class AddProfile:
+class AddProfile(object):
+
     def process_request(self, request):
-        request.profile = Profile.get_by_user(request.user)
+        if request.user.is_authenticated():
+            request.profile = Profile.get_by_user(request.user)
