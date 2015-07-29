@@ -18,7 +18,7 @@ class ProfileListView(ListView):
 
     def get_context_data(self, **kwargs):
         context = super(ProfileListView, self).get_context_data(**kwargs)
-        context['pub_id'] = Profile.get_by_user(self.request.user).managed_pub().id
+        context['pub'] = Profile.get_by_user(self.request.user).managed_pub()
         return context
 
     def post(self, request, *args, **kwargs):

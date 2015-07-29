@@ -1,4 +1,6 @@
 {% extends 'base_framed.html' %}
+{% load crispy_forms_filters %}
+{% load crispy_forms_tags %}
 
 {% block content %}
 
@@ -27,32 +29,10 @@
 
                 <p>{{ user.email }}</p>
 
-                <p><a class="md-trigger" data-modal="logout-modal">Zmień awatar</a></p>
+                <p>
+                  <a data-modal="logout-modal" data-toggle="modal" data-target="#gravatarExplainedModal">Zmień awatar</a>
+                </p>
 
-                <!-- Button trigger modal -->
-                <button type="button" class="btn btn-primary btn-lg" data-toggle="modal" data-target="#myModal">
-                  Launch demo modal
-                </button>
-
-                <!-- Modal -->
-                <div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
-                  <div class="modal-dialog" role="document">
-                    <div class="modal-content">
-                      <div class="modal-header">
-                        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
-                                aria-hidden="true">&times;</span></button>
-                        <h4 class="modal-title" id="myModalLabel">Modal title</h4>
-                      </div>
-                      <div class="modal-body">
-                        ...
-                      </div>
-                      <div class="modal-footer">
-                        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-                        <button type="button" class="btn btn-primary">Save changes</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
               <!-- End div .user-identity -->
             </div>
@@ -74,317 +54,22 @@
     <!-- End div .col-sm-4 -->
 
     <div class="col-sm-8">
-      <div class="box-info full">
-        <!-- Nav tab -->
-        <ul class="nav nav-tabs nav-justified">
-          <li class="active"><a href="#about" data-toggle="tab"><i class="fa fa-user"></i> About</a></li>
-          <li><a href="#edit-profile" data-toggle="tab"><i class="fa fa-pencil"></i> Edit</a></li>
-          <li><a href="#user-activities" data-toggle="tab"><i class="fa fa-laptop"></i> Activities</a></li>
-          <li><a href="#mymessage" data-toggle="tab"><i class="fa fa-envelope"></i> Message</a></li>
-        </ul>
-        <!-- End nav tab -->
+      <div class="box-info full user-update">
+        <h3>Edytuj informacje profilowe</h3>
+        <hr>
 
-        <!-- Tab panes -->
-        <div class="tab-content">
-          <!-- Tab about -->
-          <div class="tab-pane active animated fadeInRight" id="about">
-            <div class="user-profile-content">
-              <h5><strong>ABOUT</strong> ME</h5>
+        <form method="post" action="{% url 'accounts_profile_update' %}">
+          {% csrf_token %}
+          {{ form | crispy }}
+          <input type="submit" value="Zmień dane" class="btn btn-default">
+        </form>
 
-              <p>
-                Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut
-                laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation
-                ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.
-              </p>
-              <hr/>
-              <div class="row">
-                <div class="col-sm-6">
-                  <h5><strong>CONTACT</strong> ME</h5>
-                  <address>
-                    <strong>Phone</strong><br>
-                    <abbr title="Phone">+62 857 123 4567</abbr>
-                  </address>
-                  <address>
-                    <strong>Email</strong><br>
-                    <a href="mailto:#">first.last@example.com</a>
-                  </address>
-                  <address>
-                    <strong>Website</strong><br>
-                    <a href="http://ariecupu.com">http://ariecupu.com</a>
-                  </address>
-                </div>
-                <div class="col-sm-6">
-                  <h5><strong>MY</strong> SKILLS</h5>
+        <hr>
 
-                  <p>UI Design</p>
+        <p>
+          <a data-modal="logout-modal" data-toggle="modal" data-target="#passwordChangeModal">Zmień hasło</a>
+        </p>
 
-                  <p>Clean and Modern Web Design</p>
-
-                  <p>PHP and MySQL Programming</p>
-
-                  <p>Vector Design</p>
-                </div>
-              </div>
-              <!-- End div .row -->
-            </div>
-            <!-- End div .user-profile-content -->
-          </div>
-          <!-- End div .tab-pane -->
-          <!-- End Tab about -->
-
-
-          <!-- Tab edit profile -->
-          <div class="tab-pane animated fadeInRight" id="edit-profile">
-            <div class="user-profile-content">
-              <form role="form">
-                <div class="form-group">
-                  <label for="FullName">Full Name</label>
-                  <input type="text" class="form-control" id="FullName" value="Mas Bro Rusmanto">
-                </div>
-                <div class="form-group">
-                  <label for="Email">Email</label>
-                  <input type="email" class="form-control" id="Email" value="first.last@example.com">
-                </div>
-                <div class="form-group">
-                  <label for="Username">Username</label>
-                  <input type="text" class="form-control" id="Username" value="masbro">
-                </div>
-                <div class="form-group">
-                  <label for="Password">Password</label>
-                  <input type="password" class="form-control" id="Password" placeholder="6 - 15 Characters">
-                </div>
-                <div class="form-group">
-                  <label for="RePassword">Re-Password</label>
-                  <input type="password" class="form-control" id="RePassword" placeholder="6 - 15 Characters">
-                </div>
-                <div class="form-group">
-                  <label for="AboutMe">About Me</label>
-                  <textarea class="form-control" id="AboutMe" style="height: 125px;">Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.</textarea>
-                </div>
-                <button type="submit" class="btn btn-primary">Save</button>
-              </form>
-            </div>
-            <!-- End div .user-profile-content -->
-          </div>
-          <!-- End div .tab-pane -->
-          <!-- End Tab Edit profile -->
-
-
-          <!-- Tab user activities -->
-          <div class="tab-pane animated fadeInRight" id="user-activities">
-            <div class="scroll-user-widget">
-              <ul class="media-list">
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>John Doe</strong> Uploaded a photo <strong>&#34;DSC000254.jpg&#34;</strong>
-                      <br/><i>2 minutes ago</i></p>
-                  </a>
-                </li>
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>John Doe</strong> Created an photo album <strong>&#34;Indonesia Tourism&#34;</strong>
-                      <br/><i>8 minutes ago</i></p>
-                  </a>
-                </li>
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>Annisa</strong> Posted an article <strong>&#34;Yogyakarta never ending Asia&#34;</strong>
-                      <br/><i>an hour ago</i></p>
-                  </a>
-                </li>
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>Ari Rusmanto</strong> Added 3 products
-                      <br/><i>3 hours ago</i></p>
-                  </a>
-                </li>
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>Hana Sartika</strong> Send you a message <strong>&#34;Lorem ipsum dolor...&#34;</strong>
-                      <br/><i>12 hours ago</i></p>
-                  </a>
-                </li>
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>Johnny Depp</strong> Updated his avatar
-                      <br/><i>Yesterday</i></p>
-                  </a>
-                </li>
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>John Doe</strong> Uploaded a photo <strong>&#34;DSC000254.jpg&#34;</strong>
-                      <br/><i>2 minutes ago</i></p>
-                  </a>
-                </li>
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>John Doe</strong> Created an photo album <strong>&#34;Indonesia Tourism&#34;</strong>
-                      <br/><i>8 minutes ago</i></p>
-                  </a>
-                </li>
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>Annisa</strong> Posted an article <strong>&#34;Yogyakarta never ending Asia&#34;</strong>
-                      <br/><i>an hour ago</i></p>
-                  </a>
-                </li>
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>Ari Rusmanto</strong> Added 3 products
-                      <br/><i>3 hours ago</i></p>
-                  </a>
-                </li>
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>Hana Sartika</strong> Send you a message <strong>&#34;Lorem ipsum dolor...&#34;</strong>
-                      <br/><i>12 hours ago</i></p>
-                  </a>
-                </li>
-                <li class="media">
-                  <a href="#fakelink">
-                    <p><strong>Johnny Depp</strong> Updated his avatar
-                      <br/><i>Yesterday</i></p>
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <!-- End div .scroll-user-widget -->
-          </div>
-          <!-- End div .tab-pane -->
-          <!-- End Tab user activities -->
-
-          <!-- Tab user messages -->
-          <div class="tab-pane animated fadeInRight" id="mymessage">
-            <div class="scroll-user-widget">
-              <ul class="media-list">
-                <li class="media">
-                  <a class="pull-left" href="#fakelink">
-                    <img class="media-object" src="assets/img/avatar/2.jpg" alt="Avatar">
-                  </a>
-
-                  <div class="media-body">
-                    <h4 class="media-heading"><a href="#fakelink">John Doe</a>
-                      <small>Just now</small>
-                    </h4>
-                    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit</p>
-                  </div>
-                </li>
-                <li class="media">
-                  <a class="pull-left" href="#fakelink">
-                    <img class="media-object" src="assets/img/avatar/1.jpg" alt="Avatar">
-                  </a>
-
-                  <div class="media-body">
-                    <h4 class="media-heading"><a href="#fakelink">Annisa</a>
-                      <small>Yesterday at 04:00 AM</small>
-                    </h4>
-                    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam rhoncus</p>
-                  </div>
-                </li>
-                <li class="media">
-                  <a class="pull-left" href="#fakelink">
-                    <img class="media-object" src="assets/img/avatar/5.jpg" alt="Avatar">
-                  </a>
-
-                  <div class="media-body">
-                    <h4 class="media-heading"><a href="#fakelink">Rusmanovski</a>
-                      <small>January 17, 2014 05:35 PM</small>
-                    </h4>
-                    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit</p>
-                  </div>
-                </li>
-                <li class="media">
-                  <a class="pull-left" href="#fakelink">
-                    <img class="media-object" src="assets/img/avatar/4.jpg" alt="Avatar">
-                  </a>
-
-                  <div class="media-body">
-                    <h4 class="media-heading"><a href="#fakelink">Ari Rusmanto</a>
-                      <small>January 17, 2014 05:35 PM</small>
-                    </h4>
-                    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit</p>
-                  </div>
-                </li>
-                <li class="media">
-                  <a class="pull-left" href="#fakelink">
-                    <img class="media-object" src="assets/img/avatar/3.jpg" alt="Avatar">
-                  </a>
-
-                  <div class="media-body">
-                    <h4 class="media-heading"><a href="#fakelink">Jenny Doe</a>
-                      <small>January 17, 2014 05:35 PM</small>
-                    </h4>
-                    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit</p>
-                  </div>
-                </li>
-                <li class="media">
-                  <a class="pull-left" href="#fakelink">
-                    <img class="media-object" src="assets/img/avatar/2.jpg" alt="Avatar">
-                  </a>
-
-                  <div class="media-body">
-                    <h4 class="media-heading"><a href="#fakelink">John Doe</a>
-                      <small>Just now</small>
-                    </h4>
-                    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit</p>
-                  </div>
-                </li>
-                <li class="media">
-                  <a class="pull-left" href="#fakelink">
-                    <img class="media-object" src="assets/img/avatar/1.jpg" alt="Avatar">
-                  </a>
-
-                  <div class="media-body">
-                    <h4 class="media-heading"><a href="#fakelink">Annisa</a>
-                      <small>Yesterday at 04:00 AM</small>
-                    </h4>
-                    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam rhoncus</p>
-                  </div>
-                </li>
-                <li class="media">
-                  <a class="pull-left" href="#fakelink">
-                    <img class="media-object" src="assets/img/avatar/5.jpg" alt="Avatar">
-                  </a>
-
-                  <div class="media-body">
-                    <h4 class="media-heading"><a href="#fakelink">Rusmanovski</a>
-                      <small>January 17, 2014 05:35 PM</small>
-                    </h4>
-                    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit</p>
-                  </div>
-                </li>
-                <li class="media">
-                  <a class="pull-left" href="#fakelink">
-                    <img class="media-object" src="assets/img/avatar/4.jpg" alt="Avatar">
-                  </a>
-
-                  <div class="media-body">
-                    <h4 class="media-heading"><a href="#fakelink">Ari Rusmanto</a>
-                      <small>January 17, 2014 05:35 PM</small>
-                    </h4>
-                    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit</p>
-                  </div>
-                </li>
-                <li class="media">
-                  <a class="pull-left" href="#fakelink">
-                    <img class="media-object" src="assets/img/avatar/3.jpg" alt="Avatar">
-                  </a>
-
-                  <div class="media-body">
-                    <h4 class="media-heading"><a href="#fakelink">Jenny Doe</a>
-                      <small>January 17, 2014 05:35 PM</small>
-                    </h4>
-                    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit</p>
-                  </div>
-                </li>
-              </ul>
-            </div>
-            <!-- End div .scroll-user-widget -->
-          </div>
-          <!-- End div .tab-pane -->
-          <!-- End Tab user messages -->
-        </div>
-        <!-- End div .tab-content -->
       </div>
       <!-- End div .box-info -->
     </div>
@@ -393,3 +78,49 @@
 
 
 {% endblock content %}
+
+
+{% block modals %}
+
+  <!-- Modal -->
+  <div class="modal fade" id="gravatarExplainedModal" tabindex="-1" role="dialog"
+       aria-labelledby="gravatarExplainedModalLabel">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                  aria-hidden="true">&times;</span></button>
+          <h4 class="modal-title" id="gravatarExplainedModalLabel">Zdjęcie profilowe w serwisie Gravatar</h4>
+        </div>
+        <div class="modal-body">
+          <p>Jeżeli chcesz dołączyć do swojego profilu w Nakranach zdjęcie profilowe</p>
+          <ol>
+            <li>Przejdź do <a href="http://www.gravatar.com/">www.gravatar.com</a></li>
+            <li>Zarejestruj się przy pomocy tego samego adresu email, którego użyłeś w Nakranach.</li>
+            <li>Dodaj zdjęcie profilowe.</li>
+            <li>Będziesz mógł używać go na każdej stronie, która obsługuje serwis Gravatar.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal fade" id="passwordChangeModal" tabindex="-1" role="dialog"
+       aria-labelledby="passwordChangeModalLabel">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                  aria-hidden="true">&times;</span></button>
+          <h4 class="modal-title" id="passwordChangeModalLabel">Zmień hasło</h4>
+        </div>
+
+{#        {% crispy password_change_form %}#}
+        {% crispy password_change_form password_change_form_helper %}
+
+      </div>
+    </div>
+  </div>
+
+{% endblock modals %}

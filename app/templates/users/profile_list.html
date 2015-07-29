@@ -41,11 +41,12 @@
                 {% csrf_token %}
 
                 <input type="hidden" name="profile_id" value="{{ profile.id }}">
-                <input type="hidden" name="pub_id" value="{{ pub_id }}">
+                <input type="hidden" name="pub.id" value="{{ pub.id }}">
 
                 <div class="btn-group btn-group-xs" style="z-index: {{ forloop.revcounter }}">
 
-                  <button type="submit" name="action" value="remove" data-toggle="tooltip"
+                  <button type="button" data-toggle="modal" data-target="#confirmationModal"
+                          data-profile-id="{{ profile.id }}" data-profile-fullname="{{ profile.fullname }}"
                           title="Usuń użytkownika z pubu" class="btn btn-default">
                     <i class="fa fa-power-off"></i>
                   </button>
@@ -86,3 +87,38 @@
   <!-- End profile table -->
 
 {% endblock content %}
+
+
+{% block modals %}
+
+  <div class="modal fade" id="confirmationModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                  aria-hidden="true">&times;</span></button>
+          <h4 class="modal-title" id="confirmationModalLabel">Potwierdź usunięcie użytkownika</h4>
+        </div>
+        <form method="post" action="{% url 'user:list' %}">
+          {% csrf_token %}
+          <input type="hidden" name="profile_id" value="">
+          <input type="hidden" name="pub_id" value="{{ pub.id }}">
+          
+          <div class="modal-body">
+            <p>Czy na pewno chcesz usunąć użytkownika <span id="profileFullname"></span> z pubu {{ pub.name }}?</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Pozostaw użytkownika</button>
+            <button type="submit" name="action" value="remove" class="btn btn-primary">Usuń użytkownika</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+{% endblock modals %}
+
+{% block js %}
+  {{ block.super }}
+  <script src="{% static 'assets/js/user_profile_list.js' %}"></script>
+{% endblock js %}

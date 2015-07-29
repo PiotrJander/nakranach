@@ -1,6 +1,6 @@
 # coding=utf-8
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Layout, Field, HTML, Submit
+from crispy_forms.layout import Layout, Field, HTML, Submit, Div, Hidden
 from django.conf import settings
 
 
@@ -78,3 +78,30 @@ password_reset_confirm_form_helper.__dict__.update({
         Submit('submit', u'Zresetuj hasło', css_class='btn btn-success btn-block')
     )
 })
+
+
+# password change form helper
+
+password_change_form_helper = FormHelper()
+password_change_form_helper.__dict__.update({
+    # 'form_action': '/accounts/password/change/',
+    # 'form_action': 'accounts_profile_update',
+    'attrs': {'action': '/accounts/profile/update/'},
+    'html5_required': True,
+    'layout': Layout(
+        Hidden('password_change', 'password_change'),
+        Div('old_password', 'new_password1', 'new_password2', css_class='modal-body'),
+        Div(
+            HTML(u'<button type="button" class="btn btn-default" data-dismiss="modal">Anuluj</button>'),
+            Submit('submit', u'Zresetuj hasło', css_class='btn btn-success'),
+            css_class='modal-footer',
+        )
+    )
+})
+
+
+# profile update form helper
+
+profile_update_form_helper = FormHelper()
+# profile_update_form_helper.form_action('')
+profile_update_form_helper.add_input(Submit('submit', u'Zmień dane', css_class='btn btn-default'))

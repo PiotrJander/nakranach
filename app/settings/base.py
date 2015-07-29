@@ -52,6 +52,9 @@ MIDDLEWARE_CLASSES = (
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.locale.LocaleMiddleware',
+
+    # custom
+    'app.users.middleware.AddProfile',
 )
 
 AUTHENTICATION_BACKENDS = (
