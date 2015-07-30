@@ -5,7 +5,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.utils.translation import ugettext_lazy as _
 from registration.forms import RegistrationFormUniqueEmail
 from registration.users import UsernameField
-from app.accounts.form_helpers import profile_update_form_helper
+from app.accounts.form_helpers import ProfileUpdateFormHelper
 from app.users.models import Profile
 
 
@@ -26,8 +26,21 @@ class AuthenticationFormWithRememberMe(AuthenticationForm):
 
 class ProfileUpdateForm(forms.ModelForm):
     email = forms.EmailField()
+    old_email = forms.EmailField(widget=forms.HiddenInput)
 
-    helper = profile_update_form_helper
+    helper = ProfileUpdateFormHelper()
+
+    def clean(self):
+        cleaned_data = super(ProfileUpdateForm, self).clean()
+        email = cleaned_data['email']
+
+        # if email doesn't change, good
+        if email == cleaned_data['old_email']:
+            return
+
+        # if email changes, check email is not registered yet
+        if get_user_model().objects.filter(email=email).exists():
+            self.add_error('email', _(u'Email %s jest już zarejestrowany w nakranach') % email)
 
     def save(self, commit=True):
         """Saves the email additionally."""

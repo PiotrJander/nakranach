@@ -1,4 +1,5 @@
 # coding=utf-8
+from crispy_forms.bootstrap import StrictButton
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Field, HTML, Submit, Div, Hidden
 from django.conf import settings
@@ -27,17 +28,19 @@ class AccountsFormField(Field):
         return super(AccountsFormField, self).render(form, form_style, context, template_pack)
 
 
-# login form helper
+# form helpers
 
-login_form_helper = FormHelper()
-login_form_helper.__dict__.update({
-    'form_action': 'auth_login',
-    'html5_required': True,
-    'layout': Layout(
-        AccountsFormField('username', wrapper_class='login-input', placeholder='Email', icon='envelope'),
-        AccountsFormField('password', css_class='text-input', wrapper_class='login-input', placeholder=u'Hasło', icon='key'),
-        'remember_me',
-        HTML(u'''
+class LoginFormHelper(FormHelper):
+    def __init__(self, form=None):
+        super(LoginFormHelper, self).__init__(form)
+        self.form_action = 'auth_login'
+        self.html5_required = True
+        self.layout = Layout(
+            AccountsFormField('username', wrapper_class='login-input', placeholder='Email', icon='envelope'),
+            AccountsFormField('password', css_class='text-input', wrapper_class='login-input', placeholder=u'Hasło',
+                              icon='key'),
+            'remember_me',
+            HTML(u'''
             <div class="row">
               <div class="col-sm-6">
                 <button type="submit" class="btn btn-success btn-block"><i class="fa fa-unlock"></i> Zaloguj się</button>
@@ -45,63 +48,61 @@ login_form_helper.__dict__.update({
               <div class="col-sm-6"><a href="{% url 'registration_register' %}" class="btn btn-default btn-block"><i class="fa fa-rocket"></i> Załóż konto</a></div>
             </div>
         ''')
-    )
-})
-
-
-# register form helper
-
-register_form_helper = FormHelper()
-register_form_helper.__dict__.update({
-    'form_action': 'registration_register',
-    'html5_required': True,
-    'layout': Layout(
-        AccountsFormField('email', css_class='text-input', wrapper_class='login-input', placeholder='Email', icon='envelope'),
-        AccountsFormField('first_name', wrapper_class='login-input', placeholder=u'Imię', icon='user'),
-        AccountsFormField('last_name', wrapper_class='login-input', placeholder='Nazwisko', icon='user'),
-        AccountsFormField('password1', css_class='text-input', wrapper_class='login-input', placeholder=u'Hasło', icon='key'),
-        AccountsFormField('password2', css_class='text-input', wrapper_class='login-input', placeholder=u'Powtórz hasło', icon='eye'),
-        Submit('submit', u'Załóż konto', css_class='btn btn-success btn-block')
-    )
-})
-
-
-# password reset confirm form helper
-
-password_reset_confirm_form_helper = FormHelper()
-password_reset_confirm_form_helper.__dict__.update({
-    'form_action': 'auth_password_reset_confirm',
-    'html5_required': True,
-    'layout': Layout(
-        AccountsFormField('new_password1', css_class='text-input', wrapper_class='login-input', placeholder=u'Nowe hasło', icon='key'),
-        AccountsFormField('new_password2', css_class='text-input', wrapper_class='login-input', placeholder=u'Powtórz hasło', icon='eye'),
-        Submit('submit', u'Zresetuj hasło', css_class='btn btn-success btn-block')
-    )
-})
-
-
-# password change form helper
-
-password_change_form_helper = FormHelper()
-password_change_form_helper.__dict__.update({
-    # 'form_action': '/accounts/password/change/',
-    # 'form_action': 'accounts_profile_update',
-    'attrs': {'action': '/accounts/profile/update/'},
-    'html5_required': True,
-    'layout': Layout(
-        Hidden('password_change', 'password_change'),
-        Div('old_password', 'new_password1', 'new_password2', css_class='modal-body'),
-        Div(
-            HTML(u'<button type="button" class="btn btn-default" data-dismiss="modal">Anuluj</button>'),
-            Submit('submit', u'Zresetuj hasło', css_class='btn btn-success'),
-            css_class='modal-footer',
         )
-    )
-})
 
 
-# profile update form helper
+class RegisterFormHelper(FormHelper):
+    def __init__(self, form=None):
+        super(RegisterFormHelper, self).__init__(form)
+        self.form_action = 'registration_register'
+        self.html5_required = True
+        self.layout = Layout(
+            AccountsFormField('email', css_class='text-input', wrapper_class='login-input', placeholder='Email',
+                              icon='envelope'),
+            AccountsFormField('first_name', wrapper_class='login-input', placeholder=u'Imię', icon='user'),
+            AccountsFormField('last_name', wrapper_class='login-input', placeholder='Nazwisko', icon='user'),
+            AccountsFormField('password1', css_class='text-input', wrapper_class='login-input', placeholder=u'Hasło',
+                              icon='key'),
+            AccountsFormField('password2', css_class='text-input', wrapper_class='login-input',
+                              placeholder=u'Powtórz hasło', icon='eye'),
+            Submit('submit', u'Załóż konto', css_class='btn btn-success btn-block')
+        )
 
-profile_update_form_helper = FormHelper()
-# profile_update_form_helper.form_action('')
-profile_update_form_helper.add_input(Submit('submit', u'Zmień dane', css_class='btn btn-default'))
+
+class PasswordResetConfirmFormHelper(FormHelper):
+    def __init__(self, form=None):
+        super(PasswordResetConfirmFormHelper, self).__init__(form)
+        self.form_action = 'auth_password_reset_confirm'
+        self.html5_required = True
+        self.layout = Layout(
+            AccountsFormField('new_password1', css_class='text-input', wrapper_class='login-input',
+                              placeholder=u'Nowe hasło', icon='key'),
+            AccountsFormField('new_password2', css_class='text-input', wrapper_class='login-input',
+                              placeholder=u'Powtórz hasło', icon='eye'),
+            Submit('submit', u'Zresetuj hasło', css_class='btn btn-success btn-block')
+        )
+
+
+class PasswordChangeFormHelper(FormHelper):
+    def __init__(self, form=None):
+        super(PasswordChangeFormHelper, self).__init__(form)
+        self.html5_required = True
+        self.layout = Layout(
+            Div('old_password', 'new_password1', 'new_password2', css_class='modal-body'),
+            Div(
+                StrictButton('Anuluj', css_class='btn btn-default', data_dismiss='modal'),
+                StrictButton(u'Zresetuj hasło', type='submit', name='action',
+                             value='password_change', css_class='btn btn-success'),
+
+                css_class='modal-footer',
+            )
+        )
+
+
+class ProfileUpdateFormHelper(FormHelper):
+    def __init__(self, form=None):
+        super(ProfileUpdateFormHelper, self).__init__(form)
+        self.layout = Layout(
+            'email', 'old_email', 'name', 'surname',
+            StrictButton(u'Zmień dane', type='submit', name='action', value='email_name', css_class='btn btn-default'),
+        )

@@ -1,5 +1,4 @@
 {% extends 'base_framed.html' %}
-{% load crispy_forms_filters %}
 {% load crispy_forms_tags %}
 
 {% block content %}
@@ -58,11 +57,7 @@
         <h3>Edytuj informacje profilowe</h3>
         <hr>
 
-        <form method="post" action="{% url 'accounts_profile_update' %}">
-          {% csrf_token %}
-          {{ form | crispy }}
-          <input type="submit" value="Zmień dane" class="btn btn-default">
-        </form>
+        {% crispy forms.email_name %}
 
         <hr>
 
@@ -116,8 +111,7 @@
           <h4 class="modal-title" id="passwordChangeModalLabel">Zmień hasło</h4>
         </div>
 
-{#        {% crispy password_change_form %}#}
-        {% crispy password_change_form password_change_form_helper %}
+        {% crispy forms.password_change %}
 
       </div>
     </div>

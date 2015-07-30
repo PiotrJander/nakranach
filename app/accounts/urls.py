@@ -21,7 +21,7 @@ from django.conf.urls import url
 from django.views.generic.base import TemplateView
 from django.contrib.auth import views as auth_views
 from django.core.urlresolvers import reverse_lazy
-from app.accounts.form_helpers import login_form_helper, register_form_helper, password_reset_confirm_form_helper
+from app.accounts.form_helpers import LoginFormHelper, PasswordResetConfirmFormHelper
 from app.accounts.views import ProfileRegistrationView, login_with_remember_me, ProfileUpdateView
 
 
@@ -38,7 +38,7 @@ urlpatterns = patterns('',
                        url(r'^login/$',
                            login_with_remember_me,
                            {'template_name': 'registration/login.html',
-                            'extra_context': {'form_helper': login_form_helper}},
+                            'extra_context': {'form_helper': LoginFormHelper()}},
                            name='auth_login'),
                        url(r'^logout/$',
                            auth_views.logout,
@@ -61,7 +61,7 @@ urlpatterns = patterns('',
                        url(r'^password/reset/confirm/(?P<uidb64>[0-9A-Za-z_\-]+)/(?P<token>.+)/$',
                            auth_views.password_reset_confirm,
                            {'post_reset_redirect': reverse_lazy('auth_password_reset_complete'),
-                            'extra_context': {'form_helper': password_reset_confirm_form_helper}},
+                            'extra_context': {'form_helper': PasswordResetConfirmFormHelper()}},
                            name='auth_password_reset_confirm'),
                        url(r'^password/reset/complete/$',
                            auth_views.password_reset_complete,
