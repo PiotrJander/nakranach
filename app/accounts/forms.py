@@ -26,16 +26,19 @@ class AuthenticationFormWithRememberMe(AuthenticationForm):
 
 class ProfileUpdateForm(forms.ModelForm):
     email = forms.EmailField()
-    old_email = forms.EmailField(widget=forms.HiddenInput)
 
     helper = ProfileUpdateFormHelper()
 
-    def clean(self):
+    def __init__(self, *args, **kwargs):
+        self.old_email = kwargs.pop('old_email')
+        super(ProfileUpdateForm, self).__init__(*args, **kwargs)
+
+    def clean_email(self):
         cleaned_data = super(ProfileUpdateForm, self).clean()
         email = cleaned_data['email']
 
         # if email doesn't change, good
-        if email == cleaned_data['old_email']:
+        if email == self.old_email:
             return
 
         # if email changes, check email is not registered yet

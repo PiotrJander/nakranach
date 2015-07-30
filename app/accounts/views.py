@@ -39,6 +39,7 @@ class ProfileUpdateView(MultiFormsView):
 
     def create_email_name_form(self, **kwargs):
         kwargs['instance'] = self.request.profile
+        kwargs['old_email'] = self.request.user.email
         return ProfileUpdateForm(**kwargs)
 
     def create_password_change_form(self, **kwargs):
