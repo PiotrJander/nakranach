@@ -88,9 +88,6 @@ INSTALLED_APPS = (
     'app.users',
     'app.fb',
     'registration',
-
-    # possibly
-    'bootstrapform',
 )
 
 TEMPLATE_CONTEXT_PROCESSORS = (

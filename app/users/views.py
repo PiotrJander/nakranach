@@ -3,8 +3,8 @@ from django.shortcuts import redirect
 from django.views.generic import ListView, FormView
 
 from app.pubs.models import Pub
+from app.users.forms import InviteUserForm
 from .models import Profile, ProfilePub
-from .forms import invite_user_form_factory
 
 
 class ProfileListView(ListView):
@@ -39,7 +39,7 @@ class InviteUserView(FormView):
 
     def get_form_class(self):
         profile = Profile.get_by_user(self.request.user)
-        return invite_user_form_factory(profile)
+        return InviteUserForm
 
     def form_valid(self, form):
         # get pub

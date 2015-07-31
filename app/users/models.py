@@ -98,7 +98,8 @@ class Profile(models.Model):
         Returns the profile associated with given custom_user.
         Raises Profile.DoesNotExist if there is no associated profile.
         """
-        return cls.objects.get(user=user.id)
+        # return cls.objects.get(user=user.id)
+        return user.profile
 
     @classmethod
     def get_by_email(cls, email):

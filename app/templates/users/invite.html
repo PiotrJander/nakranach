@@ -32,29 +32,23 @@ Na kranach | zaproś użytkownika
     <div class="col-sm-6">
       <div class="dotted">
 
-        <h4><strong>Użytkownicy</strong> w twoich pubach</h4>
+        <h4><strong>Użytkownicy</strong> w pubie {{ profile.managed_pub }}</h4>
 
-        {% for pub in profile.managed_pubs %}
+        <ul class="list-unstyled">
 
-          <h5>{{ pub.name }}</h5>
+          {% for profile in profile.managed_pub.profile_set.all %}
 
-          <ul class="list-unstyled">
+            <li>
+              {{ profile.user.email }}
+              {% if profile.fullname %} ({{ profile.fullname }}) {% endif %}
+            </li>
 
-            {% for profile in pub.profile_set.all %}
+          {% endfor %}
 
-              <li>
-                {{ profile.user.email }}
-                {% if profile.fullname %} ({{ profile.fullname }}) {% endif %}
-              </li>
-
-            {% endfor %}
-
-          </ul>
-
-        {% endfor %}
+        </ul>
 
         <div class="alert alert-warning">
-        	<p>Użytkownik, którego zapraszasz, musi być zarejestrowany w systemie.</p>
+          <p>Użytkownik, którego zapraszasz, musi być zarejestrowany w systemie.</p>
         </div>
 
       </div>
