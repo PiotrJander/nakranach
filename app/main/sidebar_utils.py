@@ -2,6 +2,7 @@
 from django.contrib.auth import logout
 from django.core.urlresolvers import reverse
 from django.utils.html import escape
+from django.utils.translation import ugettext_lazy as _
 from app.users.models import Profile
 
 
@@ -28,6 +29,7 @@ class SidebarMenu(object):
         self.make_dashboard()
         self.make_my_profile()
         self.make_users()
+        self.make_tap_list()
 
     def append_field(self, field):
         """Appends the child field to children attribute."""
@@ -54,7 +56,7 @@ class SidebarMenu(object):
         self.append_field(SidebarLinkField(
             name='Frontend',
             icon='leaf',
-            view_name='main:dummy',
+            url_name='main:dummy',
             label=SidebarLabel('danger', 'COMING SOON')
         ))
 
@@ -62,10 +64,10 @@ class SidebarMenu(object):
         parent = SidebarWrapperField(name='Elements', icon='bug')
         parent.append_field(SidebarChildField(
             name='Primary',
-            view_name='main:dummy',
+            url_name='main:dummy',
             label=SidebarLabel('success', 'UPDATED')
         ))
-        child2 = SidebarChildField(name='Extended', view_name='main:dummy')
+        child2 = SidebarChildField(name='Extended', url_name='main:dummy')
         parent.append_field(child2)
         self.append_field(parent)
 
@@ -75,7 +77,7 @@ class SidebarMenu(object):
         self.append_field(SidebarLinkField(
             name='Dashboard',
             icon='home',
-            view_name='main:dashboard'
+            url_name='main:dashboard'
         ))
 
     def make_users(self):
@@ -86,26 +88,26 @@ class SidebarMenu(object):
         The field is only displayed to users who have the role of a pub admin.
         """
         # request.user is an instance of email_user; we want Profile instance
-        try:
-            profile = Profile.get_by_user(self.request.user)
-        except Profile.DoesNotExist as e:
-            logout(self.request)
-            raise e
-            # TODO deal with this exception
+        # try:
+        #     profile = Profile.get_by_user(self.request.user)
+        # except Profile.DoesNotExist as e:
+        #     logout(self.request)
+        #     raise e
+        #     # TODO deal with this exception
 
         # if the user in not a admin, do nothing
-        if not profile.is_admin():
+        if not self.request.profile.is_admin():
             return
 
         # make the fields
         parent = SidebarWrapperField(name='Użytkownicy', icon='list')
         parent.append_field(SidebarChildField(
             name='Lista',
-            view_name='user:list',
+            url_name='user:list',
         ))
         parent.append_field(SidebarChildField(
             name='Zaproś do pubu',
-            view_name='user:invite',
+            url_name='user:invite',
         ))
         self.append_field(parent)
 
@@ -113,7 +115,14 @@ class SidebarMenu(object):
         self.append_field(SidebarLinkField(
             name='Mój profil',
             icon='home',
-            view_name='accounts_profile_update'
+            url_name='accounts_profile_update'
+        ))
+
+    def make_tap_list(self):
+        self.append_field(SidebarLinkField(
+            name='Lista kranów',
+            icon='home',
+            url_name='accounts_profile_update',
         ))
 
 
@@ -162,9 +171,9 @@ class SidebarLinkField(SidebarField):
                     this attr is added by SidebarMenu.determine_if_active
     """
 
-    def __init__(self, name, icon, view_name, kwargs=None, label=None):
+    def __init__(self, name, icon, url_name, kwargs=None, label=None):
         super(SidebarLinkField, self).__init__(name, icon, label)
-        self.url = reverse(view_name, kwargs=kwargs)
+        self.url = reverse(url_name, kwargs=kwargs)
 
 
 class SidebarWrapperField(SidebarField):
@@ -212,8 +221,8 @@ class SidebarChildField(SidebarLinkField):
 
     Note that icon has no effect for child fields.
     """
-    def __init__(self, name, view_name, kwargs=None, label=None):
-        super(SidebarChildField, self).__init__(name, 'angle-right', view_name, kwargs=kwargs, label=label)
+    def __init__(self, name, url_name, kwargs=None, label=None):
+        super(SidebarChildField, self).__init__(name, 'angle-right', url_name, kwargs=kwargs, label=label)
 
 
 class SidebarLabel(object):
