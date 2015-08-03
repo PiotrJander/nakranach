@@ -24,6 +24,7 @@ class SidebarMenu(object):
         # placeholder/test fields
         self.make_frontend()
         self.make_elements()
+        # assert hasattr(self.request.user, 'profile')
 
         # actual fields
         self.make_dashboard()

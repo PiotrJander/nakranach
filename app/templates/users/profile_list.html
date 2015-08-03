@@ -19,7 +19,6 @@
       <table class="table" data-sortable>
         <thead>
         <tr>
-          <th style="width: 30px" data-sortable="false"><input type="checkbox" class="rows-check"></th>
           <th>Nazwisko</th>
           <th>Rola</th>
           <th>Email</th>
@@ -31,7 +30,6 @@
 
         {% for profile in profile_list %}
           <tr>
-            <td><input type="checkbox" class="rows-check"></td>
             <td><strong>{{ profile.fullname | default:"N/A" }}</strong></td>
             <td>{% for role in profile.role_descs %} {{ role }} <br/> {% endfor %}</td>
             <td><a href="mailto:{{ profile.email }}">{{ profile.user.email }}</a></td>

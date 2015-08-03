@@ -88,6 +88,7 @@ INSTALLED_APPS = (
     'app.users',
     'app.fb',
     'registration',
+    'django_tables2',
 )
 
 TEMPLATE_CONTEXT_PROCESSORS = (
