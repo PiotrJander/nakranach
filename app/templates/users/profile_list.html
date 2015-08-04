@@ -1,4 +1,5 @@
 {% extends 'base_framed.html' %}
+{% load render_table from django_tables2 %}
 {% load staticfiles %}
 
 {% block content %}
@@ -13,73 +14,12 @@
 
   <!-- Begin profile table -->
   <div class="box-info full">
-    <h2><strong>Lista</strong> użytkowników</h2>
+    <h2><strong>Lista użytkowników</strong> w pubie {{ profile.managed_pub }}</h2>
 
     <div class="table-responsive">
-      <table class="table" data-sortable>
-        <thead>
-        <tr>
-          <th>Nazwisko</th>
-          <th>Rola</th>
-          <th>Email</th>
-          <th data-sortable="false">Opcje</th>
-        </tr>
-        </thead>
 
-        <tbody>
+      {% render_table table %}
 
-        {% for profile in profile_list %}
-          <tr>
-            <td><strong>{{ profile.fullname | default:"N/A" }}</strong></td>
-            <td>{% for role in profile.role_descs %} {{ role }} <br/> {% endfor %}</td>
-            <td><a href="mailto:{{ profile.email }}">{{ profile.user.email }}</a></td>
-            <td>
-
-              <form method="post" action="{% url 'user:list' %}">
-                {% csrf_token %}
-
-                <input type="hidden" name="profile_id" value="{{ profile.id }}">
-                <input type="hidden" name="pub.id" value="{{ pub.id }}">
-
-                <div class="btn-group btn-group-xs" style="z-index: {{ forloop.revcounter }}">
-
-                  <button type="button" data-toggle="modal" data-target="#confirmationModal"
-                          data-profile-id="{{ profile.id }}" data-profile-fullname="{{ profile.fullname }}"
-                          title="Usuń użytkownika z pubu" class="btn btn-default">
-                    <i class="fa fa-power-off"></i>
-                  </button>
-
-                  {# Begin dropdown #}
-                  <button id="dLabel" title="Nadaj użytkownikowi nową rolę" class="btn btn-default"
-                          data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                    <i class="fa fa-edit"></i>
-                  </button>
-
-                  <ul class="dropdown-menu" aria-labelledby="dLabel">
-                    <li class="dropdown-header">Nowa rola dla użytkownika</li>
-                    <li>
-                      <button type="submit" name="action" value="admin" class="btn btn-link">Administrator</button>
-                    </li>
-                    <li>
-                      <button type="submit" name="action" value="employee" class="btn btn-link">Pracownik baru</button>
-                    </li>
-                    <li>
-                      <button type="submit" name="action" value="storeman" class="btn btn-link">
-                        Pracownik magazynu
-                      </button>
-                    </li>
-                  </ul>
-
-                </div>
-              </form>
-              {# End dropdown #}
-
-            </td>
-          </tr>
-        {% endfor %}
-
-        </tbody>
-      </table>
     </div>
   </div>
   <!-- End profile table -->
@@ -97,13 +37,12 @@
                   aria-hidden="true">&times;</span></button>
           <h4 class="modal-title" id="confirmationModalLabel">Potwierdź usunięcie użytkownika</h4>
         </div>
-        <form method="post" action="{% url 'user:list' %}">
+        <form method="post">
           {% csrf_token %}
           <input type="hidden" name="profile_id" value="">
-          <input type="hidden" name="pub_id" value="{{ pub.id }}">
-          
+
           <div class="modal-body">
-            <p>Czy na pewno chcesz usunąć użytkownika <span id="profileFullname"></span> z pubu {{ pub.name }}?</p>
+            <p>Czy na pewno chcesz usunąć użytkownika <span id="profileEmail"></span> z pubu {{ pub.name }}?</p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-default" data-dismiss="modal">Pozostaw użytkownika</button>

@@ -1,3 +1,4 @@
+from braces.views import UserFormKwargsMixin
 from django.contrib.auth import views as auth_views, update_session_auth_hash
 from django.contrib.auth.forms import PasswordChangeForm
 from django.http.response import HttpResponseRedirect
@@ -34,12 +35,11 @@ class ProfileUpdateView(MultiFormsView):
                     'password_change': PasswordChangeForm, }
 
     def get_email_name_initial(self):
-        return {'email': self.request.user.email,
-                'old_email': self.request.user.email, }
+        return {'email': self.request.user.email}
 
     def create_email_name_form(self, **kwargs):
         kwargs['instance'] = self.request.profile
-        kwargs['old_email'] = self.request.user.email
+        kwargs['user'] = self.request.user
         return ProfileUpdateForm(**kwargs)
 
     def create_password_change_form(self, **kwargs):
@@ -65,6 +65,7 @@ class ProfileUpdateView(MultiFormsView):
 #  login view
 
 def login_with_remember_me(request, *args, **kwargs):
+    """Sets the session to expire when the user closes the browser unless the user checks 'remember me'."""
     if request.method == 'POST':
         if not request.POST.get('remember_me', None):
             request.session.set_expiry(0)

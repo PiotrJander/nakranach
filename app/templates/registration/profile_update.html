@@ -41,8 +41,8 @@
         <!-- Account status -->
         <div class="account-status-data">
           <ul class="list-unstyled">
-            {% for role_desc in profile.role_descs %}
-              <li>{{ role_desc }}</li>
+            {% for role in profile.role_descriptions %}
+              <li>{{ role }}</li>
             {% endfor %}
           </ul>
         </div>

@@ -14,6 +14,7 @@ urlpatterns = patterns('',
     (r'^fb/', include('app.fb.urls')),
     (r'^user/', include('app.users.urls', namespace='user')),
     (r'^accounts/', include('app.accounts.urls')),
+    (r'^taps/', include('app.taps.urls', namespace='tap')),
     (r'^', include('app.main.urls', namespace='main')),
 )
 

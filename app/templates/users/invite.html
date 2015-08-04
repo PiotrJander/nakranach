@@ -1,6 +1,5 @@
 {% extends 'base_framed.html' %}
-{% load bootstrap %}
-{% load staticfiles %}
+{% load crispy_forms_filters %}
 
 {% block title %}
 Na kranach | zaproś użytkownika
@@ -11,7 +10,7 @@ Na kranach | zaproś użytkownika
   <!-- Page header -->
   <div class="page-heading animated fadeInDownBig">
     <h1>Zaproś użytkowników
-      <small>do twojego pubu</small>
+      <small>do pubu {{ profile.managed_pub }}</small>
     </h1>
   </div>
   <!-- End page header -->
@@ -23,7 +22,7 @@ Na kranach | zaproś użytkownika
     <div class="col-sm-6">
       <form method="post" action="{% url 'user:invite' %}">
         {% csrf_token %}
-        {{ form | bootstrap }}
+        {{ form | crispy }}
         <button type="submit" class="btn btn-default">Zaproś</button>
       </form>
     </div>
@@ -36,7 +35,7 @@ Na kranach | zaproś użytkownika
 
         <ul class="list-unstyled">
 
-          {% for profile in profile.managed_pub.profile_set.all %}
+          {% for profile in profile.managed_pub.employees.all %}
 
             <li>
               {{ profile.user.email }}
@@ -59,8 +58,8 @@ Na kranach | zaproś użytkownika
 
 {% endblock content %}
 
-<form method="post" action="{% url 'user:invite' %}">
-  {% csrf_token %}
-  {{ form | bootstrap }}
-  <button type="submit" class="btn btn-default">Zaproś</button>
-</form>
+{#<form method="post" action="{% url 'user:invite' %}">#}
+{#  {% csrf_token %}#}
+{#  {{ form | bootstrap }}#}
+{#  <button type="submit" class="btn btn-default">Zaproś</button>#}
+{#</form>#}

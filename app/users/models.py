@@ -23,20 +23,26 @@ class Profile(models.Model):
 
     pubs = models.ManyToManyField(Pub, through='ProfilePub', related_name='employees', through_fields=('profile', 'pub'))
 
+    def __unicode__(self):
+        return unicode(self.user)
+
+    @property
+    def email(self):
+        return self.user.email
+
     def fullname(self):
-        """Returns name and surname concatenated. If these are empty, return the email."""
+        """Returns name and surname concatenated. If these are empty, returns None"""
         if self.name or self.surname:
             return '%s %s' % (self.name, self.surname)
         else:
-            return self.user.email
+            None
 
-    def role_descs(self):
-        """
-        Returns a list of role descriptions. A role description is a string with information about the role
-        and the pub. To be used in contexts where the user is known implicitly
-        and we don't want to include the user explicitly.
-        """
-        return [profile_pub.role_desc() for profile_pub in ProfilePub.objects.filter(profile=self)]
+    def profile_pubs(self):
+        """Returns the list of ProfilePubs the user is in."""
+        return ProfilePub.objects.filter(profile=self)
+
+    def role_descriptions(self):
+        return [pp.role_desciption() for pp in self.profile_pubs()]
 
     def gravatar_url(self):
         """Returns the md5 hash of the email."""
@@ -49,6 +55,7 @@ class Profile(models.Model):
     @property
     def can_manage_pubs(self):
         return self.pubs.count() != 0
+        # metoda Strucha, chyba nie do końca aktualna
 
     def is_admin(self):
         """
@@ -62,24 +69,9 @@ class Profile(models.Model):
         Returns the list of workers in the managed pub.
         """
         if self.managed_pub():
-            return self.managed_pub().employees.all()
+            return self.managed_pub().employees.all().select_related('user')
         else:
             return []
-
-    # def managed_users(self):
-    #     """
-    #     Returns the list of users that the user can manage.
-    #     """
-    #     return Profile.objects.raw("""
-    #     SELECT user.* from
-    #     users_profile as admin,
-    #     users_profile as user,
-    #     users_profilepub as pp1,
-    #     users_profilepub as pp2,
-    #     pubs_pub as pub
-    #     where admin.id = %(user_id)s and admin.id = pp1.profile_id and pp1.role = 'admin'
-    #     and pp1.pub_id = pub.id and pub.id = pp2.pub_id and pp2.profile_id = user.id;
-    #     """, {'user_id': self.id})
 
     def managed_pub(self):
         """
@@ -103,20 +95,13 @@ class Profile(models.Model):
     @classmethod
     def get_by_email(cls, email):
         user = get_user_model().objects.get(email=email)
-        return cls.get_by_user(user)
-
-    @classmethod
-    def associated_with_pub(cls, pub):
-        "Returns an iterable of profiles associated with the given pub."
-        return cls.objects.filter(pub=pub)
+        return user.profile
 
     @staticmethod
     def check_email_is_registered(email):
         """Checks if the given email is registered in Nakranach."""
-        return email in (user.email for user in get_user_model().objects.all())
+        return get_user_model().objects.filter(email=email).exists()
 
-    def __unicode__(self):
-        return unicode(self.user)
 
 class ProfilePub(models.Model):
     PUB_EMPLOYEE = 'employee'
@@ -133,16 +118,21 @@ class ProfilePub(models.Model):
     pub = models.ForeignKey(Pub, verbose_name=_(u'Pub'))
     role = models.CharField(max_length=20, verbose_name=_(u'Rola'), choices=ROLE_CHOICES)
 
+    class Meta:
+        verbose_name = _(u'profil-pub')
+        verbose_name_plural = _(u'profile-puby')
+        unique_together = ('profile', 'pub')
+
     def __unicode__(self):
         entities = {'person': unicode(self.profile), 'role': self.get_role_display(), 'pub': unicode(self.pub), }
         return u'%(person)s pełni rolę %(role)s w %(pub)s' % entities
 
-    def role_desc(self):
-        """
-        Returns a string with information about the role and the pub. To be used in contexts where the user
-        is known implicitly and we don't want to include the user explicitly.
-        """
-        return '%s w pubie %s' % (self.get_role_display(), unicode(self.pub))
+    def role_desciption(self):
+        return '%s w pubie %s' % (self.get_role_display(), self.pub)
+
+    @classmethod
+    def get_role(cls, profile, pub):
+        return cls.objects.get(profile=profile, pub=pub).get_role_display()
 
     @classmethod
     def remove_from_pub(cls, profile, pub):
@@ -153,8 +143,3 @@ class ProfilePub(models.Model):
     def change_role(cls, profile, pub, role):
         """Sets the new role for the user in the pub."""
         cls.objects.filter(profile=profile, pub=pub).update(role=role)
-
-    class Meta:
-        verbose_name = _(u'profil-pub')
-        verbose_name_plural = _(u'profile-puby')
-        unique_together = ('profile', 'pub')

@@ -123,7 +123,7 @@ class SidebarMenu(object):
         self.append_field(SidebarLinkField(
             name='Lista kranów',
             icon='home',
-            url_name='accounts_profile_update',
+            url_name='tap:list',
         ))
 
 

@@ -19,8 +19,8 @@ class AccountsFormField(Field):
     def __init__(self, *args, **kwargs):
         """Sets 'icon' attr on the objects. Use 'icon' kwarg or default 'sign-in' string."""
         icon = kwargs.pop('icon', 'sign-in')  # use 'sign-in' icon by default
-        super(AccountsFormField, self).__init__(*args, **kwargs)
         self.icon = icon
+        super(AccountsFormField, self).__init__(*args, **kwargs)
 
     def render(self, form, form_style, context, template_pack=TEMPLATE_PACK):
         """Sets 'field_icon' context variable to self.icon."""
