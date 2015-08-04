@@ -68,19 +68,17 @@ class Profile(models.Model):
         """
         Returns the list of workers in the managed pub.
         """
-        if self.managed_pub():
-            return self.managed_pub().employees.all().select_related('user')
+        if self.get_pub():
+            return self.get_pub().employees.all().select_related('user')
         else:
             return []
 
-    def managed_pub(self):
+    def get_pub(self):
         """
-        Returns the pub managed by the user, or None is the user is not an admin.
-
-        CRUCIAL: assumes that a single user can only manage one pub, which is not enforced by code however
+        Returns the pub associated with the user, or None.
         """
         try:
-            return Pub.objects.get(profilepub__profile=self, profilepub__role='admin')
+            return Pub.objects.get(profilepub__profile=self)
         except Pub.DoesNotExist:
             return None
 

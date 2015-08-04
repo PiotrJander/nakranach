@@ -10,7 +10,7 @@ Na kranach | zaproś użytkownika
   <!-- Page header -->
   <div class="page-heading animated fadeInDownBig">
     <h1>Zaproś użytkowników
-      <small>do pubu {{ profile.managed_pub }}</small>
+      <small>do pubu {{ profile.get_pub }}</small>
     </h1>
   </div>
   <!-- End page header -->
@@ -31,11 +31,11 @@ Na kranach | zaproś użytkownika
     <div class="col-sm-6">
       <div class="dotted">
 
-        <h4><strong>Użytkownicy</strong> w pubie {{ profile.managed_pub }}</h4>
+        <h4><strong>Użytkownicy</strong> w pubie {{ profile.get_pub }}</h4>
 
         <ul class="list-unstyled">
 
-          {% for profile in profile.managed_pub.employees.all %}
+          {% for profile in profile.get_pub.employees.all %}
 
             <li>
               {{ profile.user.email }}

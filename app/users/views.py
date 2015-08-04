@@ -11,7 +11,7 @@ from app.users.tables import ManagedUsersTable
 class AddPubToContextMixin(object):
     def get_pub(self):
         """Returns the pub managed by the logged-in user."""
-        return self.request.profile.managed_pub()
+        return self.request.profile.get_pub()
 
     def get_context_data(self, **kwargs):
         context = super(AddPubToContextMixin, self).get_context_data(**kwargs)
@@ -68,7 +68,7 @@ class InviteUserView(UserFormKwargsMixin, FormView):
         role = form.cleaned_data['role']
 
         # make and save relation
-        pp = ProfilePub(pub=self.request.profile.managed_pub(), profile=profile, role=role)
+        pp = ProfilePub(pub=self.request.profile.get_pub(), profile=profile, role=role)
         pp.save()
 
         return super(InviteUserView, self).form_valid(form)

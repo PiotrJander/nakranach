@@ -6,15 +6,15 @@
 
   <!-- Page header -->
   <div class="page-heading animated fadeInDownBig">
-    <h1>Użytkownicy
-      <small>zarządzanie</small>
+    <h1>Krany
+      <small>zmiana piwa</small>
     </h1>
   </div>
   <!-- End page header -->
 
   <!-- Begin profile table -->
   <div class="box-info full">
-    <h2><strong>Lista użytkowników</strong> w pubie {{ profile.get_pub }}</h2>
+    <h2><strong>Lista kranów</strong> w pubie {{ profile.get_pub }}</h2>
 
     <div class="table-responsive">
 
@@ -29,13 +29,13 @@
 
 {% block modals %}
 
-  <div class="modal fade" id="confirmationModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel">
+  <div class="modal fade" id="confirmationModal" tabindex="-1" role="dialog" aria-labelledby="confirmationModalLabel">
     <div class="modal-dialog" role="document">
       <div class="modal-content">
         <div class="modal-header">
           <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
                   aria-hidden="true">&times;</span></button>
-          <h4 class="modal-title" id="confirmationModalLabel">Potwierdź usunięcie użytkownika</h4>
+          <h4 class="modal-title" id="confirmationModalLabel">Potwierdź usunięcie piwa spod kranu</h4>
         </div>
         <form method="post">
           {% csrf_token %}
@@ -55,7 +55,8 @@
 
 {% endblock modals %}
 
+
 {% block js %}
   {{ block.super }}
-  <script src="{% static 'assets/js/user_profile_list.js' %}"></script>
+  <script src="{% static 'assets/js/tap_list.js' %}"></script>
 {% endblock js %}

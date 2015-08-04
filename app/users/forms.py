@@ -12,7 +12,7 @@ class InviteUserForm(UserKwargModelFormMixin, forms.Form):
 
     def __init__(self, *args, **kwargs):
         super(InviteUserForm, self).__init__(*args, **kwargs)
-        self.pub = self.user.profile.managed_pub()
+        self.pub = self.user.profile.get_pub()
 
     def clean_email(self):
         """

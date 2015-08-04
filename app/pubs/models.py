@@ -75,6 +75,9 @@ class Pub(models.Model):
                 self.avatar.save(filename, image_file)
                 output.close()
 
+    def get_absolute_url(self):
+        return '/%s' % self.slug
+
     @property
     def is_open(self):
         now = timezone.now()
@@ -84,8 +87,8 @@ class Pub(models.Model):
 
         return is_open
 
-    def get_absolute_url(self):
-        return '/%s' % self.slug
+    def get_taps(self):
+        return Tap.objects.filter(pub=self)
 
     @classmethod
     def get_by_id(cls, id):
@@ -122,6 +125,7 @@ class Tap(models.Model):
 
     def __unicode__(self):
         return u'%s tap #%s' % (self.pub, self.sort_order)
+
 
 class WaitingBeer(models.Model):
     pub = models.ForeignKey(Pub, blank=False, null=False)

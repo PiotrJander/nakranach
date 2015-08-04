@@ -3,7 +3,7 @@ from app.users.models import ProfilePub
 
 
 class ManagedUsersTable(tables.Table):
-    fullname = tables.Column(verbose_name='Nazwisko', default='N/A')
+    fullname = tables.Column(verbose_name='Nazwisko')
     email = tables.EmailColumn(accessor='user.email', verbose_name='Adres email')
     role = tables.Column(accessor='id', verbose_name='Rola')
     actions = tables.TemplateColumn(accessor='id', verbose_name='Akcje', template_name='users/_change_role_form.html')
