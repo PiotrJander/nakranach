@@ -1,6 +1,7 @@
 {% extends 'base_framed.html' %}
 {% load render_table from django_tables2 %}
 {% load staticfiles %}
+{% load crispy_forms_tags %}
 
 {% block content %}
 
@@ -29,26 +30,42 @@
 
 {% block modals %}
 
-  <div class="modal fade" id="confirmationModal" tabindex="-1" role="dialog" aria-labelledby="confirmationModalLabel">
+  {# Empty tap modal #}
+  <div class="modal fade" id="emptyTapModal" tabindex="-1" role="dialog" aria-labelledby="emptyTapModalLabel">
     <div class="modal-dialog" role="document">
       <div class="modal-content">
         <div class="modal-header">
           <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
                   aria-hidden="true">&times;</span></button>
-          <h4 class="modal-title" id="confirmationModalLabel">Potwierdź usunięcie piwa spod kranu</h4>
+          <h4 class="modal-title" id="emptyTapModalLabel">Potwierdź usunięcie piwa spod kranu</h4>
         </div>
-        <form method="post">
-          {% csrf_token %}
-          <input type="hidden" name="profile_id" value="">
+        <div class="modal-body">
+          <p>Czy na pewno chcesz usunąć piwo <span id="beerName"></span> spod kranu <span id="tapNo"></span>?</p>
+        </div>
+        <div class="modal-footer">
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="tap_id" value="">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Pozostaw piwo</button>
+            <button type="submit" name="action" value="remove" class="btn btn-primary">Usuń piwo</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
 
-          <div class="modal-body">
-            <p>Czy na pewno chcesz usunąć użytkownika <span id="profileEmail"></span> z pubu {{ pub.name }}?</p>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-default" data-dismiss="modal">Pozostaw użytkownika</button>
-            <button type="submit" name="action" value="remove" class="btn btn-primary">Usuń użytkownika</button>
-          </div>
-        </form>
+  {# Empty tap modal #}
+  <div class="modal fade" id="changeBeerModal" tabindex="-1" role="dialog" aria-labelledby="changeBeerModalLabel">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                  aria-hidden="true">&times;</span></button>
+          <h4 class="modal-title" id="changeBeerModalLabel">Potwierdź zmianę piwa na kranie</h4>
+        </div>
+
+        {% crispy form %}
+
       </div>
     </div>
   </div>

@@ -1,36 +1,15 @@
-<form method="post">
-  {% csrf_token %}
+<div class="btn-group btn-group-xs">
 
-  <input type="hidden" name="profile_id" value="{{ record.id }}">
+  <button data-toggle="modal" data-target="#emptyTapModal"
+          data-tap-id="{{ record.id }}" data-tap-number="{{ record.tap_number }}" data-beer-name="{{ record.beer.name }}"
+          title="Usuń piwo z kranu" class="btn btn-default">
+    <i class="fa fa-power-off"></i>
+  </button>
 
-  <div class="btn-group btn-group-xs">
+  <button data-toggle="modal" data-target="#changeBeerModal"
+          data-tap-id="{{ record.id }}" data-tap-number="{{ record.tap_number }}" data-beer-name="{{ record.beer.name }}"
+          title="Zastąp piwo na kranie" class="btn btn-default">
+    <i class="fa fa-edit"></i>
+  </button>
 
-    <button type="button" data-toggle="modal" data-target="#confirmationModal"
-            data-profile-id="{{ record.id }}" data-profile-email="{{ record.user.email }}"
-            title="Usuń użytkownika z pubu" class="btn btn-default">
-      <i class="fa fa-power-off"></i>
-    </button>
-
-    {# Begin dropdown #}
-    <button id="dLabel" title="Nadaj użytkownikowi nową rolę" class="btn btn-default"
-            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-      <i class="fa fa-edit"></i>
-    </button>
-
-    <ul class="dropdown-menu" aria-labelledby="dLabel">
-      <li class="dropdown-header">Nowa rola dla użytkownika</li>
-      <li>
-        <button type="submit" name="action" value="admin" class="btn btn-link">Administrator</button>
-      </li>
-      <li>
-        <button type="submit" name="action" value="employee" class="btn btn-link">Pracownik baru</button>
-      </li>
-      <li>
-        <button type="submit" name="action" value="storeman" class="btn btn-link">
-          Pracownik magazynu
-        </button>
-      </li>
-    </ul>
-
-  </div>
-</form>
+</div>

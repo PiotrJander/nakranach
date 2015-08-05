@@ -37,18 +37,17 @@
                   aria-hidden="true">&times;</span></button>
           <h4 class="modal-title" id="confirmationModalLabel">Potwierdź usunięcie użytkownika</h4>
         </div>
-        <form method="post">
-          {% csrf_token %}
-          <input type="hidden" name="profile_id" value="">
-
-          <div class="modal-body">
-            <p>Czy na pewno chcesz usunąć użytkownika <span id="profileEmail"></span> z pubu {{ pub.name }}?</p>
-          </div>
-          <div class="modal-footer">
+        <div class="modal-body">
+          <p>Czy na pewno chcesz usunąć użytkownika <span id="profileEmail"></span> z pubu {{ pub.name }}?</p>
+        </div>
+        <div class="modal-footer">
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="profile_id" value="">
             <button type="button" class="btn btn-default" data-dismiss="modal">Pozostaw użytkownika</button>
             <button type="submit" name="action" value="remove" class="btn btn-primary">Usuń użytkownika</button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   </div>

@@ -39,4 +39,5 @@ class Beer(models.Model):
     def __unicode__(self):
         return self.name
 
-
+    def description(self):
+        return '%s %s' % (self.brewery.name, self.name)
