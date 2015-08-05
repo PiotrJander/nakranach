@@ -8,6 +8,7 @@ from django_tables2.views import SingleTableView
 from app.beers.models import Beer
 from app.pubs.models import Tap
 from app.taps.forms import ChangeBeerForm
+from app.taps.models import TapChange
 from app.taps.tables import TapTable
 
 
@@ -57,6 +58,7 @@ class TapBeerChangeView(UserFormKwargsMixin, FormMixin, TapProcessFormView):
 
     def form_valid(self, form):
         new_beer = Beer.objects.get(pk=form.cleaned_data['new_beer'])
+        TapChange.log(self.tap, self.tap.beer, new_beer, self.request.profile)
         self.tap.change_beer(new_beer)
         return super(TapBeerChangeView, self).form_valid(form)
 
@@ -68,5 +70,6 @@ class TapEmptyView(TapProcessFormView):
 
     def post(self, request, *args, **kwargs):
         tap = self.get_object()
+        TapChange.log(tap, tap.beer, None, self.request.profile)
         tap.empty()
         return HttpResponseRedirect(reverse_lazy('tap:list'))

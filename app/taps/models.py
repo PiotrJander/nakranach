@@ -4,8 +4,8 @@ from django.db import models
 
 from django.utils.translation import ugettext_lazy as _
 
-from app.pubs.models import Tap
 from app.beers.models import Beer
+from app.pubs.models import Tap
 from app.users.models import Profile
 
 class TapChange(models.Model):
@@ -24,3 +24,7 @@ class TapChange(models.Model):
                                 null=True, 
                                 on_delete=models.SET_NULL, 
                                 related_name='user_changes')
+
+    @classmethod
+    def log(cls, tap, prev, new, profile=None):
+        cls.objects.create(tap=tap, previous_beer=prev, new_beer=new, user=profile)

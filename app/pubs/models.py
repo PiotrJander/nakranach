@@ -1,23 +1,18 @@
 # -*- coding: utf-8 -*-
+import StringIO
+import os
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
 from django.utils import timezone
 from django.core.files.uploadedfile import InMemoryUploadedFile
-
 from orderable.models import Orderable
-
 from geopy.geocoders import Nominatim
-
+from PIL import Image
+from uuslug import uuslug
 from app.beers.models import Beer
 
-from PIL import Image
-
-import StringIO
-import os
-
-from uuslug import uuslug
-
 AVATAR_SIZE = (256, 256)
+
 
 class Pub(models.Model):
     name = models.CharField(verbose_name=_(u'Nazwa'), max_length=200)
@@ -123,11 +118,11 @@ class Tap(models.Model):
     def __unicode__(self):
         return u'%s tap #%s' % (self.pub, self.sort_order)
 
-    def empty(self):
+    def empty(self, profile=None):
         self.beer = None
         self.save()
 
-    def change_beer(self, new_beer):
+    def change_beer(self, new_beer, profile=None):
         self.beer = new_beer
         self.save()
 
