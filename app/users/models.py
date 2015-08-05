@@ -82,6 +82,13 @@ class Profile(models.Model):
         except Pub.DoesNotExist:
             return None
 
+    def get_taps(self):
+        pub = self.get_pub()
+        if pub:
+            return pub.taps.all()
+        else:
+            return None
+
     @classmethod
     def get_by_user(cls, user):
         """

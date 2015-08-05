@@ -45,9 +45,8 @@
         <div class="modal-footer">
           <form method="post">
             {% csrf_token %}
-            <input type="hidden" name="tap_id" value="">
             <button type="button" class="btn btn-default" data-dismiss="modal">Pozostaw piwo</button>
-            <button type="submit" name="action" value="remove" class="btn btn-primary">Usuń piwo</button>
+            <button type="submit" class="btn btn-primary">Usuń piwo</button>
           </form>
         </div>
       </div>
@@ -64,7 +63,7 @@
           <h4 class="modal-title" id="changeBeerModalLabel">Potwierdź zmianę piwa na kranie</h4>
         </div>
 
-        {% crispy form %}
+        {% crispy change_beer_form %}
 
       </div>
     </div>
