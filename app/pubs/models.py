@@ -123,7 +123,13 @@ class Tap(models.Model):
     def __unicode__(self):
         return u'%s tap #%s' % (self.pub, self.sort_order)
 
-    # def
+    def empty(self):
+        self.beer = None
+        self.save()
+
+    def change_beer(self, new_beer):
+        self.beer = new_beer
+        self.save()
 
 
 class WaitingBeer(models.Model):
