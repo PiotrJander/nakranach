@@ -55,19 +55,19 @@ listy użytkowników.
 
 
 class ManageUserForm(UserKwargModelFormMixin, forms.Form):
-    user_id = forms.IntegerField()
+    profile_id = forms.IntegerField()
 
-    def clean_user_id(self):
+    def clean_profile_id(self):
         """
         Checks that the user identified by the id can be managed by the logged in user.
         """
-        user_id = self.cleaned_data['user_id']
-        if not self.user.profile.managed_users(id=user_id):
+        profile_id = self.cleaned_data['profile_id']
+        if not self.user.profile.managed_users().filter(id=profile_id):
             raise forms.ValidationError(_('Nie masz uprawnień, żeby zmienić rolę tego użytkownika'))
-        return user_id
+        return profile_id
 
     def get_user_to_modify(self):
-        return Profile.objects.get(id=self.cleaned_data['user_id'])
+        return Profile.objects.get(id=self.cleaned_data['profile_id'])
 
 
 class ChangeRoleForm(ManageUserForm):
@@ -75,7 +75,7 @@ class ChangeRoleForm(ManageUserForm):
 
     def save(self):
         user = self.get_user_to_modify()
-        user.profilepub_set.update(role=self.clenead_data['role'])
+        user.profilepub_set.update(role=self.cleaned_data['role'])
 
 
 class RemoveFromPubForm(ManageUserForm):

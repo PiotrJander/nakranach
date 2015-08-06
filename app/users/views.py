@@ -83,6 +83,7 @@ class ChangeRoleView(UserFormKwargsMixin, BaseFormView):
 
     def form_valid(self, form):
         form.save()
+        return super(ChangeRoleView, self).form_valid(form)
 
     def form_invalid(self, form):
         return HttpResponseBadRequest
@@ -95,9 +96,10 @@ class RemoveFromPubView(UserFormKwargsMixin, BaseFormView):
 
     def form_valid(self, form):
         form.save()
+        return super(RemoveFromPubView, self).form_valid(form)
 
     def form_invalid(self, form):
-        return HttpResponseBadRequest
+        return HttpResponseBadRequest()
 
 
 
