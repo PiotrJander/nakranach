@@ -52,3 +52,33 @@ Użytkownik o adresie email %(email)s pełni już rolę w pubie.
 Jeżeli chcesz zmienić rolę lub usunąć użytkownika z pubu, zrób to w widoku
 listy użytkowników.
 """
+
+
+class ManageUserForm(UserKwargModelFormMixin, forms.Form):
+    user_id = forms.IntegerField()
+
+    def clean_user_id(self):
+        """
+        Checks that the user identified by the id can be managed by the logged in user.
+        """
+        user_id = self.cleaned_data['user_id']
+        if not self.user.profile.managed_users(id=user_id):
+            raise forms.ValidationError(_('Nie masz uprawnień, żeby zmienić rolę tego użytkownika'))
+        return user_id
+
+    def get_user_to_modify(self):
+        return Profile.objects.get(id=self.cleaned_data['user_id'])
+
+
+class ChangeRoleForm(ManageUserForm):
+    role = forms.ChoiceField(choices=ProfilePub.ROLE_CHOICES)
+
+    def save(self):
+        user = self.get_user_to_modify()
+        user.profilepub_set.update(role=self.clenead_data['role'])
+
+
+class RemoveFromPubForm(ManageUserForm):
+    def save(self):
+        user = self.get_user_to_modify()
+        user.profilepub_set.all().delete()

@@ -64,7 +64,7 @@ class Profile(models.Model):
         """
         Returns the list of workers in the managed pub.
         """
-        if self.get_pub():
+        if self.get_pub() and self.is_admin():
             return self.get_pub().employees.exclude(id=self.id).select_related('user')
         else:
             return []

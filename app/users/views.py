@@ -1,10 +1,11 @@
 from braces.views import UserFormKwargsMixin
 from django.core.urlresolvers import reverse_lazy
-from django.http.response import HttpResponseRedirect
+from django.http.response import HttpResponseRedirect, HttpResponseBadRequest
 from django.views.generic import FormView
+from django.views.generic.edit import BaseFormView
 from django_tables2 import SingleTableView
 
-from app.users.forms import InviteUserForm
+from app.users.forms import InviteUserForm, ChangeRoleForm, RemoveFromPubForm
 from app.users.models import Profile, ProfilePub
 from app.users.tables import ManagedUsersTable
 
@@ -73,3 +74,47 @@ class InviteUserView(UserFormKwargsMixin, FormView):
         pp.save()
 
         return super(InviteUserView, self).form_valid(form)
+
+
+class ChangeRoleView(UserFormKwargsMixin, BaseFormView):
+    form_class = ChangeRoleForm
+    http_method_names = [u'post']
+    success_url = reverse_lazy('user:list')
+
+    def form_valid(self, form):
+        form.save()
+
+    def form_invalid(self, form):
+        return HttpResponseBadRequest
+
+
+class RemoveFromPubView(UserFormKwargsMixin, BaseFormView):
+    form_class = RemoveFromPubForm
+    http_method_names = [u'post']
+    success_url = reverse_lazy('user:list')
+
+    def form_valid(self, form):
+        form.save()
+
+    def form_invalid(self, form):
+        return HttpResponseBadRequest
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

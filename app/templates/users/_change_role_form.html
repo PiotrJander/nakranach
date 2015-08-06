@@ -1,4 +1,4 @@
-<form method="post">
+<form method="post" action="{% url 'user:change_role' %}">
   {% csrf_token %}
 
   <input type="hidden" name="profile_id" value="{{ record.id }}">
@@ -20,13 +20,13 @@
     <ul class="dropdown-menu" aria-labelledby="dLabel">
       <li class="dropdown-header">Nowa rola dla użytkownika</li>
       <li>
-        <button type="submit" name="action" value="admin" class="btn btn-link">Administrator</button>
+        <button type="submit" name="role" value="admin" class="btn btn-link">Administrator</button>
       </li>
       <li>
-        <button type="submit" name="action" value="employee" class="btn btn-link">Pracownik baru</button>
+        <button type="submit" name="role" value="employee" class="btn btn-link">Pracownik baru</button>
       </li>
       <li>
-        <button type="submit" name="action" value="storeman" class="btn btn-link">
+        <button type="submit" name="role" value="storeman" class="btn btn-link">
           Pracownik magazynu
         </button>
       </li>

@@ -41,11 +41,11 @@
           <p>Czy na pewno chcesz usunąć użytkownika <span id="profileEmail"></span> z pubu {{ pub.name }}?</p>
         </div>
         <div class="modal-footer">
-          <form method="post">
+          <form method="post" action="{% url 'user:remove' %}">
             {% csrf_token %}
             <input type="hidden" name="profile_id" value="">
             <button type="button" class="btn btn-default" data-dismiss="modal">Pozostaw użytkownika</button>
-            <button type="submit" name="action" value="remove" class="btn btn-primary">Usuń użytkownika</button>
+            <button type="submit" class="btn btn-primary">Usuń użytkownika</button>
           </form>
         </div>
       </div>
