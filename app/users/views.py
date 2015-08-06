@@ -1,8 +1,9 @@
 from braces.views import UserFormKwargsMixin
 from django.core.urlresolvers import reverse_lazy
 from django.http.response import HttpResponseRedirect
-from django.views.generic import ListView, FormView
+from django.views.generic import FormView
 from django_tables2 import SingleTableView
+
 from app.users.forms import InviteUserForm
 from app.users.models import Profile, ProfilePub
 from app.users.tables import ManagedUsersTable

@@ -5,6 +5,7 @@ from django.http.response import HttpResponseRedirect
 from django.views.generic.detail import BaseDetailView
 from django.views.generic.edit import FormMixin
 from django_tables2.views import SingleTableView
+
 from app.beers.models import Beer
 from app.pubs.models import Tap
 from app.taps.forms import ChangeBeerForm

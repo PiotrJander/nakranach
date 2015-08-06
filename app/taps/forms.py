@@ -1,5 +1,6 @@
 from django import forms
 from braces.forms import UserKwargModelFormMixin
+
 from app.taps.form_helpers import ChangeBeerOnTapFormHelper
 
 
