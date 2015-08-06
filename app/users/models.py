@@ -18,7 +18,7 @@ class Profile(models.Model):
     name = models.CharField(max_length=255, blank=True, null=True)
     surname = models.CharField(max_length=255, blank=True, null=True)
 
-    favorite_pubs = models.ManyToManyField(Pub)
+    favorite_pubs = models.ManyToManyField(Pub, blank=True)
     # favorite_pubs = models.ManyToManyField(Pub, related_name='-')
 
     pubs = models.ManyToManyField(Pub, through='ProfilePub', related_name='employees', through_fields=('profile', 'pub'))
@@ -37,12 +37,8 @@ class Profile(models.Model):
         else:
             None
 
-    def profile_pubs(self):
-        """Returns the list of ProfilePubs the user is in."""
-        return ProfilePub.objects.filter(profile=self)
-
     def role_descriptions(self):
-        return [pp.role_desciption() for pp in self.profile_pubs()]
+        return [pp.role_desciption() for pp in self.profilepub_set.all()]
 
     def gravatar_url(self):
         """Returns the md5 hash of the email."""
@@ -62,14 +58,14 @@ class Profile(models.Model):
         Returns True if the user is a pub admin, ie. has the 'admin' role
         in at least one ProfilePub relationship.
         """
-        return ProfilePub.objects.filter(profile=self, role='admin')
+        return self.profilepub_set.filter(role='admin').exists()
 
     def managed_users(self):
         """
         Returns the list of workers in the managed pub.
         """
         if self.get_pub():
-            return self.get_pub().employees.all().select_related('user')
+            return self.get_pub().employees.exclude(id=self.id).select_related('user')
         else:
             return []
 
@@ -81,6 +77,9 @@ class Profile(models.Model):
             return Pub.objects.get(profilepub__profile=self)
         except Pub.DoesNotExist:
             return None
+
+    def is_in_pub(self):
+        return bool(self.get_pub())
 
     def get_taps(self):
         pub = self.get_pub()

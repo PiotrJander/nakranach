@@ -2,6 +2,7 @@
 import StringIO
 import os
 from django.db import models
+from django.utils.html import format_html
 from django.utils.translation import ugettext_lazy as _
 from django.utils import timezone
 from django.core.files.uploadedfile import InMemoryUploadedFile
@@ -18,36 +19,38 @@ class Pub(models.Model):
     name = models.CharField(verbose_name=_(u'Nazwa'), max_length=200)
 
     slug = models.CharField(max_length=200, editable=False)
-    
+
     city = models.CharField(max_length=200)
     address = models.CharField(max_length=250, blank=True)
-    
+
     latitude = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
     longitude = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
 
-    avatar = models.ImageField(upload_to='pubs', blank=True, null=True, help_text=_(u'Preferred size is 256x256. If uploaded image has different size, it will be resized automatically'))
+    avatar = models.ImageField(upload_to='pubs', blank=True, null=True, help_text=_(
+        u'Preferred size is 256x256. If uploaded image has different size, it will be resized automatically'))
     avatar_timestamp = models.DateTimeField(auto_now_add=True, editable=False)
 
     opens = models.TimeField()
     closes = models.TimeField()
 
-    waiting_beers = models.ManyToManyField(Beer, through='WaitingBeer', through_fields=('pub', 'beer'), related_name='waiting_in_pubs')
-    
+    waiting_beers = models.ManyToManyField(Beer, through='WaitingBeer', through_fields=('pub', 'beer'),
+                                           related_name='waiting_in_pubs')
+
     def __unicode__(self):
         return self.name
-    
+
     def save(self, *args, **kwargs):
         self.slug = uuslug(self.name, instance=self)
-        
+
         # this allows specification of raw coordinates in admin
         if self.latitude is None or self.longitude is None:
             geolocator = Nominatim()
             location = geolocator.geocode("%s, %s" % (self.address, self.city))
-            
+
             if location:
                 self.latitude = location.latitude
                 self.longitude = location.longitude
-        
+
         super(Pub, self).save(*args, **kwargs)
 
         if self.avatar is not None:
@@ -66,7 +69,7 @@ class Pub(models.Model):
 
                 filename = '%s.png' % filename
                 image_file = InMemoryUploadedFile(output, None, filename, 'image/png', output.len, None)
-                
+
                 self.avatar.save(filename, image_file)
                 output.close()
 
@@ -93,7 +96,8 @@ class Volume(models.Model):
 
     def __unicode__(self):
         return u'%s ml' % self.value
-    
+
+
 class Tap(models.Model):
     TAP_TYPES = (
         ('pump', _(u'Pompa')),
@@ -107,16 +111,22 @@ class Tap(models.Model):
 
     type = models.CharField(_(u'Rodzaj kranu'), max_length=32, choices=TAP_TYPES, default='tap')
 
-    @property
-    def tap_number(self):
-        return self.sort_order + 1
-
     class Meta:
         ordering = ('sort_order',)
         unique_together = ('pub', 'sort_order')
 
     def __unicode__(self):
         return u'%s tap #%s' % (self.pub, self.sort_order)
+
+    @property
+    def tap_number(self):
+        return self.sort_order + 1
+
+    def description(self):
+        return format_html('<span class="label label-danger new-circle span-left">{}</span> '
+                           '<span class="label label-success new-circle span-left">{}</span>',
+                           self.tap_number,
+                           self.get_type_display())
 
     def empty(self, profile=None):
         self.beer = None
@@ -134,10 +144,11 @@ class WaitingBeer(models.Model):
     def __unicode__(self):
         return u'%s - %s' % (self.pub, self.beer)
 
+
 class Price(models.Model):
     tap = models.ForeignKey(Tap, related_name='prices', null=True, blank=True)
     beer = models.ForeignKey(WaitingBeer, related_name='prices', null=True, blank=True)
-    
+
     volume = models.ForeignKey(Volume, related_name='prices')
 
     # the max_digits value is set to cover border case
@@ -150,7 +161,7 @@ class Price(models.Model):
         if self.beer is None:
             raise AttributeError(_(u'Beer is not set - cannot copy to tap'))
 
-        copy = Price(tap=tap, beer=None, volume=self.volume, value = self.value)
+        copy = Price(tap=tap, beer=None, volume=self.volume, value=self.value)
         copy.save()
 
         return copy

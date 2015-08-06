@@ -3,7 +3,7 @@ from crispy_forms.bootstrap import StrictButton
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Field, HTML, Submit, Div, Hidden
 from django.conf import settings
-
+from django.core.urlresolvers import reverse_lazy
 
 TEMPLATE_PACK = getattr(settings, 'CRISPY_TEMPLATE_PACK', 'bootstrap')
 
@@ -72,7 +72,6 @@ class RegisterFormHelper(FormHelper):
 class PasswordResetConfirmFormHelper(FormHelper):
     def __init__(self, form=None):
         super(PasswordResetConfirmFormHelper, self).__init__(form)
-        self.form_action = 'auth_password_reset_confirm'
         self.html5_required = True
         self.layout = Layout(
             AccountsFormField('new_password1', css_class='text-input', wrapper_class='login-input',

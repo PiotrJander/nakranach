@@ -19,14 +19,9 @@
           <a href="#fakelink" class="dropdown-toggle" data-toggle="dropdown"><strong>{{ profile.fullname }}</strong> <i
                   class="fa fa-chevron-down i-xs"></i></a>
           <ul class="dropdown-menu animated half flipInX">
-            <li><a href="#fakelink">My Profile</a></li>
-            <li><a href="#fakelink">Change Password</a></li>
-            <li><a href="#fakelink">Account Setting</a></li>
+            <li><a href="{% url 'accounts_profile_update' %}">Edytuj profil</a></li>
             <li class="divider"></li>
-            <li class="dropdown-header">Another action</li>
-            <li><a href="#fakelink">Help</a></li>
-            <li><a href="lock-screen.html">Lock me</a></li>
-            <li><a class="md-trigger" data-modal="logout-modal" href="{% url 'auth_logout' %}?next=/accounts/login/">Logout</a></li>
+            <li><a class="md-trigger" data-modal="logout-modal" href="{% url 'auth_logout' %}?next=/accounts/login/">Wyloguj się</a></li>
           </ul>
         </li>
         <!-- End Dropdown User session -->

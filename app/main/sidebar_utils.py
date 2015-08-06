@@ -21,12 +21,7 @@ class SidebarMenu(object):
         self.fields = []
         self.request = request
 
-        # placeholder/test fields
-        self.make_frontend()
-        self.make_elements()
-        # assert hasattr(self.request.user, 'profile')
-
-        # actual fields
+        # make fields
         self.make_dashboard()
         self.make_my_profile()
         self.make_users()
@@ -51,34 +46,18 @@ class SidebarMenu(object):
             for child in field.children:
                 child.active = child.url == self.request.path
 
-    # methods generating placeholder fields
-
-    def make_frontend(self):
-        self.append_field(SidebarLinkField(
-            name='Frontend',
-            icon='leaf',
-            url_name='main:dummy',
-            label=SidebarLabel('danger', 'COMING SOON')
-        ))
-
-    def make_elements(self):
-        parent = SidebarWrapperField(name='Elements', icon='bug')
-        parent.append_field(SidebarChildField(
-            name='Primary',
-            url_name='main:dummy',
-            label=SidebarLabel('success', 'UPDATED')
-        ))
-        child2 = SidebarChildField(name='Extended', url_name='main:dummy')
-        parent.append_field(child2)
-        self.append_field(parent)
-
-    # methods for real fields
-
     def make_dashboard(self):
         self.append_field(SidebarLinkField(
             name='Dashboard',
             icon='home',
             url_name='main:dashboard'
+        ))
+
+    def make_my_profile(self):
+        self.append_field(SidebarLinkField(
+            name='Mój profil',
+            icon='home',
+            url_name='accounts_profile_update'
         ))
 
     def make_users(self):
@@ -88,14 +67,6 @@ class SidebarMenu(object):
 
         The field is only displayed to users who have the role of a pub admin.
         """
-        # request.user is an instance of email_user; we want Profile instance
-        # try:
-        #     profile = Profile.get_by_user(self.request.user)
-        # except Profile.DoesNotExist as e:
-        #     logout(self.request)
-        #     raise e
-        #     # TODO deal with this exception
-
         # if the user in not a admin, do nothing
         if not self.request.profile.is_admin():
             return
@@ -112,14 +83,11 @@ class SidebarMenu(object):
         ))
         self.append_field(parent)
 
-    def make_my_profile(self):
-        self.append_field(SidebarLinkField(
-            name='Mój profil',
-            icon='home',
-            url_name='accounts_profile_update'
-        ))
-
     def make_tap_list(self):
+        # check if the user is in a pub
+        if not self.request.profile.is_in_pub():
+            return
+
         self.append_field(SidebarLinkField(
             name='Lista kranów',
             icon='home',
