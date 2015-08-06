@@ -27,6 +27,15 @@ class TapChange(models.Model):
                              on_delete=models.SET_NULL,
                              related_name='user_changes')
 
+    def __unicode__(self):
+        return 'Zmiana na kranie %(tap_number)s: %(prev_beer)s -> %(new_beer)s @ %(time)s by %(user)s' % {
+            'tap_number': self.tap.tap_number,
+            'prev_beer': self.previous_beer.description() if self.previous_beer else u'∅',
+            'new_beer': self.new_beer.description() if self.new_beer else u'∅',
+            'time': self.timestamp,
+            'user': self.user.email,
+        }
+
     @classmethod
     def log(cls, tap, prev, new, profile=None):
         cls.objects.create(tap=tap, previous_beer=prev, new_beer=new, user=profile)
