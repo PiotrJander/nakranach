@@ -1,0 +1,7 @@
+<div class="list-group">
+  {% for group_name, group_choices in optgroups %}
+    {% for option in group_choices %}
+      <button type="submit" name="{{ name }}" value="{{ option.0 }}" class="list-group-item">{{ option.1 }}</button>
+    {% endfor %}
+  {% endfor %}
+</div>

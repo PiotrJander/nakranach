@@ -16,7 +16,6 @@ class ChangeBeerOnTapFormHelper(FormHelper):
             ),
             Div(
                 StrictButton('Pozostaw piwo', type='button', data_dismiss='modal', css_class='btn btn-default'),
-                StrictButton(u'Zmień piwo', type='submit', css_class='btn btn-primary'),
                 css_class='modal-footer'
             ),
         )

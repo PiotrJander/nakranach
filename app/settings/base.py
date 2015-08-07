@@ -89,6 +89,7 @@ INSTALLED_APPS = (
     'app.fb',
     'registration',
     'django_tables2',
+    'floppyforms',
 )
 
 TEMPLATE_CONTEXT_PROCESSORS = (

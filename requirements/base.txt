@@ -24,3 +24,4 @@ haversine
 django-bootstrap-form
 django_tables2
 django-registration-redux
+django-floppyforms
