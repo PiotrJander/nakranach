@@ -15,7 +15,7 @@ class CustomUserRegistrationForm(RegistrationFormUniqueEmail):
     first_name = forms.CharField(max_length=255, required=False)
     last_name = forms.CharField(max_length=255, required=False)
 
-    class Meta:
+    class Meta(RegistrationFormUniqueEmail.Meta):
         model = get_user_model()
         fields = (UsernameField(), 'first_name', 'last_name',)
 
@@ -33,10 +33,6 @@ class ProfileUpdateForm(UserKwargModelFormMixin, forms.ModelForm):
     class Meta:
         model = Profile
         fields = ['email', 'name', 'surname']
-        
-    # def __init__(self, *args, **kwargs):
-    #     self.old_email = kwargs.pop('old_email')
-    #     super(ProfileUpdateForm, self).__init__(*args, **kwargs)
 
     def clean_email(self):
         new_email = self.cleaned_data['email']

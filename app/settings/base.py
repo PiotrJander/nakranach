@@ -79,7 +79,7 @@ INSTALLED_APPS = (
     'haystack',
     'oauth2_provider',
     'rest_framework',
-    'custom_user',
+    # 'custom_user',
     'crispy_forms',
     'app.beers',
     'app.pubs',
@@ -107,7 +107,9 @@ TEMPLATE_CONTEXT_PROCESSORS = (
 
 SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
 
-AUTH_USER_MODEL = 'custom_user.EmailUser'
+AUTH_USER_MODEL = 'users.EmailUser'
+# AUTH_USER_MODEL = 'app.users.models.EmailUser'
+# AUTH_USER_MODEL = 'custom_user.EmailUser'
 
 LANGUAGES = [
     ('pl', 'Polski'),

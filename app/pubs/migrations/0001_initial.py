@@ -7,36 +7,84 @@ from django.db import models, migrations
 class Migration(migrations.Migration):
 
     dependencies = [
+        ('beers', '0001_initial'),
     ]
 
     operations = [
         migrations.CreateModel(
+            name='Price',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('value', models.DecimalField(max_digits=10, decimal_places=2)),
+            ],
+        ),
+        migrations.CreateModel(
             name='Pub',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('name', models.CharField(max_length=200, verbose_name=b'Nazwa')),
-                ('slug', models.CharField(max_length=200)),
+                ('name', models.CharField(max_length=200, verbose_name='Nazwa')),
+                ('slug', models.CharField(max_length=200, editable=False)),
                 ('city', models.CharField(max_length=200)),
                 ('address', models.CharField(max_length=250, blank=True)),
-                ('latitude', models.DecimalField(max_digits=6, decimal_places=3)),
-                ('longitude', models.DecimalField(max_digits=6, decimal_places=3)),
+                ('latitude', models.DecimalField(null=True, max_digits=6, decimal_places=3, blank=True)),
+                ('longitude', models.DecimalField(null=True, max_digits=6, decimal_places=3, blank=True)),
+                ('avatar', models.ImageField(help_text='Preferred size is 256x256. If uploaded image has different size, it will be resized automatically', null=True, upload_to=b'pubs', blank=True)),
+                ('avatar_timestamp', models.DateTimeField(auto_now_add=True)),
+                ('opens', models.TimeField()),
+                ('closes', models.TimeField()),
             ],
-            options={
-            },
-            bases=(models.Model,),
         ),
         migrations.CreateModel(
             name='Tap',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('sort_order', models.IntegerField(db_index=True, blank=True)),
-                ('type', models.CharField(default=b'tap', max_length=32, verbose_name='Rodzaj kranu', choices=[(b'pump', b'Pompa'), (b'tap', b'Kran')])),
+                ('sort_order', models.PositiveIntegerField(default=0)),
+                ('type', models.CharField(default=b'tap', max_length=32, verbose_name='Rodzaj kranu', choices=[(b'pump', 'Pompa'), (b'tap', 'Kran')])),
+                ('beer', models.ForeignKey(related_name='taps', blank=True, to='beers.Beer', null=True)),
                 ('pub', models.ForeignKey(related_name='taps', to='pubs.Pub')),
             ],
             options={
-                'ordering': ['sort_order'],
-                'abstract': False,
+                'ordering': ('sort_order',),
             },
-            bases=(models.Model,),
+        ),
+        migrations.CreateModel(
+            name='Volume',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('value', models.PositiveIntegerField(help_text='W ml', verbose_name='Obj\u0119to\u015b\u0107')),
+                ('pub', models.ForeignKey(related_name='available_volumes', to='pubs.Pub')),
+            ],
+        ),
+        migrations.CreateModel(
+            name='WaitingBeer',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('beer', models.ForeignKey(to='beers.Beer')),
+                ('pub', models.ForeignKey(to='pubs.Pub')),
+            ],
+        ),
+        migrations.AddField(
+            model_name='pub',
+            name='waiting_beers',
+            field=models.ManyToManyField(related_name='waiting_in_pubs', through='pubs.WaitingBeer', to='beers.Beer'),
+        ),
+        migrations.AddField(
+            model_name='price',
+            name='beer',
+            field=models.ForeignKey(related_name='prices', blank=True, to='pubs.WaitingBeer', null=True),
+        ),
+        migrations.AddField(
+            model_name='price',
+            name='tap',
+            field=models.ForeignKey(related_name='prices', blank=True, to='pubs.Tap', null=True),
+        ),
+        migrations.AddField(
+            model_name='price',
+            name='volume',
+            field=models.ForeignKey(related_name='prices', to='pubs.Volume'),
+        ),
+        migrations.AlterUniqueTogether(
+            name='tap',
+            unique_together=set([('pub', 'sort_order')]),
         ),
     ]

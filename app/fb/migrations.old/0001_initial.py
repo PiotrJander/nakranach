@@ -7,7 +7,7 @@ from django.db import models, migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pubs', '0001_initial'),
+        ('pubs', '0014_pub_waiting_beers'),
     ]
 
     operations = [
@@ -15,8 +15,11 @@ class Migration(migrations.Migration):
             name='Page',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('page', models.CharField(unique=True, max_length=255)),
+                ('page_id', models.CharField(max_length=255)),
                 ('pub', models.ForeignKey(to='pubs.Pub')),
             ],
+            options={
+            },
+            bases=(models.Model,),
         ),
     ]
