@@ -3,3 +3,4 @@ django-debug-toolbar
 django-debug-toolbar-template-timings
 django-dynamic-fixture
 django-sslserver
+coverage

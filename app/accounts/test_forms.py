@@ -16,7 +16,7 @@ class TestProfileUpdateForm(TestCase):
             user=self.user,
         )
 
-    def form_valid_email_changes(self):
+    def test_form_valid_email_changes(self):
         data = {
             'email': 'e@f.com',
             'name': 'Jan',
@@ -46,7 +46,7 @@ class TestProfileUpdateForm(TestCase):
         }
         form = ProfileUpdateForm(instance=self.profile, user=self.user, data=data)
         self.assertFalse(form.is_valid())
-        # TODO test exception
+        self.assertRegexpMatches(form.errors['email'][0], ur'Email .* jest już zarejestrowany w nakranach')
 
     def test_form_save(self):
         data = {
