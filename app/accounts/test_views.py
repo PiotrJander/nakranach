@@ -1,6 +1,5 @@
 from django.contrib.auth import get_user_model
 
-from django.contrib.auth.hashers import check_password
 from django.core.exceptions import ObjectDoesNotExist
 from django.test import TestCase, RequestFactory
 
@@ -11,6 +10,7 @@ class TestProfileRegistrationView(TestCase):
 
     @classmethod
     def setUpClass(cls):
+        super(TestProfileRegistrationView, cls).setUpClass()
         cls.factory = RequestFactory()
 
     def test_post(self):
@@ -22,7 +22,9 @@ class TestProfileRegistrationView(TestCase):
             'password2': 'pwd',
         }
         request = self.factory.post('/accounts/register/', data)
-        response = ProfileRegistrationView.as_view(request)
+        response = ProfileRegistrationView.as_view()(request)
+
+        # test the newly created account
         try:
             new_user = get_user_model().objects.get(email='a@a.com')
         except ObjectDoesNotExist:
