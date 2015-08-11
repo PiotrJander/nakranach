@@ -12,12 +12,12 @@ from app.users.models import Profile
 
 class CustomUserRegistrationForm(RegistrationFormUniqueEmail):
     """Adjust the registration form to work with a user model without the username field."""
-    first_name = forms.CharField(max_length=255, required=False)
-    last_name = forms.CharField(max_length=255, required=False)
+    name = forms.CharField(max_length=255, required=False)
+    surname = forms.CharField(max_length=255, required=False)
 
     class Meta(RegistrationFormUniqueEmail.Meta):
         model = get_user_model()
-        fields = (UsernameField(), 'first_name', 'last_name',)
+        fields = (UsernameField(), 'name', 'surname',)
 
 
 class AuthenticationFormWithRememberMe(AuthenticationForm):

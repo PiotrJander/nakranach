@@ -59,8 +59,8 @@ class RegisterFormHelper(FormHelper):
         self.layout = Layout(
             AccountsFormField('email', css_class='text-input', wrapper_class='login-input', placeholder='Email',
                               icon='envelope'),
-            AccountsFormField('first_name', wrapper_class='login-input', placeholder=u'Imię', icon='user'),
-            AccountsFormField('last_name', wrapper_class='login-input', placeholder='Nazwisko', icon='user'),
+            AccountsFormField('name', wrapper_class='login-input', placeholder=u'Imię', icon='user'),
+            AccountsFormField('surname', wrapper_class='login-input', placeholder='Nazwisko', icon='user'),
             AccountsFormField('password1', css_class='text-input', wrapper_class='login-input', placeholder=u'Hasło',
                               icon='key'),
             AccountsFormField('password2', css_class='text-input', wrapper_class='login-input',

@@ -19,8 +19,8 @@ class ProfileRegistrationView(RegistrationView):
 
     def register(self, request, form):
         new_user = super(ProfileRegistrationView, self).register(request, form)
-        Profile.objects.create(user=new_user, name=form.cleaned_data['first_name'],
-                               surname=form.cleaned_data['last_name'])
+        Profile.objects.create(user=new_user, name=form.cleaned_data['name'],
+                               surname=form.cleaned_data['surname'])
         return new_user
 
     def get_context_data(self, **kwargs):
