@@ -87,14 +87,12 @@ class PasswordChangeFormHelper(FormHelper):
         super(PasswordChangeFormHelper, self).__init__(form)
         self.html5_required = True
         self.layout = Layout(
-            Div('old_password', 'new_password1', 'new_password2', css_class='modal-body'),
-            Div(
-                StrictButton('Anuluj', css_class='btn btn-default', data_dismiss='modal'),
-                StrictButton(u'Zresetuj hasło', type='submit', name='action',
-                             value='password_change', css_class='btn btn-success'),
-
-                css_class='modal-footer',
-            )
+            'old_password',
+            'new_password1',
+            'new_password2',
+            StrictButton('Anuluj', css_class='btn btn-default', data_dismiss='modal'),
+            StrictButton(u'Zresetuj hasło', type='submit', name='action',
+                         value='password_change', css_class='btn btn-success'),
         )
 
 

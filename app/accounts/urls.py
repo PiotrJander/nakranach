@@ -21,7 +21,7 @@ from django.conf.urls import url
 from django.views.generic.base import TemplateView
 from django.contrib.auth import views as auth_views
 from django.core.urlresolvers import reverse_lazy
-from app.accounts.form_helpers import LoginFormHelper, PasswordResetConfirmFormHelper
+from app.accounts.form_helpers import LoginFormHelper, PasswordResetConfirmFormHelper, PasswordChangeFormHelper
 from app.accounts.views import ProfileRegistrationView, login_with_remember_me, ProfileUpdateView
 
 
@@ -46,7 +46,8 @@ urlpatterns = patterns('',
                            name='auth_logout'),
                        url(r'^password/change/$',
                            auth_views.password_change,
-                           {'post_change_redirect': reverse_lazy('accounts_profile_update')},
+                           {'post_change_redirect': reverse_lazy('accounts_profile_update'),
+                            'extra_context': {'form_helper': PasswordChangeFormHelper()}},
                            name='auth_password_change'),
                        url(r'^password/change/done/$',
                            auth_views.password_change_done,

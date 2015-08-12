@@ -1,0 +1,35 @@
+<!-- User profile avatar, name and location -->
+<div class="user-profile-sidebar">
+  {#          <h2><strong>Mas Bro's</strong> Profile</h2>#}
+
+  <div class="row">
+    <div class="col-md-4">
+      <img src="{{ profile.gravatar_url }}" class="img-circle" alt="Avatar">
+    </div>
+    <div class="col-md-8">
+      <!-- User identity -->
+      <div class="user-identity">
+        <h4>{{ profile.fullname }}</h4>
+
+        <p>{{ user.email }}</p>
+
+        <p>
+          <a data-modal="logout-modal" data-toggle="modal" data-target="#gravatarExplainedModal">Zmień
+            awatar</a>
+        </p>
+
+      </div>
+      <!-- End div .user-identity -->
+    </div>
+  </div>
+</div>
+<!-- End div .user-profile-sidebar -->
+<!-- Account status -->
+<div class="account-status-data">
+  <ul class="list-unstyled">
+    {% for role in profile.role_descriptions %}
+      <li>{{ role }}</li>
+    {% endfor %}
+  </ul>
+</div>
+<!-- End div .account-status-data -->

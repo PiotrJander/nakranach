@@ -13,40 +13,9 @@
   <div class="row">
     <div class="col-sm-4">
       <div class="box-info">
-        <!-- User profile avatar, name and location -->
-        <div class="user-profile-sidebar">
-{#          <h2><strong>Mas Bro's</strong> Profile</h2>#}
 
-          <div class="row">
-            <div class="col-md-4">
-              <img src="{{ profile.gravatar_url }}" class="img-circle" alt="Avatar">
-            </div>
-            <div class="col-md-8">
-              <!-- User identity -->
-              <div class="user-identity">
-                <h4>{{ profile.fullname }}</h4>
+        {% include 'registration/_profile_info_panel.html' %}
 
-                <p>{{ user.email }}</p>
-
-                <p>
-                  <a data-modal="logout-modal" data-toggle="modal" data-target="#gravatarExplainedModal">Zmień awatar</a>
-                </p>
-
-              </div>
-              <!-- End div .user-identity -->
-            </div>
-          </div>
-        </div>
-        <!-- End div .user-profile-sidebar -->
-        <!-- Account status -->
-        <div class="account-status-data">
-          <ul class="list-unstyled">
-            {% for role in profile.role_descriptions %}
-              <li>{{ role }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-        <!-- End div .account-status-data -->
       </div>
       <!-- End div .box-info -->
     </div>
@@ -57,12 +26,12 @@
         <h3>Edytuj informacje profilowe</h3>
         <hr>
 
-        {% crispy forms.email_name %}
+        {% crispy form %}
 
         <hr>
 
         <p>
-          <a data-modal="logout-modal" data-toggle="modal" data-target="#passwordChangeModal">Zmień hasło</a>
+          <a href="{% url 'auth_password_change' %}">Zmień hasło</a>
         </p>
 
       </div>
@@ -96,23 +65,6 @@
             <li>Będziesz mógł używać go na każdej stronie, która obsługuje serwis Gravatar.</li>
           </ol>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal -->
-  <div class="modal fade" id="passwordChangeModal" tabindex="-1" role="dialog"
-       aria-labelledby="passwordChangeModalLabel">
-    <div class="modal-dialog" role="document">
-      <div class="modal-content">
-        <div class="modal-header">
-          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
-                  aria-hidden="true">&times;</span></button>
-          <h4 class="modal-title" id="passwordChangeModalLabel">Zmień hasło</h4>
-        </div>
-
-        {% crispy forms.password_change %}
-
       </div>
     </div>
   </div>
