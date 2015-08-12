@@ -59,6 +59,11 @@ class Migration(migrations.Migration):
             name='WaitingBeer',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('_name', models.CharField(max_length=255, verbose_name='nazwa', blank=True)),
+                ('_ibu', models.IntegerField(null=True, verbose_name='IBU', blank=True)),
+                ('_abv', models.DecimalField(null=True, verbose_name='ABV', max_digits=3, decimal_places=1, blank=True)),
+                ('_brewery', models.ForeignKey(verbose_name='browar', blank=True, to='beers.Brewery', null=True)),
+                ('_style', models.ForeignKey(verbose_name='styl', blank=True, to='beers.Style', null=True)),
                 ('beer', models.ForeignKey(to='beers.Beer')),
                 ('pub', models.ForeignKey(to='pubs.Pub')),
             ],

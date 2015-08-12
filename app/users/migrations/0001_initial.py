@@ -40,7 +40,7 @@ class Migration(migrations.Migration):
             name='ProfilePub',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('role', models.CharField(max_length=20, verbose_name='Rola', choices=[(b'employee', 'Pracownik baru'), (b'storeman', 'Pracownik magazynu'), (b'admin', 'Administrator')])),
+                ('role', models.CharField(max_length=21, verbose_name='Rola', choices=[(b'employee', 'Pracownik baru'), (b'storeman', 'Pracownik magazynu'), (b'admin', 'Administrator'), (b'employee_and_storeman', 'Pracownik baru i magazynu')])),
                 ('profile', models.ForeignKey(verbose_name='U\u017cytkownik', to='users.Profile')),
                 ('pub', models.ForeignKey(verbose_name='Pub', to='pubs.Pub')),
             ],

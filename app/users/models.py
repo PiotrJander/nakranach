@@ -203,7 +203,7 @@ class ProfilePub(models.Model):
 
     profile = models.ForeignKey(Profile, verbose_name=_(u'Użytkownik'))
     pub = models.ForeignKey(Pub, verbose_name=_(u'Pub'))
-    role = models.CharField(max_length=20, verbose_name=_(u'Rola'), choices=ROLE_CHOICES)
+    role = models.CharField(max_length=21, verbose_name=_(u'Rola'), choices=ROLE_CHOICES)
 
     class Meta:
         verbose_name = _(u'profil-pub')

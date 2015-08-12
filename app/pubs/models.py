@@ -141,14 +141,22 @@ class WaitingBeer(models.Model):
     pub = models.ForeignKey(Pub, blank=False, null=False)
     beer = models.ForeignKey(Beer, blank=False, null=False)
 
-    brewery = models.ForeignKey(Brewery, verbose_name=_('browar'), blank=True)
-    style = models.ForeignKey(Style, verbose_name=_('styl'), blank=True)
-    name = models.CharField(verbose_name=_('nazwa'), max_length=255, blank=True)
-    ibu = models.IntegerField(verbose_name=_('IBU'), blank=True, null=True)
-    abv = models.DecimalField(verbose_name=_('ABV'), blank=True, null=True, decimal_places=1, max_digits=3)
+    _brewery = models.ForeignKey(Brewery, verbose_name=_('browar'), blank=True, null=True)
+    _style = models.ForeignKey(Style, verbose_name=_('styl'), blank=True, null=True)
+    _name = models.CharField(verbose_name=_('nazwa'), max_length=255, blank=True)
+    _ibu = models.IntegerField(verbose_name=_('IBU'), null=True, blank=True)
+    _abv = models.DecimalField(verbose_name=_('ABV'), null=True, blank=True, decimal_places=1, max_digits=3)
 
     def __unicode__(self):
         return u'%s - %s' % (self.pub, self.beer)
+
+    def __init__(self, *args, **kwargs):
+        super(WaitingBeer, self).__init__(*args, **kwargs)
+        for field in ['brewery', 'style', 'name', 'ibu', 'abv']:
+            field_private = '_%s' % field
+            overriden = getattr(self, field_private)
+            prop = property(lambda self:  overriden if overriden else getattr(self.beer, field))
+            setattr(self, field, prop)
 
 
 class Price(models.Model):
