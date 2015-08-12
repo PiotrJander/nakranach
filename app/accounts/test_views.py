@@ -1,15 +1,14 @@
 # coding=utf-8
 from django.contrib.auth import get_user_model
-from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.sessions.middleware import SessionMiddleware
-
 from django.core.exceptions import ObjectDoesNotExist
-from django.test import TestCase, RequestFactory
-from app.accounts.forms import CustomUserRegistrationForm, ProfileUpdateForm
+from django.test import RequestFactory, TestCase
 
+from app.accounts.forms import CustomUserRegistrationForm
 from app.accounts.views import ProfileRegistrationView, ProfileUpdateView
 from app.main.utils import add_middleware_to_request, setup_view
+from app.users.models import Profile
 
 
 class TestProfileRegistrationView(TestCase):
@@ -70,28 +69,19 @@ class TestProfileUpdateView(TestCase):
         super(TestProfileUpdateView, cls).setUpClass()
         cls.factory = RequestFactory()
 
-    def setUp(self):
-        self.user = get_user_model().objects.create('a@a.com', 'pwd')
-
-    def test_context(self):
+    def test_get_form(self):
+        user = get_user_model().objects.create_user('a@a.com', 'pwd')
+        profile = Profile(user=user, name='Jan', surname='Nowak')
         request = self.factory.get('')
-        request.user = self.user
-        response = ProfileUpdateView.as_view()(request)
-        self.assertIsInstance(response.context['email_name'], ProfileUpdateForm)
-        self.assertIsInstance(response.context['password_change'], PasswordChangeForm)
-
-    def test_create_email_name_form(self):
-        request = self.factory.get('')
-        request.user = self.user
+        request.user = user
+        request.profile = profile
         view = ProfileUpdateView()
         setup_view(view, request)
-        form = view.create_email_name_form()
-
-    def test_create_password_change_form(self):
-        self.fail()
-
-    def test_email_name_form_valid(self):
-        self.fail()
-
-    def test_password_change_form_valid(self):
-        self.fail()
+        form = view.get_form()
+        initial = {
+            'email': 'a@a.com',
+            'name': 'Jan',
+            'surname': 'Nowak',
+        }
+        self.assertDictEqual(form.initial, initial)
+        self.assertIs(form.user, user)
