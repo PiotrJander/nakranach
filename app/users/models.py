@@ -160,6 +160,16 @@ class Profile(models.Model):
         else:
             return None
 
+    def can_manage_taps(self):
+        if not self.profilepub_set:  return False
+        profilepub = self.profilepub_set.get()
+        return profilepub.role in ['admin', 'employee', 'employee_and_storeman']
+
+    def can_manage_waiting_beers(self):
+        if not self.profilepub_set:  return False
+        profilepub = self.profilepub_set.get()
+        return profilepub.role in ['admin', 'storeman', 'employee_and_storeman']
+
     @classmethod
     def get_by_user(cls, user):
         """
@@ -187,7 +197,8 @@ class ProfilePub(models.Model):
     ROLE_CHOICES = (
         (PUB_EMPLOYEE, _(u'Pracownik baru')),
         (PUB_STOREMAN, _(u'Pracownik magazynu')),
-        (PUB_ADMIN, _(u'Administrator'))
+        (PUB_ADMIN, _(u'Administrator')),
+        ('employee_and_storeman', _('Pracownik baru i magazynu'))
     )
 
     profile = models.ForeignKey(Profile, verbose_name=_(u'Użytkownik'))

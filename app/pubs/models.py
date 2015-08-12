@@ -10,7 +10,7 @@ from orderable.models import Orderable
 from geopy.geocoders import Nominatim
 from PIL import Image
 from uuslug import uuslug
-from app.beers.models import Beer
+from app.beers.models import Beer, Brewery, Style
 
 AVATAR_SIZE = (256, 256)
 
@@ -140,6 +140,12 @@ class Tap(models.Model):
 class WaitingBeer(models.Model):
     pub = models.ForeignKey(Pub, blank=False, null=False)
     beer = models.ForeignKey(Beer, blank=False, null=False)
+
+    brewery = models.ForeignKey(Brewery, verbose_name=_('browar'), blank=True)
+    style = models.ForeignKey(Style, verbose_name=_('styl'), blank=True)
+    name = models.CharField(verbose_name=_('nazwa'), max_length=255, blank=True)
+    ibu = models.IntegerField(verbose_name=_('IBU'), blank=True, null=True)
+    abv = models.DecimalField(verbose_name=_('ABV'), blank=True, null=True, decimal_places=1, max_digits=3)
 
     def __unicode__(self):
         return u'%s - %s' % (self.pub, self.beer)

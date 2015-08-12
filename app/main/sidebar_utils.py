@@ -25,7 +25,8 @@ class SidebarMenu(object):
         self.make_dashboard()
         self.make_my_profile()
         self.make_users()
-        self.make_tap_list()
+        self.make_taps()
+        self.make_waiting_beers()
 
     def append_field(self, field):
         """Appends the child field to children attribute."""
@@ -83,16 +84,22 @@ class SidebarMenu(object):
         ))
         self.append_field(parent)
 
-    def make_tap_list(self):
+    def make_taps(self):
         # check if the user is in a pub
-        if not self.request.profile.is_in_pub():
-            return
+        if self.request.profile.can_manage_taps():
+            self.append_field(SidebarLinkField(
+                name='Lista kranów',
+                icon='home',
+                url_name='tap:list',
+            ))
 
-        self.append_field(SidebarLinkField(
-            name='Lista kranów',
-            icon='home',
-            url_name='tap:list',
-        ))
+    def make_waiting_beers(self):
+        if self.request.profile.can_manage_waiting_beers():
+            self.append_field(SidebarLinkField(
+                name='Magazyn',
+                icon='home',
+                url_name='pub:waiting_beers',
+            ))
 
 
 class SidebarField(object):
