@@ -7,4 +7,8 @@ class WaitingBeersTable(tables.Table):
     style = tables.Column()
     ibu = tables.Column()
     abv = tables.Column()
-    actions = tables.TemplateColumn()
+    # actions = tables.TemplateColumn()
+
+    class Meta:
+        attrs = {'class': 'table', 'data-sortable': 'data-sortable', }
+        orderable = False

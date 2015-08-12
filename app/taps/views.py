@@ -14,7 +14,6 @@ from app.taps.tables import TapTable
 
 
 class TapListView(SingleTableView):
-    # model = Profile
     table_class = TapTable
     template_name = 'taps/tap_list.html'
 
