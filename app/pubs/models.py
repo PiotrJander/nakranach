@@ -16,25 +16,27 @@ AVATAR_SIZE = (256, 256)
 
 
 class Pub(models.Model):
+    # required
     name = models.CharField(verbose_name=_(u'Nazwa'), max_length=200)
-
-    slug = models.CharField(max_length=200, editable=False)
-
     city = models.CharField(max_length=200)
-    address = models.CharField(max_length=250, blank=True)
 
+    # automatic
+    slug = models.CharField(max_length=200, editable=False)
+    avatar_timestamp = models.DateTimeField(auto_now_add=True, editable=False)
+
+    # optional
+    waiting_beers = models.ManyToManyField(Beer, through='WaitingBeer', through_fields=('pub', 'beer'),
+                                           related_name='waiting_in_pubs')
+
+    address = models.CharField(max_length=250, blank=True)
     latitude = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
     longitude = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
 
-    avatar = models.ImageField(upload_to='pubs', blank=True, null=True, help_text=_(
+    avatar = models.ImageField(upload_to='pubs', blank=True, help_text=_(
         u'Preferred size is 256x256. If uploaded image has different size, it will be resized automatically'))
-    avatar_timestamp = models.DateTimeField(auto_now_add=True, editable=False)
 
-    opens = models.TimeField()
-    closes = models.TimeField()
-
-    waiting_beers = models.ManyToManyField(Beer, through='WaitingBeer', through_fields=('pub', 'beer'),
-                                           related_name='waiting_in_pubs')
+    opens = models.TimeField(blank=True, null=True)
+    closes = models.TimeField(blank=True, null=True)
 
     def __unicode__(self):
         return self.name
@@ -53,25 +55,26 @@ class Pub(models.Model):
 
         super(Pub, self).save(*args, **kwargs)
 
-        if self.avatar is not None:
-            avatar_image = Image.open(self.avatar)
-
-            current_size = avatar_image.size
-
-            filename, extension = os.path.splitext(os.path.basename(self.avatar.name))
-
-            if current_size[0] != AVATAR_SIZE[0] or current_size[1] != AVATAR_SIZE[1] or extension != '.png':
-                avatar_image = avatar_image.resize(AVATAR_SIZE, Image.ANTIALIAS)
-
-                output = StringIO.StringIO()
-
-                avatar_image.save(output, 'png')
-
-                filename = '%s.png' % filename
-                image_file = InMemoryUploadedFile(output, None, filename, 'image/png', output.len, None)
-
-                self.avatar.save(filename, image_file)
-                output.close()
+        # FIXME with this code there is a ValueError on saving an instance when avatar is empty
+        # if self.avatar is not None:
+        #     avatar_image = Image.open(self.avatar)
+        #
+        #     current_size = avatar_image.size
+        #
+        #     filename, extension = os.path.splitext(os.path.basename(self.avatar.name))
+        #
+        #     if current_size[0] != AVATAR_SIZE[0] or current_size[1] != AVATAR_SIZE[1] or extension != '.png':
+        #         avatar_image = avatar_image.resize(AVATAR_SIZE, Image.ANTIALIAS)
+        #
+        #         output = StringIO.StringIO()
+        #
+        #         avatar_image.save(output, 'png')
+        #
+        #         filename = '%s.png' % filename
+        #         image_file = InMemoryUploadedFile(output, None, filename, 'image/png', output.len, None)
+        #
+        #         self.avatar.save(filename, image_file)
+        #         output.close()
 
     def get_absolute_url(self):
         return '/%s' % self.slug
@@ -88,6 +91,12 @@ class Pub(models.Model):
     @classmethod
     def get_by_id(cls, id):
         return cls.objects.get(pk=id)
+
+    def has_beer(self, beer_id):
+        return self.waiting_beers.filter(id=beer_id).exists()
+
+    def remove_beer(self, beer_id):
+        self.waiting_beers.filter(id=beer_id).delete()
 
 
 class Volume(models.Model):

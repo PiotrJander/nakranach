@@ -1,0 +1,15 @@
+<div class="btn-group btn-group-xs">
+
+  <button data-toggle="modal" data-target="#removeBeerModal"
+          title="Usuń piwo z magazynu" class="btn btn-default"
+          data-beer-id="{{ record.id }}" data-beer-name="{{ record.beer.description }}">
+    <i class="fa fa-power-off"></i>
+  </button>
+
+  <button data-toggle="modal" data-target="#modifyBeerModal"
+          title="Zmień parametry piwa w twoim magazynie" class="btn btn-default"
+          data-beer-id="{{ record.id }}" data-beer-name="{{ record.beer.description }}">
+    <i class="fa fa-edit"></i>
+  </button>
+
+</div>

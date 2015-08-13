@@ -7,7 +7,7 @@ class WaitingBeersTable(tables.Table):
     style = tables.Column()
     ibu = tables.Column()
     abv = tables.Column()
-    # actions = tables.TemplateColumn()
+    actions = tables.TemplateColumn(accessor='id', verbose_name='Akcje', template_name='pubs/_change_waiting_beers.html')
 
     class Meta:
         attrs = {'class': 'table', 'data-sortable': 'data-sortable', }

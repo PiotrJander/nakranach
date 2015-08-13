@@ -28,39 +28,40 @@
 {% endblock content %}
 
 
-{#{% block modals %}#}
-{##}
-  {# Empty tap modal #}
-{#  <div class="modal fade" id="emptyTapModal" tabindex="-1" role="dialog" aria-labelledby="emptyTapModalLabel">#}
+{% block modals %}
+
+  {# Remove beer modal #}
+  <div class="modal fade" id="removeBeerModal" tabindex="-1" role="dialog" aria-labelledby="removeBeerModalLabel">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                  aria-hidden="true">&times;</span></button>
+          <h4 class="modal-title" id="removeBeerModalLabel">Potwierdź usunięcie piwa z magazynu</h4>
+        </div>
+        <div class="modal-body">
+          <p>Czy na pewno chcesz usunąć piwo <span id="beerName"></span> z magazynu?</p>
+        </div>
+        <div class="modal-footer">
+          <form method="post" action="{% url 'pub:remove_beer' %}">
+            {% csrf_token %}
+            <input type="hidden" id="beerId" name="beer_id" value="">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Pozostaw piwo</button>
+            <button type="submit" class="btn btn-primary">Usuń piwo</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Change beer modal #}
+{#  <div class="modal fade" id="modifyBeerModal" tabindex="-1" role="dialog" aria-labelledby="modifyBeerModalLabel">#}
 {#    <div class="modal-dialog" role="document">#}
 {#      <div class="modal-content">#}
 {#        <div class="modal-header">#}
 {#          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span#}
 {#                  aria-hidden="true">&times;</span></button>#}
-{#          <h4 class="modal-title" id="emptyTapModalLabel">Potwierdź usunięcie piwa spod kranu</h4>#}
-{#        </div>#}
-{#        <div class="modal-body">#}
-{#          <p>Czy na pewno chcesz usunąć piwo <span id="beerName"></span> spod kranu <span id="tapNo"></span>?</p>#}
-{#        </div>#}
-{#        <div class="modal-footer">#}
-{#          <form method="post">#}
-{#            {% csrf_token %}#}
-{#            <button type="button" class="btn btn-default" data-dismiss="modal">Pozostaw piwo</button>#}
-{#            <button type="submit" class="btn btn-primary">Usuń piwo</button>#}
-{#          </form>#}
-{#        </div>#}
-{#      </div>#}
-{#    </div>#}
-{#  </div>#}
-{##}
-  {# Empty tap modal #}
-{#  <div class="modal fade" id="changeBeerModal" tabindex="-1" role="dialog" aria-labelledby="changeBeerModalLabel">#}
-{#    <div class="modal-dialog" role="document">#}
-{#      <div class="modal-content">#}
-{#        <div class="modal-header">#}
-{#          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span#}
-{#                  aria-hidden="true">&times;</span></button>#}
-{#          <h4 class="modal-title" id="changeBeerModalLabel">Potwierdź zmianę piwa na kranie</h4>#}
+{#          <h4 class="modal-title" id="modifyBeerModalLabel">Potwierdź zmianę piwa na kranie</h4>#}
 {#        </div>#}
 {##}
 {#        {% crispy change_beer_form %}#}
@@ -68,11 +69,11 @@
 {#      </div>#}
 {#    </div>#}
 {#  </div>#}
-{##}
-{#{% endblock modals %}#}
+
+{% endblock modals %}
 
 
 {% block js %}
   {{ block.super }}
-  <script src="{% static 'assets/js/tap_list.js' %}"></script>
+  <script src="{% static 'assets/js/waiting_beers_list.js' %}"></script>
 {% endblock js %}

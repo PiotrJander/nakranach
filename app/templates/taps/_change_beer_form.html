@@ -1,13 +1,13 @@
 <div class="btn-group btn-group-xs">
 
   <button data-toggle="modal" data-target="#emptyTapModal"
-          data-tap-id="{{ record.id }}" data-tap-number="{{ record.tap_number }}" data-beer-name="{{ record.beer.name }}"
+          data-tap-id="{{ record.id }}" data-tap-number="{{ record.tap_number }}" data-beer-name="{{ record.beer.description }}"
           title="Usuń piwo z kranu" class="btn btn-default">
     <i class="fa fa-power-off"></i>
   </button>
 
   <button data-toggle="modal" data-target="#changeBeerModal"
-          data-tap-id="{{ record.id }}" data-tap-number="{{ record.tap_number }}" data-beer-name="{{ record.beer.name }}"
+          data-tap-id="{{ record.id }}" data-tap-number="{{ record.tap_number }}" data-beer-name="{{ record.beer.description }}"
           title="Zastąp piwo na kranie" class="btn btn-default">
     <i class="fa fa-edit"></i>
   </button>
