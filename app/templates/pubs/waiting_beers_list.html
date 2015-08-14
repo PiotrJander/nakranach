@@ -7,7 +7,7 @@
 
   <!-- Page header -->
   <div class="page-heading animated fadeInDownBig">
-    <h1>Pub
+    <h1>Pub {{ profile.get_pub }}
       <small>piwa w magazynie</small>
     </h1>
   </div>
@@ -55,7 +55,8 @@
   </div>
 
   {# Modify beer modal #}
-  <div class="modal fade bs-example-modal-lg" id="modifyBeerModal" tabindex="-1" role="dialog" aria-labelledby="modifyBeerModalLabel">
+  <div class="modal fade bs-example-modal-lg" id="modifyBeerModal" tabindex="-1" role="dialog"
+       aria-labelledby="modifyBeerModalLabel">
     <div class="modal-dialog modal-lg" role="document">
       <div class="modal-content">
         <div class="modal-header">
@@ -75,12 +76,13 @@
             </row>
             <row>
               <div class="col-md-6">
-                {% lorem %}
+
+                {% crispy database_beer_disabled_form %}
+
               </div>
               <div class="col-md-6">
 
-                {% lorem %}
-{#                {% crispy modify_waiting_beer_form %}#}
+                {% crispy modify_waiting_beer_form %}
 
               </div>
             </row>
@@ -88,7 +90,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-default" data-dismiss="modal">Anuluj</button>
-          <button type="button" class="btn btn-primary">Zapisz zmiany</button>
+          <button type="button" class="btn btn-primary" id="waitingBeerSubmit">Zapisz zmiany</button>
         </div>
 
 

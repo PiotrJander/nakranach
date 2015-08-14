@@ -3,7 +3,7 @@ from django.http.response import HttpResponseBadRequest
 
 from django.views.generic.edit import BaseFormView
 from django_tables2.views import SingleTableView
-from app.pubs.forms import RemoveBeerFromWaitingBeersForm, ModifyWaitingBeerForm
+from app.pubs.forms import RemoveBeerFromWaitingBeersForm, ModifyWaitingBeerForm, DatabaseBeerDisabledForm
 from braces.views import UserFormKwargsMixin
 
 from app.pubs.tables import WaitingBeersTable
@@ -18,9 +18,11 @@ class WaitingBeersTableView(SingleTableView):
 
     def get_context_data(self, **kwargs):
         context = super(WaitingBeersTableView, self).get_context_data(**kwargs)
-        context['modify_waiting_beer_form'] = ModifyWaitingBeerForm(user=self.request.user)
+        context.update({
+            'modify_waiting_beer_form': ModifyWaitingBeerForm(user=self.request.user),
+            'database_beer_disabled_form': DatabaseBeerDisabledForm(),
+        })
         return context
-
 
 class EditWaitingBeerViewMixin(UserFormKwargsMixin, BaseFormView):
     success_url = reverse_lazy('pub:waiting_beers')
