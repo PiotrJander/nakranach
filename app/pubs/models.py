@@ -93,10 +93,10 @@ class Pub(models.Model):
         return cls.objects.get(pk=id)
 
     def has_beer(self, beer_id):
-        return self.waiting_beers.filter(id=beer_id).exists()
+        return self.waitingbeer_set.filter(id=beer_id).exists()
 
     def remove_beer(self, beer_id):
-        self.waiting_beers.filter(id=beer_id).delete()
+        self.waitingbeer_set.filter(id=beer_id).delete()
 
 
 class Volume(models.Model):
@@ -150,22 +150,22 @@ class WaitingBeer(models.Model):
     pub = models.ForeignKey(Pub, blank=False, null=False)
     beer = models.ForeignKey(Beer, blank=False, null=False)
 
-    _brewery = models.ForeignKey(Brewery, verbose_name=_('browar'), blank=True, null=True)
-    _style = models.ForeignKey(Style, verbose_name=_('styl'), blank=True, null=True)
+    _brewery = models.CharField(verbose_name=_('browar'), max_length=255, blank=True)
+    _style = models.CharField(verbose_name=_('styl'), max_length=255, blank=True)
     _name = models.CharField(verbose_name=_('nazwa'), max_length=255, blank=True)
     _ibu = models.IntegerField(verbose_name=_('IBU'), null=True, blank=True)
     _abv = models.DecimalField(verbose_name=_('ABV'), null=True, blank=True, decimal_places=1, max_digits=3)
 
     def __unicode__(self):
-        return u'%s - %s' % (self.pub, self.beer)
+        return u'%s %s' % (self.pub, self.beer)
 
-    def __init__(self, *args, **kwargs):
-        super(WaitingBeer, self).__init__(*args, **kwargs)
-        for field in ['brewery', 'style', 'name', 'ibu', 'abv']:
-            field_private = '_%s' % field
-            overriden = getattr(self, field_private)
-            prop = property(lambda self:  overriden if overriden else getattr(self.beer, field))
-            setattr(self, field, prop)
+    def __getattr__(self, field):
+        if field not in ['brewery', 'style', 'name', 'ibu', 'abv']:
+            raise AttributeError
+        field_private = '_%s' % field
+        original = getattr(self.beer, field)
+        overriden = getattr(self, field_private)
+        return overriden if overriden else original
 
 
 class Price(models.Model):

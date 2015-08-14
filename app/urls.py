@@ -15,7 +15,7 @@ urlpatterns = patterns('',
     (r'^users/', include('app.users.urls', namespace='user')),
     (r'^accounts/', include('app.accounts.urls')),
     (r'^taps/', include('app.taps.urls', namespace='tap')),
-    (r'^pubs/', include('app.pubs.urls',namespace='pub')),
+    (r'^pub/beers/', include('app.pubs.urls',namespace='pub')),
     (r'^', include('app.main.urls', namespace='main')),
 )
 
