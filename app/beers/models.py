@@ -51,7 +51,7 @@ class Beer(models.Model):
         return self.name
 
     def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
-        self.search = normalize_for_search(self.brewery.name, self.name)
+        self.search = normalize_for_search(self.brewery.name + ' ' + self.name)
         super(Beer, self).save(force_insert, force_update, using, update_fields)
 
     def description(self):
@@ -62,6 +62,22 @@ class Beer(models.Model):
         Returns a dictionary representing the ['brewery', 'style', 'name', 'ibu', 'abv'] fields of the instance.
         """
         return {k: unicode(getattr(self, k)) for k in self.editable_fields}
+
+    def secondary_data(self):
+        """
+        Returns a string which consists of concatenated: ``style``, ``ibu``, ``abv``.
+        """
+        return '%s, %d IBU, %.1f%% ABV' % (self.style.name, self.ibu, self.abv)
+
+    def search_dict(self):
+        """
+        Returns a dictionary representation of ``name``, ``brewery.name`` as "brewery", and ``secondary_data``.
+        """
+        return {
+            'name': self.name,
+            'brewery': self.brewery.name,
+            'secondary_data': self.secondary_data(),
+        }
 
     @classmethod
     def match(cls, search_string):

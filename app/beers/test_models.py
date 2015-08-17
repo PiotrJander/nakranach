@@ -1,4 +1,3 @@
-from django.db.models.query import QuerySet
 from django.test import TestCase
 from app.beers.models import Beer, Brewery, Style
 
@@ -21,6 +20,11 @@ class TestBeer(TestCase):
                                     style=style)
         beer2 = Beer.objects.create(name='Zagloba', brewery=Brewery.objects.create(name='Ziemianski', country='Polska'),
                                     style=style)
-        got = Beer.match('Ziemianski  Zagloba')
-        expected = Beer.objects.filter(pk=beer2.pk)
-        self.assertQuerysetEqual(got, expected)
+        got = Beer.match('Ziemianski  Zagloba').get()
+        expected = Beer.objects.filter(pk=beer2.pk).get()
+        self.assertEqual(got, expected)
+
+    def test_secondary_data(self):
+        beer = Beer.objects.create(name='Jasne', brewery=Brewery.objects.create(name='Matysiowo', country='Polska'),
+                                   style=Style.objects.create(name='jasne'), ibu=18, abv=0.5)
+        self.assertEquals(beer.secondary_data(), 'jasne, 18 IBU, 0.5% ABV')
