@@ -39,8 +39,16 @@ class Beer(models.Model):
     ibu = models.IntegerField(verbose_name=_('IBU'), blank=True, null=True)
     abv = models.DecimalField(verbose_name=_('ABV'), blank=True, null=True, decimal_places=1, max_digits=3)
 
+    editable_fields = ['brewery', 'style', 'name', 'ibu', 'abv']
+
     def __unicode__(self):
         return self.name
 
     def description(self):
         return '%s %s' % (self.brewery.name, self.name)
+
+    def export_form_data(self):
+        """
+        Returns a dictionary representing the ['brewery', 'style', 'name', 'ibu', 'abv'] fields of the instance.
+        """
+        return {k: unicode(getattr(self, k)) for k in self.editable_fields}

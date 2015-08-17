@@ -1,11 +1,11 @@
 from django.core.urlresolvers import reverse_lazy
-from django.http.response import HttpResponseBadRequest
-
+from django.http.response import HttpResponseBadRequest, JsonResponse
+from django.views.generic.base import View
 from django.views.generic.edit import BaseFormView
 from django_tables2.views import SingleTableView
-from app.pubs.forms import RemoveBeerFromWaitingBeersForm, ModifyWaitingBeerForm, DatabaseBeerDisabledForm
 from braces.views import UserFormKwargsMixin
 
+from app.pubs.forms import RemoveBeerFromWaitingBeersForm, ModifyWaitingBeerForm, DatabaseBeerDisabledForm
 from app.pubs.tables import WaitingBeersTable
 
 
@@ -41,3 +41,10 @@ class RemoveBeerFromWaitingBeersView(EditWaitingBeerViewMixin):
 
 class ModifyWaitingBeerView(EditWaitingBeerViewMixin):
     form_class = ModifyWaitingBeerForm
+
+
+class WaitingBeerJsonView(View):
+    def get(self):
+        pub = self.request.profile.get_pub()
+        waitingbeer = pub.waitingbeer_set.get(id=self.request.GET['id'])
+        return JsonResponse(waitingbeer.export_form_data_with_beer())

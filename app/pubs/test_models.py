@@ -52,3 +52,32 @@ class TestWaitingBeer(TestCase):
         # assert that the waiting beer can override a beer field
         waitingbeer._name = 'Ciemne'
         self.assertEquals(waitingbeer.name, 'Ciemne')
+
+    def test_export_form_data(self):
+        """
+        Should return a dict with ['brewery', 'style', 'name', 'ibu', 'abv'] attrs of the instance.
+        """
+        pub = Pub.objects.create(name='Rademenes', city='Warszawa')
+        beer = Beer.objects.create(name='Jasne', brewery=Brewery.objects.create(name='Matysiowo', country='Polska'),
+                                   style=Style.objects.create(name='jasne'))
+        waitingbeer = WaitingBeer.objects.create(pub=pub, beer=beer)
+        waitingbeer._name = 'Jasne (promocja!)'
+        dictionary = waitingbeer.export_form_data()
+        expected_dict = {'_ibu': None, '_abv': None, '_name': 'Jasne (promocja!)', '_style': u'', '_brewery': u''}
+        self.assertDictEqual(dictionary, expected_dict)
+
+    def test_export_form_data_with_beer(self):
+        """
+        Should return a dict with ['brewery', 'style', 'name', 'ibu', 'abv'] attrs of the instance.
+        """
+        pub = Pub.objects.create(name='Rademenes', city='Warszawa')
+        beer = Beer.objects.create(name='Jasne', brewery=Brewery.objects.create(name='Matysiowo', country='Polska'),
+                                   style=Style.objects.create(name='jasne'))
+        waitingbeer = WaitingBeer.objects.create(pub=pub, beer=beer)
+        waitingbeer._name = 'Jasne (promocja!)'
+        dictionary = waitingbeer.export_form_data_with_beer()
+        expected_dict = {
+            'waitingbeer': {'_ibu': None, '_abv': None, '_name': 'Jasne (promocja!)', '_style': u'', '_brewery': u''},
+            'beer': {'abv': u'None', 'style': u'jasne', 'brewery': u'Matysiowo', 'ibu': u'None', 'name': u'Jasne'},
+        }
+        self.assertDictEqual(dictionary, expected_dict)

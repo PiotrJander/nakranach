@@ -156,16 +156,35 @@ class WaitingBeer(models.Model):
     _ibu = models.IntegerField(verbose_name=_('IBU'), null=True, blank=True)
     _abv = models.DecimalField(verbose_name=_('ABV'), null=True, blank=True, decimal_places=1, max_digits=3)
 
+    editable_fields = ['brewery', 'style', 'name', 'ibu', 'abv']
+    editable_fields_private = ['_brewery', '_style', '_name', '_ibu', '_abv']
+
     def __unicode__(self):
         return u'%s %s' % (self.pub, self.beer)
 
     def __getattr__(self, field):
-        if field not in ['brewery', 'style', 'name', 'ibu', 'abv']:
+        """
+        When a field is accesses, returns the field if non-empty, else returns the corresponding field
+        on the related ``beer``.
+        """
+        if field not in self.editable_fields:
             raise AttributeError
         field_private = '_%s' % field
         original = getattr(self.beer, field)
         overriden = getattr(self, field_private)
         return overriden if overriden else original
+
+    def export_form_data(self):
+        """
+        Returns a dict representing the ``['_brewery', '_style', '_name', '_ibu', '_abv']`` attributes of the instance.
+        """
+        return { k: getattr(self, k) for k in self.editable_fields_private }
+
+    def export_form_data_with_beer(self):
+        return {
+            'waitingbeer': self.export_form_data(),
+            'beer': self.beer.export_form_data(),
+        }
 
 
 class Price(models.Model):
