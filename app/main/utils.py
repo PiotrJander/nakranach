@@ -19,9 +19,8 @@ def setup_view(view, request, *args, **kwargs):
     view.kwargs = kwargs
 
 
-def normalize_for_search(brewery_name, beer_name):
+def normalize_for_search(string):
     """
     Takes the brewery name and beer name, concatenates them, and makes sure words are separated by a single space.
     """
-    ret = ' '.join(brewery_name.split() + beer_name.split())
-    return ret.lower()
+    return ' '.join(string.split()).lower()

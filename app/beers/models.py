@@ -62,3 +62,13 @@ class Beer(models.Model):
         Returns a dictionary representing the ['brewery', 'style', 'name', 'ibu', 'abv'] fields of the instance.
         """
         return {k: unicode(getattr(self, k)) for k in self.editable_fields}
+
+    @classmethod
+    def match(cls, search_string):
+        """
+        Returns a ``QuerySet`` of ``Beer``s whose search field matches contains the ``search string``.
+
+        ``search_string`` is normalized in the first place.
+        """
+        normalized = normalize_for_search(search_string)
+        return cls.objects.filter(search__contains=normalized)
