@@ -4,6 +4,9 @@ from django.db import models
 from django.utils.translation import ugettext_lazy as _
 
 # Create your models here.
+from app.main.utils import normalize_for_search
+
+
 class Brewery(models.Model):
     class Meta:
         verbose_name = _('browar')
@@ -39,10 +42,17 @@ class Beer(models.Model):
     ibu = models.IntegerField(verbose_name=_('IBU'), blank=True, null=True)
     abv = models.DecimalField(verbose_name=_('ABV'), blank=True, null=True, decimal_places=1, max_digits=3)
 
+    # automatic
+    search = models.CharField(editable=False, max_length=511)
+
     editable_fields = ['brewery', 'style', 'name', 'ibu', 'abv']
 
     def __unicode__(self):
         return self.name
+
+    def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
+        self.search = normalize_for_search(self.brewery.name, self.name)
+        super(Beer, self).save(force_insert, force_update, using, update_fields)
 
     def description(self):
         return '%s %s' % (self.brewery.name, self.name)

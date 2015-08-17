@@ -44,7 +44,7 @@ class ModifyWaitingBeerView(EditWaitingBeerViewMixin):
 
 
 class WaitingBeerJsonView(View):
-    def get(self):
-        pub = self.request.profile.get_pub()
-        waitingbeer = pub.waitingbeer_set.get(id=self.request.GET['id'])
+    def get(self, request):
+        pub = request.profile.get_pub()
+        waitingbeer = pub.waitingbeer_set.get(id=request.GET['id'])
         return JsonResponse(waitingbeer.export_form_data_with_beer())

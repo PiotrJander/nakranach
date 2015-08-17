@@ -58,7 +58,7 @@ class ModifyWaitingBeerForm(UserKwargModelFormMixin, forms.ModelForm):
         self.helper.form_action = 'pub:modify_beer'
         self.helper.form_id = 'waitingBeerForm'
         self.helper.layout = Layout(
-            'beer_id',
+            Field('beer_id', css_id="beerId"),
             '_brewery',
             '_name',
             '_style',
@@ -93,9 +93,10 @@ class DatabaseBeerDisabledForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super(DatabaseBeerDisabledForm, self).__init__(*args, **kwargs)
         self.helper = FormHelper(self)
+        self.helper.form_id = 'beerForm'
         self.helper.layout = Layout(
             Field('brewery', type='text', readonly=True),
-            Field('name', readonly=True),
+            Field('name', readonly=True, ),
             Field('style', readonly=True),
             Div(
                 Field('ibu', readonly=True, wrapper_class='col-sm-6'),
