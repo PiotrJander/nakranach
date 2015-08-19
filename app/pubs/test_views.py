@@ -99,7 +99,7 @@ class TestWaitingBeerJsonView(TestCase):
         add_middleware_to_request(request, AddProfile)
         view = WaitingBeerJsonView()
         setup_view(view, request)
-        response = view.get()
+        response = view.get(request)
         actual_json = response.content
         expected_json = '{"waitingbeer": {"_ibu": null, "_abv": null, "_name": "", "_style": "", "_brewery": ""}, ' \
                         '"beer": {"abv": "None", "style": "jasne", "brewery": "Matysiowo", "ibu": "None", "name": "Jasne"}}'

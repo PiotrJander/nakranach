@@ -15,6 +15,23 @@
 
   <!-- Begin profile table -->
   <div class="box-info full">
+
+    {# Add a new waiting beer #}
+    <h2><strong>Dodaj</strong> nowe piwo</h2>
+
+    <form action="{% url 'pub:add_beer' %}" method="post" id="addWaitingBeerForm">
+      {% csrf_token %}
+      <label>
+        <p>Wpisz fragment nazwy…</p>
+        <select id="addWaitingBeerInput" name="beer_id">
+          <option></option>
+        </select>
+      </label>
+      <button class="btn btn-default" id="createNewBeerButton">Utwórz nowe piwo</button>
+    </form>
+    {# End add a new waiting beer #}
+
+    {# Waiting beer table #}
     <h2><strong>Lista piw</strong> w magazynie pubu {{ profile.get_pub }}</h2>
 
     <div class="table-responsive">
@@ -22,6 +39,8 @@
       {% render_table table %}
 
     </div>
+    {# End waiting beer table #}
+
   </div>
   <!-- End profile table -->
 

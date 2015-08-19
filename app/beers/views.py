@@ -15,7 +15,7 @@ class BeerSearchJsonView(generic.View):
         q = request.GET['q']
         querystring = normalize_for_search(q)
         beers = Beer.match(querystring)
-        beer_dict_list = (beer.search_dict() for beer in beers)
+        beer_dict_list = [beer.search_dict() for beer in beers]
         jsonified = json.dumps(beer_dict_list)
         return HttpResponse(jsonified, content_type='application/json')
         # TODO test

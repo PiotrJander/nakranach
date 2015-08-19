@@ -67,16 +67,25 @@ class Beer(models.Model):
         """
         Returns a string which consists of concatenated: ``style``, ``ibu``, ``abv``.
         """
-        return '%s, %d IBU, %.1f%% ABV' % (self.style.name, self.ibu, self.abv)
+        if self.ibu and self.abv:
+            return '%s, %d IBU, %.1f%% ABV' % (self.style.name, self.ibu, self.abv)
+        elif self.ibu:
+            return '%s, %d IBU' % (self.style.name, self.ibu)
+        elif self.abv:
+            return '%s, %.1f%% ABV' % (self.style.name, self.abv)
+        else:
+            return '%s' % self.style.name
 
     def search_dict(self):
         """
         Returns a dictionary representation of ``name``, ``brewery.name`` as "brewery", and ``secondary_data``.
         """
         return {
+            'id': self.id,
             'name': self.name,
             'brewery': self.brewery.name,
             'secondary_data': self.secondary_data(),
+            'text': self.description(),
         }
 
     @classmethod

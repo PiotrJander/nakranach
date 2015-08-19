@@ -5,7 +5,8 @@ from django.views.generic.edit import BaseFormView
 from django_tables2.views import SingleTableView
 from braces.views import UserFormKwargsMixin
 
-from app.pubs.forms import RemoveBeerFromWaitingBeersForm, ModifyWaitingBeerForm, DatabaseBeerDisabledForm
+from app.pubs.forms import RemoveBeerFromWaitingBeersForm, ModifyWaitingBeerForm, DatabaseBeerDisabledForm, \
+    AddWaitingBeerForm
 from app.pubs.tables import WaitingBeersTable
 
 
@@ -41,6 +42,10 @@ class RemoveBeerFromWaitingBeersView(EditWaitingBeerViewMixin):
 
 class ModifyWaitingBeerView(EditWaitingBeerViewMixin):
     form_class = ModifyWaitingBeerForm
+
+
+class AddWaitingBeerView(EditWaitingBeerViewMixin):
+    form_class = AddWaitingBeerForm
 
 
 class WaitingBeerJsonView(View):

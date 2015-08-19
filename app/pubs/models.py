@@ -98,6 +98,13 @@ class Pub(models.Model):
     def remove_beer(self, beer_id):
         self.waitingbeer_set.filter(id=beer_id).delete()
 
+    def add_waiting_beer(self, beer_id):
+        """
+        Adds a waiting beer to the pub.
+        """
+        beer = Beer.objects.get(id=beer_id)
+        WaitingBeer.objects.create(pub=self, beer=beer)
+
 
 class Volume(models.Model):
     pub = models.ForeignKey(Pub, related_name='available_volumes')

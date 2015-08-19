@@ -80,6 +80,24 @@ class ModifyWaitingBeerForm(UserKwargModelFormMixin, forms.ModelForm):
         return beer_id
 
 
+class AddWaitingBeerForm(UserKwargModelFormMixin, forms.Form):
+    beer_id = forms.IntegerField()
+
+    def __init__(self, *args, **kwargs):
+        super(AddWaitingBeerForm, self).__init__(*args, **kwargs)
+        self.pub = self.user.profile.get_pub()
+
+    def clean_id(self):
+        beer_id = self.cleaned_data['beer_id']
+        if not Beer.objects.filter(id=beer_id):
+            raise forms.ValidationError('W systemie nie ma piwa o id %(id)s', params={'id': beer_id})
+        return beer_id
+
+    def save(self):
+        beer_id = self.cleaned_data['beer_id']
+        self.pub.add_waiting_beer(beer_id)
+
+
 class DatabaseBeerDisabledForm(forms.ModelForm):
 
     class Meta:

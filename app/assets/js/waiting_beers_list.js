@@ -56,4 +56,67 @@ $('#modifyBeerModal').on('show.bs.modal', function (event) {
     var modal = $(this)
     modal.find('#id_beer_id').val(beer_id)
     //modal.find('#beerName').text(beer_name)
-})
+});
+
+
+$("#addWaitingBeerInput").select2({
+    //placeholder: "wpisz fragment nazwy…",
+    //allowClear: true,
+    language: {
+        inputTooShort: function (e) {
+            var t = e.minimum - e.input.length, n = "Wprowadź jeczcze " + t + " lub więcej znaków";
+            return n
+        },
+        searching: function () {
+            return "Szukam…"
+        },
+        noResults: function () {
+            return 'Nie znaleźliśmy pasującego piwa. Kliknij przycisk obok, żeby utworzyć nowe piwo.';
+        },
+    },
+    ajax: {
+        url: "/beers/api/search/",
+        method: 'GET',
+        dataType: 'json',
+        delay: 1000,
+        data: function (params) {
+            return {
+                q: params.term, // search term
+                //page: params.page
+            };
+        },
+        processResults: function (data, page) {
+            // parse the results into the format expected by Select2.
+            // since we are using custom formatting functions we do not need to
+            // alter the remote JSON data
+            return {
+                results: data
+            };
+        },
+        cache: true
+    },
+    //id: function (object) { return object.id },
+    escapeMarkup: function (markup) {
+        return markup;
+    }, // let our custom formatter work
+    minimumInputLength: 1,
+    templateResult: formatBeer, // omitted for brevity, see the source of this page
+    templateSelection: formatBeerSelection // omitted for brevity, see the source of this page
+});
+
+$("#addWaitingBeerInput").on('select2:select', function (event) { $('#addWaitingBeerForm').submit() });
+
+function formatBeer(beer) {
+    if (beer.loading) return beer.text;
+
+    var markup = '<div>'
+    markup += '<div><strong>' + beer.brewery + '</strong> ' + beer.name + '</div>'
+    markup += '<div>' + beer.secondary_data + '</div>'
+    markup += '</div>'
+
+    return markup
+}
+
+function formatBeerSelection(beer) {
+    return beer.text;
+}

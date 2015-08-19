@@ -16,6 +16,7 @@ urlpatterns = patterns('',
     (r'^accounts/', include('app.accounts.urls')),
     (r'^taps/', include('app.taps.urls', namespace='tap')),
     (r'^pub/beers/', include('app.pubs.urls',namespace='pub')),
+    (r'^beers/api/', include('app.beers.urls', namespace='beers')),
     (r'^', include('app.main.urls', namespace='main')),
 )
 

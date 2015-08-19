@@ -46,27 +46,6 @@
 
 {% block modals %}
 
-  <!-- Modal -->
-  <div class="modal fade" id="gravatarExplainedModal" tabindex="-1" role="dialog"
-       aria-labelledby="gravatarExplainedModalLabel">
-    <div class="modal-dialog" role="document">
-      <div class="modal-content">
-        <div class="modal-header">
-          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
-                  aria-hidden="true">&times;</span></button>
-          <h4 class="modal-title" id="gravatarExplainedModalLabel">Zdjęcie profilowe w serwisie Gravatar</h4>
-        </div>
-        <div class="modal-body">
-          <p>Jeżeli chcesz dołączyć do swojego profilu w Nakranach zdjęcie profilowe</p>
-          <ol>
-            <li>Przejdź do <a href="http://www.gravatar.com/">www.gravatar.com</a></li>
-            <li>Zarejestruj się przy pomocy tego samego adresu email, którego użyłeś w Nakranach.</li>
-            <li>Dodaj zdjęcie profilowe.</li>
-            <li>Będziesz mógł używać go na każdej stronie, która obsługuje serwis Gravatar.</li>
-          </ol>
-        </div>
-      </div>
-    </div>
-  </div>
+  {% include 'registration/_gravatar_explained_modal.html' %}
 
 {% endblock modals %}

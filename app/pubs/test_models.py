@@ -36,6 +36,13 @@ class TestPub(TestCase):
         pub.remove_beer(beer_id)
         self.assertFalse(pub.has_beer(beer_id))
 
+    def test_add_waiting_beer(self):
+        pub = Pub.objects.create(name='Rademenes', city='Warszawa')
+        beer = Beer.objects.create(name='Jasne', brewery=Brewery.objects.create(name='Matysiowo', country='Polska'),
+                                   style=Style.objects.create(name='jasne'))
+        pub.add_waiting_beer(beer.id)
+        self.assertTrue(pub.waiting_beers.filter(id=beer.id).exists())
+
 
 class TestWaitingBeer(TestCase):
     def test_waiting_beer_uses_beer_fields_by_default(self):
