@@ -95,6 +95,9 @@ class Pub(models.Model):
     def has_beer(self, beer_id):
         return self.waiting_beers.filter(id=beer_id).exists()
 
+    def has_waitingbeer(self, beer_id):
+        return self.waitingbeer_set.filter(id=beer_id).exists()
+
     def remove_beer(self, beer_id):
         self.waitingbeer_set.filter(id=beer_id).delete()
 

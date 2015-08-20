@@ -74,7 +74,7 @@ class ModifyWaitingBeerForm(UserKwargModelFormMixin, forms.ModelForm):
         Checks that ``beer_id`` represents a beer in the ``waiting_beers`` list in the ``user``'s pub.
         """
         beer_id = self.cleaned_data['beer_id']
-        if not self.pub.has_beer(beer_id):
+        if not self.pub.has_waitingbeer(beer_id):
             raise forms.ValidationError('W pubie nie ma piwa o id %(id)s', params={'id': beer_id})
         self.instance = WaitingBeer.objects.get(id=beer_id)
         return beer_id
