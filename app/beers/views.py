@@ -1,12 +1,16 @@
 import json
+
 from django.core.urlresolvers import reverse_lazy
 from django.http.response import HttpResponse
 from django.views import generic
-from django_tables2 import SingleTableView
+from django_tables2 import SingleTableMixin
+from braces.views import UserFormKwargsMixin
+
 from app.beers.forms import CreateBeerForm
 from app.beers.models import Beer
 from app.beers.tables import BeersTable
 from app.main.utils import normalize_for_search
+from app.main.viewmixins import CanManageWaitingBeersMixin
 
 
 class BeerSearchJsonView(generic.View):
@@ -25,7 +29,7 @@ class BeerSearchJsonView(generic.View):
         # TODO test
 
 
-class CreateBeerView(generic.edit.FormMixin, SingleTableView):
+class CreateBeerView(CanManageWaitingBeersMixin, SingleTableMixin, UserFormKwargsMixin, generic.edit.FormView):
     table_class = BeersTable
     template_name = 'beers/create_beer.html'
     form_class = CreateBeerForm
@@ -38,3 +42,7 @@ class CreateBeerView(generic.edit.FormMixin, SingleTableView):
         context = super(CreateBeerView, self).get_context_data(**kwargs)
         context['form'] = self.get_form()
         return context
+
+    def form_valid(self, form):
+        form.save()
+        return super(CreateBeerView, self).form_valid(form)

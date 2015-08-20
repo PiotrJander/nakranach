@@ -1,13 +1,15 @@
 # coding=utf-8
 from crispy_forms.helper import FormHelper
-from crispy_forms import layout
+from crispy_forms import layout, bootstrap
 from django import forms
+from django.core.urlresolvers import reverse_lazy
 from django.forms.models import fields_for_model
+from braces.forms import UserKwargModelFormMixin
 
 from app.beers.models import Beer, Brewery
 
 
-class CreateBeerForm(forms.ModelForm):
+class CreateBeerForm(UserKwargModelFormMixin, forms.ModelForm):
     """
     The form has fields: name, brewery, style, ibu, abv, create_new_brewery, brewery_name, brewery_country.
 
@@ -29,6 +31,7 @@ class CreateBeerForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super(CreateBeerForm, self).__init__(*args, **kwargs)
+        self.pub = self.user.profile.get_pub()
 
         # add fields from the Brewery model
         brewery_fields = fields_for_model(Brewery, fields=['name', 'country'])
@@ -44,7 +47,7 @@ class CreateBeerForm(forms.ModelForm):
 
         # crispy form helper
         self.helper = FormHelper()
-        self.helper.form_action = 'beer:create'
+        self.helper.form_action = reverse_lazy('beers:create')
         self.helper.form_id = 'createBeerForm'
         self.helper.html5_required = True
         self.helper.layout = layout.Layout(
@@ -63,6 +66,9 @@ class CreateBeerForm(forms.ModelForm):
                 layout.Field('abv', wrapper_class='col-sm-6'),
                 css_class='row',
             ),
+            bootstrap.FormActions(
+                layout.Submit('submit', u'Dodaj piwo')
+            )
         )
 
     def clean(self):
@@ -95,3 +101,8 @@ class CreateBeerForm(forms.ModelForm):
         else:
             self.add_error('brewery_country', u'Wybrałeś opcję tworzenia nowego browaru. '
                                               u'Musisz podać kraj browaru.')
+
+    def save(self, *args, **kwargs):
+        beer = super(CreateBeerForm, self).save(*args, **kwargs)
+        self.pub.add_waiting_beer(beer.id)
+        return beer

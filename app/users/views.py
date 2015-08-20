@@ -4,6 +4,7 @@ from django.http.response import HttpResponseRedirect, HttpResponseBadRequest
 from django.views.generic import FormView
 from django.views.generic.edit import BaseFormView
 from django_tables2 import SingleTableView
+from app.main.viewmixins import IsAdminMixin
 
 from app.users.forms import InviteUserForm, ChangeRoleForm, RemoveFromPubForm
 from app.users.models import Profile, ProfilePub
@@ -21,7 +22,7 @@ class AddPubToContextMixin(object):
         return context
 
 
-class ProfileListView(AddPubToContextMixin, SingleTableView):
+class ProfileListView(IsAdminMixin, AddPubToContextMixin, SingleTableView):
     model = Profile
     table_class = ManagedUsersTable
 
@@ -54,7 +55,7 @@ class ProfileListView(AddPubToContextMixin, SingleTableView):
         return super(ProfileListView, self).get_table(**kwargs)
 
 
-class InviteUserView(UserFormKwargsMixin, FormView):
+class InviteUserView(IsAdminMixin, UserFormKwargsMixin, FormView):
     template_name = 'users/invite.html'
     success_url = reverse_lazy('user:list')
     form_class = InviteUserForm
@@ -76,7 +77,7 @@ class InviteUserView(UserFormKwargsMixin, FormView):
         return super(InviteUserView, self).form_valid(form)
 
 
-class ChangeRoleView(UserFormKwargsMixin, BaseFormView):
+class ChangeRoleView(IsAdminMixin, UserFormKwargsMixin, BaseFormView):
     form_class = ChangeRoleForm
     http_method_names = [u'post']
     success_url = reverse_lazy('user:list')
@@ -89,7 +90,7 @@ class ChangeRoleView(UserFormKwargsMixin, BaseFormView):
         return HttpResponseBadRequest
 
 
-class RemoveFromPubView(UserFormKwargsMixin, BaseFormView):
+class RemoveFromPubView(IsAdminMixin, UserFormKwargsMixin, BaseFormView):
     form_class = RemoveFromPubForm
     http_method_names = [u'post']
     success_url = reverse_lazy('user:list')

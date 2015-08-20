@@ -1,12 +1,13 @@
 {% extends 'base_framed.html' %}
 {% load django_tables2 %}
 {% load crispy_forms_tags %}
+{% load staticfiles %}
 
 {% block content %}
 
   <!-- Page header -->
   <div class="page-heading animated fadeInDownBig">
-    <h1>Utwórz nowe piwo</h1>
+    <h1>Utwórz nowe piwo <small>w bazie piw NaKranach.pl</small></h1>
   </div>
   <!-- End page header -->
 
@@ -14,20 +15,25 @@
 
     <div class="col-sm-6">
       <div class="box-info">
-        <h4>Piwa w bazie danych</h4>
+        <h4>Dodaj nowe piwo do bazy</h4>
         <hr>
-        {% render_table table %}
+        {% crispy form %}
       </div>
     </div>
 
     <div class="col-sm-6">
       <div class="box-info">
-        <h4>Dodaj nowe piwo do bazy piw NaKranach.pl</h4>
+        <h4>Piwa w bazie</h4>
         <hr>
-        {% crispy form %}
+        {% render_table table %}
       </div>
     </div>
 
   </div>
 
 {% endblock content %}
+
+{% block js %}
+  {{ block.super }}
+  <script src="{% static 'assets/js/create_beer.js' %}"></script>
+{% endblock js %}

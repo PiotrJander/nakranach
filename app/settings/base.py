@@ -135,7 +135,7 @@ HAYSTACK_CONNECTIONS = {
 
 # login
 LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/dashboard/'
+LOGIN_REDIRECT_URL = '/accounts/profile/update/'
 
 # registration
 REGISTRATION_AUTO_LOGIN = True

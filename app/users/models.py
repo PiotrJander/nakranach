@@ -161,12 +161,12 @@ class Profile(models.Model):
             return None
 
     def can_manage_taps(self):
-        if not self.profilepub_set:  return False
+        if not self.profilepub_set.all():  return False
         profilepub = self.profilepub_set.get()
         return profilepub.role in ['admin', 'employee', 'employee_and_storeman']
 
     def can_manage_waiting_beers(self):
-        if not self.profilepub_set:  return False
+        if not self.profilepub_set.all():  return False
         profilepub = self.profilepub_set.get()
         return profilepub.role in ['admin', 'storeman', 'employee_and_storeman']
 

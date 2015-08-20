@@ -1,5 +1,5 @@
-from braces.views import UserFormKwargsMixin
-from django.contrib.auth import views as auth_views, update_session_auth_hash
+from braces.views import UserFormKwargsMixin, LoginRequiredMixin
+from django.contrib.auth import views as auth_views
 from django.contrib.auth.forms import PasswordChangeForm
 from django.http.response import HttpResponseRedirect
 from django.views.generic.edit import FormView
@@ -16,7 +16,7 @@ class ProfileRegistrationView(RegistrationView):
     to the newly created user. Also handles first name and last name fields.
     """
     form_class = CustomUserRegistrationForm
-    success_url = 'main:dashboard'
+    success_url = 'accounts_profile_update'
 
     def register(self, request, form):
         new_user = super(ProfileRegistrationView, self).register(request, form)
@@ -30,7 +30,7 @@ class ProfileRegistrationView(RegistrationView):
         return context
 
 
-class ProfileUpdateView(UserFormKwargsMixin, FormView):
+class ProfileUpdateView(LoginRequiredMixin, UserFormKwargsMixin, FormView):
     template_name = 'registration/profile_update.html'
     form_class = ProfileUpdateForm
 

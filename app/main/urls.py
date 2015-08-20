@@ -9,8 +9,6 @@ from .views.landing import landing
 
 urlpatterns = patterns('',
     url(r'^$', landing, name='landing'),
-    url(r'^dashboard/$', DashboardView.as_view(), name='dashboard'),
-    url(r'^dummy/$', View.as_view(), name='dummy'),
 
     url(r'pubs/search/$', search_view_factory(
         form_class=HighlightedModelSearchForm,

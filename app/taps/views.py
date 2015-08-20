@@ -7,13 +7,14 @@ from django.views.generic.edit import FormMixin
 from django_tables2.views import SingleTableView
 
 from app.beers.models import Beer
+from app.main.viewmixins import CanManageTapsMixin
 from app.pubs.models import Tap
 from app.taps.forms import ChangeBeerForm
 from app.taps.models import TapChange
 from app.taps.tables import TapTable
 
 
-class TapListView(SingleTableView):
+class TapListView(CanManageTapsMixin, SingleTableView):
     table_class = TapTable
     template_name = 'taps/tap_list.html'
 
@@ -26,7 +27,7 @@ class TapListView(SingleTableView):
         return context
 
 
-class TapProcessFormView(BaseDetailView):
+class TapProcessFormView(CanManageTapsMixin, BaseDetailView):
     model = Tap
 
     def get_object(self, queryset=None):
@@ -34,7 +35,6 @@ class TapProcessFormView(BaseDetailView):
             return super(TapProcessFormView, self).get_object(queryset)
         except Http404 as e:
             raise e
-            # TODO make user friendly
 
     def get_queryset(self):
         return self.request.profile.get_taps()

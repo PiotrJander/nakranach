@@ -17,7 +17,7 @@
   <div class="box-info full">
 
     {# Add a new waiting beer #}
-    <h2><strong>Dodaj</strong> nowe piwo</h2>
+    <h2><strong>Dodaj nowe piwo</strong> do magazynu pubu</h2>
 
     <form action="{% url 'pub:add_beer' %}" method="post" id="addWaitingBeerForm">
       {% csrf_token %}
@@ -35,7 +35,7 @@
     {# End add a new waiting beer #}
 
     {# Waiting beer table #}
-    <h2><strong>Lista piw</strong> w magazynie pubu {{ profile.get_pub }}</h2>
+    <h2><strong>Lista piw</strong> w magazynie pubu</h2>
 
     <div class="table-responsive">
 
