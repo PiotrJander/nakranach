@@ -16,7 +16,7 @@ class Brewery(models.Model):
     country = models.CharField(verbose_name=_('kraj'), max_length=255)
 
     def __unicode__(self):
-        return self.name
+        return '%s, %s' % (self.name, self.country)
 
 class Style(models.Model):
     class Meta:

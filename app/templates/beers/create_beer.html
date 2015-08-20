@@ -1,0 +1,33 @@
+{% extends 'base_framed.html' %}
+{% load django_tables2 %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+
+  <!-- Page header -->
+  <div class="page-heading animated fadeInDownBig">
+    <h1>Utwórz nowe piwo</h1>
+  </div>
+  <!-- End page header -->
+
+  <div class="row">
+
+    <div class="col-sm-6">
+      <div class="box-info">
+        <h4>Piwa w bazie danych</h4>
+        <hr>
+        {% render_table table %}
+      </div>
+    </div>
+
+    <div class="col-sm-6">
+      <div class="box-info">
+        <h4>Dodaj nowe piwo do bazy piw NaKranach.pl</h4>
+        <hr>
+        {% crispy form %}
+      </div>
+    </div>
+
+  </div>
+
+{% endblock content %}

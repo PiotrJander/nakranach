@@ -1,6 +1,7 @@
 from django.conf.urls import url
-from app.beers.views import BeerSearchJsonView
+from app.beers.views import BeerSearchJsonView, CreateBeerView
 
 urlpatterns = [
-    url(r'^search/$', BeerSearchJsonView.as_view(), name='search'),
+    url(r'^api/search/$', BeerSearchJsonView.as_view(), name='search'),
+    url(r'^create/$', CreateBeerView.as_view(), name='create'),
 ]

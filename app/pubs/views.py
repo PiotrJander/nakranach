@@ -4,6 +4,7 @@ from django.views.generic.base import View
 from django.views.generic.edit import BaseFormView
 from django_tables2.views import SingleTableView
 from braces.views import UserFormKwargsMixin
+from app.beers.forms import CreateBeerForm
 
 from app.pubs.forms import RemoveBeerFromWaitingBeersForm, ModifyWaitingBeerForm, DatabaseBeerDisabledForm, \
     AddWaitingBeerForm
@@ -22,6 +23,7 @@ class WaitingBeersTableView(SingleTableView):
         context.update({
             'modify_waiting_beer_form': ModifyWaitingBeerForm(user=self.request.user),
             'database_beer_disabled_form': DatabaseBeerDisabledForm(),
+            'create_beer_form': CreateBeerForm(),
         })
         return context
 

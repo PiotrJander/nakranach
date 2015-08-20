@@ -22,11 +22,11 @@ class SidebarMenu(object):
         self.request = request
 
         # make fields
-        self.make_dashboard()
         self.make_my_profile()
         self.make_users()
         self.make_taps()
         self.make_waiting_beers()
+        self.make_beer_database()
 
     def append_field(self, field):
         """Appends the child field to children attribute."""
@@ -47,17 +47,10 @@ class SidebarMenu(object):
             for child in field.children:
                 child.active = child.url == self.request.path
 
-    def make_dashboard(self):
-        self.append_field(SidebarLinkField(
-            name='Dashboard',
-            icon='home',
-            url_name='main:dashboard'
-        ))
-
     def make_my_profile(self):
         self.append_field(SidebarLinkField(
             name='Mój profil',
-            icon='home',
+            icon='user',
             url_name='accounts_profile_update'
         ))
 
@@ -73,7 +66,7 @@ class SidebarMenu(object):
             return
 
         # make the fields
-        parent = SidebarWrapperField(name='Użytkownicy', icon='list')
+        parent = SidebarWrapperField(name='Użytkownicy', icon='users')
         parent.append_field(SidebarChildField(
             name='Lista',
             url_name='user:list',
@@ -97,8 +90,16 @@ class SidebarMenu(object):
         if self.request.profile.can_manage_waiting_beers():
             self.append_field(SidebarLinkField(
                 name='Magazyn',
-                icon='home',
+                icon='list',
                 url_name='pub:waiting_beers',
+            ))
+
+    def make_beer_database(self):
+        if self.request.profile.can_manage_waiting_beers():
+            self.append_field(SidebarLinkField(
+                name='Baza piw',
+                icon='beer',
+                url_name='beers:create',
             ))
 
 
