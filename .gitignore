@@ -9,3 +9,4 @@ dontruninproduction
 /uploads
 *.pyc
 .idea
+/static
